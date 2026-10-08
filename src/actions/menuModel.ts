@@ -99,19 +99,26 @@ export function barMenuSpecs(): readonly { id: string; labelKey: string; accessK
   return SPECS;
 }
 
+/** Actions that also need a text selection on the page. */
+const NEEDS_SELECTION = new Set(['add-comment', 'cite-selection']);
+
 function isEnabled(action: ActionDef, context: MenuContext): boolean {
   if (!action.enabled(context.state)) return false;
-  return (action.id !== 'add-comment' && action.id !== 'cite-selection') || context.hasTextSelection;
+  return !NEEDS_SELECTION.has(action.id) || context.hasTextSelection;
 }
 
 /**
- * Why a disabled action cannot run, as a catalog key: the first blocker of the state whose removal would enable it (a signature
- * lock, a signed file, a read-only document, a running text recognition, no recognizer, permissions). `null` when it is enabled,
- * there is no document, or the cause is none of these (zoom at its limit, nothing to undo): those need no explanation.
+ * Why a disabled action cannot run, as a catalog key, derived from the predicate that really disables it (`action.enabled` on the
+ * state, then the text selection). Order, the blocker the user cannot lift in place first: the state blockers (signature lock,
+ * signed file, read-only, running recognition, no recognizer, permissions) while `enabled` still refuses; only an action that
+ * `enabled` allows and that lacks a text selection says "select text first". A state blocker counts only when it is necessary
+ * (the action stays disabled when all the others are lifted), so an unrelated blocker is never named. `null` when it is enabled,
+ * there is no document, or the cause has no reason text (zoom at its limit, nothing to undo).
  */
 export function disabledReasonKey(action: ActionDef, context: MenuContext): PlainKey | null {
   const { state } = context;
   if (!state.hasDocument || isEnabled(action, context)) return null;
+  if (action.enabled(state)) return 'tool.needSelection';
   const blockers: [PlainKey, boolean, Partial<ActionState>][] = [
     ['cert.locked.tool', state.signatureLocked === true, { signatureLocked: false }],
     ['hf.signed', state.signedFile === true, { signedFile: false }],
@@ -120,16 +127,17 @@ export function disabledReasonKey(action: ActionDef, context: MenuContext): Plai
     ['ocr.unavailable', state.ocrUnavailable === true, { ocrUnavailable: false }],
     ['output.notAllowed', state.canPrint === false || state.canCopy === false, { canPrint: true, canCopy: true }],
   ];
-  // Lift the blockers one by one; the first one that was really there is the reason once the action runs again.
-  let lifted = state;
-  let first: PlainKey | null = null;
-  for (const [key, present, patch] of blockers) {
-    if (!present) continue;
-    first ??= key;
-    lifted = { ...lifted, ...patch };
-    if (action.enabled(lifted)) return first;
-  }
-  return null;
+  const present = blockers.filter(([, there]) => there);
+  const liftedWithout = (skip: number | null): ActionState =>
+    present.reduce((acc, [, , patch], index) => (index === skip ? acc : { ...acc, ...patch }), state);
+  // Not enabled even with every known blocker lifted: the cause is none of them.
+  if (!action.enabled(liftedWithout(null))) return null;
+  // A necessary blocker: keeping only this one still disables the action.
+  const necessary = present.findIndex((_, index) => !action.enabled(liftedWithout(index)));
+  if (necessary >= 0) return present[necessary]?.[0] ?? null;
+  // Redundant blockers (any one of several suffices): the first whose removal alone enables the action.
+  const sole = present.findIndex(([, , patch]) => action.enabled({ ...state, ...patch }));
+  return present[sole >= 0 ? sole : 0]?.[0] ?? null;
 }
 
 /** Drops a separator that starts or ends the list or follows another one. */

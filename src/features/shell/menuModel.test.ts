@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { buildBarMenus, buildMenuEntries, type MenuContext } from '../../actions/menuModel';
-import { NO_DOCUMENT } from '../../actions/state';
-import { translators } from '../../i18n';
+import { buildBarMenus, buildMenuEntries, disabledReasonKey, type MenuContext } from '../../actions/menuModel';
+import { ACTIONS, getAction } from '../../actions/registry';
+import { NO_DOCUMENT, type ActionState } from '../../actions/state';
+import { translators, type PlainKey } from '../../i18n';
 
 const context = (overrides: Partial<MenuContext> = {}): MenuContext => ({
   t: translators.en,
@@ -85,6 +86,46 @@ describe('the Windows menus built from menu.json', () => {
     expect(reason('save', { ocrBusy: true })).toBe('Wait until text recognition finishes.');
     expect(reason('recognize-text', {})).toBeUndefined();
     expect(reason('save', {})).toBeUndefined();
+  });
+
+  it('says "select text first" for Add Comment and Cite on a signed document, not the signature reason', () => {
+    const state = { ...NO_DOCUMENT, hasDocument: true, signedFile: true, canEdit: true };
+    for (const id of ['add-comment', 'cite-selection']) {
+      const action = getAction(id);
+      if (action === undefined) throw new Error(id);
+      // Signed files stay editable for comments here: only the selection is missing.
+      if (action.enabled(state)) {
+        expect(disabledReasonKey(action, context({ state }))).toBe('tool.needSelection');
+        expect(disabledReasonKey(action, context({ state, hasTextSelection: true }))).toBeNull();
+      }
+    }
+    const comment = getAction('add-comment');
+    if (comment === undefined) throw new Error('add-comment');
+    const open = { ...NO_DOCUMENT, hasDocument: true, canEdit: true };
+    expect(disabledReasonKey(comment, context({ state: open }))).toBe('tool.needSelection');
+    expect(disabledReasonKey(comment, context({ state: open, hasTextSelection: true }))).toBeNull();
+  });
+
+  it('names a reason only when it is a blocker that disables the item', () => {
+    const base = { ...NO_DOCUMENT, hasDocument: true, canEdit: true, canPrint: true, canCopy: true };
+    const cases: [PlainKey, Partial<ActionState>, Partial<ActionState>][] = [
+      ['cert.locked.tool', { signatureLocked: true }, { signatureLocked: false }],
+      ['hf.signed', { signedFile: true }, { signedFile: false }],
+      ['tool.readOnly', { readOnly: true }, { readOnly: false }],
+      ['tool.readOnly', { canEdit: false }, { canEdit: true }],
+      ['ocr.busy', { ocrBusy: true }, { ocrBusy: false }],
+      ['ocr.unavailable', { ocrUnavailable: true }, { ocrUnavailable: false }],
+      ['output.notAllowed', { canPrint: false }, { canPrint: true }],
+      ['output.notAllowed', { canCopy: false }, { canCopy: true }],
+    ];
+    for (const action of ACTIONS) {
+      for (const [key, on, off] of cases) {
+        const blocked: ActionState = { ...base, ...on };
+        const reason = disabledReasonKey(action, context({ state: blocked, hasTextSelection: true }));
+        const shouldName = !action.enabled(blocked) && action.enabled({ ...blocked, ...off });
+        expect(reason, `${action.id} with ${key}`).toBe(shouldName ? key : null);
+      }
+    }
   });
 
   it('has the File menu of the design: the commands outside the modes, Close, Settings and Exit last', () => {

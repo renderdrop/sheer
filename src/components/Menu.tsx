@@ -89,7 +89,9 @@ const ITEM =
   'not-aria-disabled:aria-expanded:bg-subtle';
 const ITEM_TALL = ITEM.replace('h-(--space-8)', 'h-(--space-12)');
 /** A disabled item that says why: the reason line stays legible, so only the icon and the label dim. */
-const ITEM_REASON = ITEM_TALL.replace(' aria-disabled:opacity-(--opacity-disabled) ', ' ');
+const ITEM_REASON = ITEM_TALL.replace(' aria-disabled:opacity-(--opacity-disabled) ', ' ')
+  .replace('h-(--space-12)', 'min-h-(--space-12) py-1')
+  .replace(' items-center ', ' items-start ');
 const DIM = 'opacity-(--opacity-disabled)';
 
 /** The submenu that is open in a list: which item opened it, and how often focus was asked to go into it. */
@@ -251,7 +253,7 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
 
   return (
     <>
-      <div role="presentation" className="flex flex-col" onKeyDown={onKeyDown}>
+      <div role="presentation" className="flex max-w-dialog flex-col" onKeyDown={onKeyDown}>
         {entries.map((entry, index) => {
           if (entry.type === 'separator') {
             const line = <div role="separator" className="my-1 h-hairline bg-divider" />;
@@ -322,13 +324,21 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
               ) : (
                 <span className="flex min-w-0 flex-auto flex-col">
                   <span className={`t-label truncate ${reason === undefined ? '' : DIM}`}>{entry.label}</span>
-                  <span className="t-caption truncate text-text-muted">{caption}</span>
+                  <span
+                    className={`t-caption ${reason === undefined ? 'truncate text-text-muted' : 'line-clamp-2 text-text [overflow-wrap:break-word]'}`}
+                  >
+                    {caption}
+                  </span>
                 </span>
               )}
               {hasSubmenu ? (
                 <Icon icon={ChevronRight} className="text-text-muted rtl:-scale-x-100" />
               ) : (
-                entry.shortcut !== undefined && <span className="shrink-0 t-caption">{entry.shortcut}</span>
+                entry.shortcut !== undefined && (
+                  <span className={`shrink-0 t-caption ${reason === undefined ? '' : 'self-start'}`}>
+                    {entry.shortcut}
+                  </span>
+                )
               )}
             </button>
           );

@@ -682,4 +682,20 @@ describe('Menu disabled reason', () => {
     expect(enabled.hasAttribute('aria-description')).toBe(false);
     expect(enabled.textContent).toBe('Save');
   });
+
+  it('clamps the reason to two lines in a capped list, in the stronger tone, with the shortcut top-aligned', async () => {
+    const withKey: MenuEntry[] = [{ ...list[0]!, shortcut: 'Ctrl+M' } as MenuEntry];
+    const { user, getByRole, getByText } = setup(
+      <Menu label="Menu" entries={withKey} trigger={(trigger) => <button {...trigger}>Open</button>} />,
+    );
+    await user.click(getByRole('button', { name: 'Open' }));
+    const reason = getByText('Wait until it finishes.');
+    expect(reason.className).toContain('line-clamp-2');
+    expect(reason.className).toContain('text-text');
+    expect(reason.className).not.toContain('text-text-muted');
+    const item = getByRole('menuitem', { name: /Recognize/ });
+    expect(item.className).toContain('items-start');
+    expect(item.parentElement?.className).toContain('max-w-dialog');
+    expect(getByText('Ctrl+M').className).toContain('self-start');
+  });
 });

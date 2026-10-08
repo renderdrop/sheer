@@ -41,7 +41,7 @@ export function captureView(docId: number): HistoryEntry | null {
   const anchor = layout === null ? null : anchorAt(layout, readScroll(), 0, 0);
   const pageId = pageIdAt(docId, anchor?.page ?? view.pageIndex);
   if (pageId === null) return null;
-  return { pageId, xPt: anchor?.xPt ?? 0, yPt: Math.max(0, anchor?.yPt ?? 0), zoom: view.zoom, fit: view.fit };
+  return { pageId, xPt: anchor?.xPt ?? 0, yPt: anchor?.yPt ?? 0, zoom: view.zoom, fit: view.fit };
 }
 
 /** The focused element if it got focus from the keyboard (so a keyboard jump gives focus back to the run it left). */

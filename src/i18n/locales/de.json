@@ -1629,6 +1629,7 @@
   "ocr.cancel": "Abbrechen",
   "ocr.retry": "Erneut versuchen",
   "ocr.busy": "Warte, bis die Texterkennung fertig ist.",
+  "tool.needSelection": "Zuerst Text auswählen.",
   "ocr.done.one": "Text auf {count} Seite erkannt",
   "ocr.done.other": "Text auf {count} Seiten erkannt",
   "ocr.donePartial": "{done}; {failed}",

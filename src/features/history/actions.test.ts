@@ -5,6 +5,9 @@ import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { usePages } from '../../stores/pages';
 import { useView } from '../../stores/view';
+import { scrollFor } from '../viewer/layout';
+import { layoutFor } from '../viewer/model';
+import { registerScrollSource } from '../viewer/scrollBridge';
 import { back, forward, jumpTo, pushView } from './actions';
 import { useMarks } from './marks';
 import { useHistoryStore } from './store';
@@ -104,5 +107,36 @@ describe('history actions', () => {
     useView.getState().setZoom(1, 2);
     back(1);
     expect(useView.getState().byDoc[1]).toMatchObject({ fit: 'width', zoom: 1.2 });
+  });
+});
+
+describe('back restores the scroll exactly', () => {
+  const VIEWPORT = { width: 800, height: 600 };
+  function topOfPage1(): number {
+    return layoutFor(1, VIEWPORT)?.box(1)?.top ?? Number.NaN;
+  }
+  function roundTrip(scrollTop: number): number {
+    const release = registerScrollSource(() => ({ left: 0, top: scrollTop }));
+    pushView(1);
+    release();
+    back(1);
+    const layout = layoutFor(1, VIEWPORT);
+    const anchor = useView.getState().byDoc[1]?.anchor;
+    if (layout === null || anchor === null || anchor === undefined) return Number.NaN;
+    return scrollFor(layout, anchor).top;
+  }
+
+  it('inside a page', () => {
+    const top = topOfPage1() + 300;
+    expect(roundTrip(top)).toBeCloseTo(top, 6);
+  });
+
+  it('in the gap between two pages', () => {
+    const top = topOfPage1() - 4;
+    expect(roundTrip(top)).toBeCloseTo(top, 6);
+  });
+
+  it('at the very top', () => {
+    expect(roundTrip(0)).toBe(0);
   });
 });

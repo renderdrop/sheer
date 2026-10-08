@@ -1629,6 +1629,7 @@
   "ocr.cancel": "Cancel",
   "ocr.retry": "Try again",
   "ocr.busy": "Wait until text recognition finishes.",
+  "tool.needSelection": "Select text first.",
   "ocr.done.one": "Text recognized on {count} page",
   "ocr.done.other": "Text recognized on {count} pages",
   "ocr.donePartial": "{done}; {failed}",
