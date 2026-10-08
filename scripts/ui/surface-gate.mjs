@@ -458,9 +458,12 @@ async function sweepTriggers(label) {
       `popover:${label}:${t.name}`,
       async () => {
         await ev(`${el}')?.click()`);
-        // A tool whose options open only while it is on (optionsWhenOn): the first click turns it on, the second opens the options.
-        await sleep(350);
-        if (!(await ev(`${el}[aria-expanded="true"]')`))) await ev(`${el}')?.click()`);
+        // A tool whose options open only while it is on ([data-options-when-on]): the first click turns it on, the second
+        // opens the options. Only those get a second click; on any other trigger it would close what the first one opened.
+        if (await ev(`${el}[data-options-when-on]') !== null`)) {
+          await sleep(350);
+          if (!(await ev(`${el}[aria-expanded="true"]') !== null`))) await ev(`${el}')?.click()`);
+        }
       },
       () => ev(`${el}[aria-expanded="true"]')?.click()`),
     );
@@ -526,7 +529,10 @@ async function sweepHover(label) {
       const px = (v) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : 0);
       const name = (e) => (e.getAttribute('data-toolbar-item') || e.getAttribute('aria-label') || e.textContent || e.tagName).trim().replace(/\\s+/g, ' ').slice(0, 24);
       // A document tab is the wrapper that owns the hover background (tab button + close x are one visual tab): measure that.
-      const own = el.getAttribute('role') === 'tab' ? el.closest('[role="presentation"]') || el : el;
+      // A wrapper without a box of its own (display: contents) paints nothing: then the tab button itself is the tab.
+      const wrap = el.getAttribute('role') === 'tab' ? el.closest('[role="presentation"]') : null;
+      const wrapBox = wrap?.getBoundingClientRect();
+      const own = wrap && wrapBox.width > 0 && wrapBox.height > 0 ? wrap : el;
       const box = own.closest('[role="toolbar"],[role="tablist"],[data-slot="mode-row"],[data-slot="tool-row"]');
       // A scrolling strip (the document tabs past their minimum width, FX-6) clips the tabs scrolled out of it: a user scrolls a tab
       // into view before hovering it, so the gate does too (only the strip's own scrollLeft moves) instead of measuring a clipped tab.
@@ -561,8 +567,17 @@ async function sweepHover(label) {
         paints.push({ name: d.tagName.toLowerCase() + ' background', rect: R(dr) });
       }
       const scrolls = !!box && box.scrollWidth > box.clientWidth + 1;
+      const centre = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      // A strip that clips its overflow (the document tabs) cannot show a paint past its edge, and it may scroll between the two
+      // reads (the active tab is kept in view): there the rule is the owner's F19.2 one alone — the hover paints exactly the
+      // control's own box — so every rect is taken relative to that box and the box is its own container.
+      if (scrolls && getComputedStyle(box).overflowX !== 'visible') {
+        const at = (q) => ({ left: q.left - r.left, top: q.top - r.top, right: q.right - r.left, bottom: q.bottom - r.top });
+        const own = at(R(r));
+        return { name: name(el), box: own, container: own, centre, paints: paints.map((p) => ({ ...p, rect: at(p.rect) })) };
+      }
       return { name: name(el), box: R(r), container: R((box || el.parentElement).getBoundingClientRect()),
-        scrollClientWidth: scrolls ? box.clientWidth : undefined, centre: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, paints };
+        scrollClientWidth: scrolls ? box.clientWidth : undefined, centre, paints };
     })()`);
   const items = [];
   for (let i = 0; i < count; i++) {

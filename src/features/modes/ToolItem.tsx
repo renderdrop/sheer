@@ -106,6 +106,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
       aria-disabled={off ? true : undefined}
       aria-keyshortcuts={found?.aria}
       aria-label={iconOnly ? slot.label : undefined}
+      data-options-when-on={slot.optionsWhenOn === true ? '' : undefined}
       tabIndex={stop === slot.id ? 0 : -1}
       onKeyDown={(event) => {
         onMainKey(event);
