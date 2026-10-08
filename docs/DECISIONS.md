@@ -2985,3 +2985,25 @@ rewrites it. No pagination-hiding command is built.
 6. *Acceptance.* All acceptance scripts (v151-politur, v16-smartlinks, v16-range, v17-ocr, v18-tips, v19-backlog, the new v20 perf
    and a11y scripts), surface gate, annot smoke, real-input smoke, one designer round. Pre-release `v2.0.0-rc.1` once CI on `main`
    is green.
+
+## ADR-141 — Tempo level 4; session "v2.0.0-rc.2 — beta feedback F19 part 1 (bugs and UX)"
+
+**Status:** accepted (2026-10-08, owner instruction). Rules 13–17 unchanged.
+
+**Decision (tempo level 4; applies to this session and the next one, replaces the matching parts of ADR-128).**
+1. No designer review, except where an item names one.
+2. `security-reviewer` only for packages that touch PDF parsing or file writing (diff scope), plus the existing rule for
+   capabilities/IPC changes being reviewed by the package `reviewer`.
+3. Acceptance scripts only for touched areas; surface gate and one real-input smoke (≤ 5 min, announced) at the end; CI green.
+4. Result is the pre-release `v2.0.0-rc.2`; no stable release.
+
+**Scope (owner list F19 part 1, `docs/FEEDBACK.md`).** Item 1 changed during the session: the "Acrobat comments do not open"
+report was a damaged file and is dropped; instead, comments made in Acrobat or other editors/viewers are read and adopted as
+regular Sheer comments (editable, in the panel and the margin), to prove interoperability.
+
+**Defaults recorded so no question is needed.**
+- Item 14 (toggleable annotation palettes): the owner's palette specification text was not included in the message (placeholder
+  only). The session audits which tools carry their own palette and unifies them on the existing token palette; the exact owner
+  specification is applied when it arrives (open owner decision in the report).
+- Item 9 references an image ("Bild 4") that was not attached; implemented from the text: one continuous bar per line, same
+  look as the highlight preview.
