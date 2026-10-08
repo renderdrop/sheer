@@ -5,7 +5,7 @@ current_item: F19 part 1 (docs/FEEDBACK.md F19.1–F19.15)
 packages:
   wave 1: A F19.1 foreign comments (backend, cargo) · B F19.7 crop (cargo) · C F19.3/.4/.15 sidebar, last tab, focus ring · D F19.5/.6 home
   wave 2: E F19.12 header/footer (cargo) · F F19.2/.13/.14 tool hover, shapes, palettes · G F19.9/.10/.11 selection bar, bubbles, panel quote · H F19.8 redact
-last_completed: v2.0.0-rc.1 (e57a9b2)
+last_completed: F19 part 1 packages A–H committed (d3edaea..1c03543); F19.14 waits for the owner palette spec
 loop_count_this_session: 0
 open_blockers: 3 (B-002, B-005, B-008, human-only)
 notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
@@ -14,6 +14,7 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Never run the dev window while agents run cargo/vitest; stop it by killing only target\debug\sheer.exe processes.
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - f5c05f0..1c03543 ADR-141/142, F19 part 1 (A–H) → run #144 (37811172571) pending
   - f162738..273b81d ADR-140, v2.0 polish backend/ui, v20 scripts → run #139 (37709850350) red: ocr_layer line test CI-loud, bind() failed while the engine held PDFium → fixed 3186d17
   - 3186d17..7a2a611 PDFium test bind reuse, v20 script fixes → run #140 (37713489154) GREEN
   - 2789536 a11y fixes (81 → 0) → run #141 (37718283927) GREEN
