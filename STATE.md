@@ -14,7 +14,8 @@ ci_log: (ADR-120 corrected — package commit → CI run; result filled in at th
   - f162738..273b81d ADR-140, v2.0 polish backend/ui, v20 scripts → run #139 (37709850350) red: ocr_layer line test CI-loud, bind() failed while the engine held PDFium → fixed 3186d17
   - 3186d17..7a2a611 PDFium test bind reuse, v20 script fixes → run #140 (37713489154) GREEN
   - 2789536 a11y fixes (81 → 0) → run #141 (37718283927) GREEN
-  - 2ca6a96..a238d82 FX-BACK, FX-REASON, acceptance script fixes → run #142 (37724547453) pending
+  - 2ca6a96..a238d82 FX-BACK, FX-REASON, acceptance script fixes → run #142 (37724547453) GREEN
+  - e57a9b2 release v2.0.0-rc.1 → run #143 (37725511266) GREEN; release run #21 (37725513445) success (universal DMG, NSIS; pre-release)
   - 85aedee release v1.9.0 → run #138 (37704883866) GREEN; release run #20 (37704883995) success (universal DMG, NSIS; stable)
   - b0066da..e3fcd66 save fix, acceptance, menus above modals, designer + gate fixes → runs #135–#137 GREEN
   - 15035be keychain deflake → run #134 (37694753207) GREEN
