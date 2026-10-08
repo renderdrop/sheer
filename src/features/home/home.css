@@ -7,17 +7,17 @@
   gap: var(--space-4);
 }
 
-/* Main padding 32, 48 from 1440 wide. */
+/* Main padding 32 (48 from 1440 wide); the top only 24, the 56 strip above is air already (F19.6). */
 .home-main {
-  padding: var(--space-8);
+  padding: var(--home-main-top) var(--space-8) var(--space-8);
 }
 @media (min-width: 1440px) {
   .home-main {
-    padding: var(--space-12);
+    padding: var(--home-main-top) var(--space-12) var(--space-12);
   }
 }
 
-/* The tool rows: one column, two from 1200 wide, gap 16. */
+/* The tool rows: one column, three from 1200 wide (the eight tools in three lines, F19.6), gap 16. */
 .home-tool-rows {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -25,7 +25,7 @@
 }
 @media (min-width: 1200px) {
   .home-tool-rows {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--home-tool-columns-wide), minmax(0, 1fr));
   }
 }
 

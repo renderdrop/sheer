@@ -65,7 +65,7 @@ export function Hero({
       className={cx(
         'relative flex overflow-hidden rounded-xl bg-subtle',
         compact
-          ? 'min-h-(--home-hero-compact) flex-row items-center gap-4 p-4'
+          ? 'min-h-(--home-hero-compact) flex-row items-center gap-4 p-3'
           : 'min-h-(--home-hero-min) flex-col justify-center gap-6 p-10',
       )}
     >

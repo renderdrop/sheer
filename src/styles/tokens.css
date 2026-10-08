@@ -559,7 +559,9 @@
   --home-nav-width: 200px;
   --home-content-max: 1120px;
   --home-hero-min: 280px;
-  --home-hero-compact: 80px; /* the hero once files are listed: one row, so the tools stay in view at 1280 x 800 */
+  --home-hero-compact: 72px; /* the hero once files are listed: one row (the 48 plus, 12 padding), so the tools stay in view at 1280 x 800 */
+  --home-main-top: 24px; /* the main column's top padding: the 56 strip above already gives air (F19.6) */
+  --home-tool-columns-wide: 3; /* tool rows per line from 1200 wide: the eight tools in three lines (F19.6) */
   --home-open-height: 48px; /* an open-tab card: one compact row */
   --home-search-max: 480px;
   --home-card-height: 76px;

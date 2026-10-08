@@ -14,7 +14,7 @@ const TOOLS = TOOL_IDS.flatMap((id) => HUB_CARDS.filter((card) => card.id === id
 
 /**
  * The Werkzeuge rows (DESIGN v2 3.1): 56 high, icon 20, the name in `.t-label` over its description in `.t-caption`, a chevron at
- * the end; two columns from 1200 wide. Hover Sand. No cards, no dividers. A row runs the hub card: the file dialog, then the editor in the
+ * the end; three columns from 1200 wide (F19.6). Hover Sand. No cards, no dividers. A row runs the hub card: the file dialog, then the editor in the
  * matching mode. While one runs (or a document is being opened) the others are `aria-disabled`; arrows move through the rows.
  */
 export function ToolRows() {
