@@ -259,10 +259,11 @@ const session = async (ctx) => {
 
   /** Every menu-bar menu, and the items that open a dialog or popover. */
   async function sweepMenus(theme, bag) {
-    const tops = await ev(
-      `[...document.querySelectorAll('[role="menubar"] [role="menuitem"]')].filter((e) => window.__a11y.visible(e)).map((e, i) => { e.setAttribute('data-a11y-top', String(i)); return window.__a11y.label(e); })`,
-    );
+    const tagTops = `[...document.querySelectorAll('[role="menubar"] [role="menuitem"]')].filter((e) => window.__a11y.visible(e)).map((e, i) => { e.setAttribute('data-a11y-top', String(i)); return window.__a11y.label(e); })`;
+    const tops = await ev(tagTops);
     const openTop = async (i) => {
+      // prepare() (after the welcome tour) reloads the page and drops the tags: set them again before every click.
+      await ev(tagTops);
       await input.click({ selector: `[data-a11y-top="${i}"]` });
       await input.waitFor(`!!document.querySelector('[role="menu"]')`, { timeoutMs: 4000, what: `menu ${tops[i]}` });
       await sleep(250);

@@ -90,6 +90,11 @@ const session = async (ctx) => {
     await sleep(900);
   }
   async function saveDoc() {
+    // Shortcuts never run from a text field (src/actions/keys.ts): a dialog closed after a search gives focus back to the search
+    // box, where Ctrl+S would be ignored. Leave the field first.
+    await ev(
+      `document.activeElement?.closest?.('input,textarea,[contenteditable="true"]') && document.activeElement.blur()`,
+    );
     await input.press('s', { ctrl: true });
     await sleep(2000);
   }

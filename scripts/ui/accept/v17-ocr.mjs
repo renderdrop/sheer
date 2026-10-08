@@ -354,7 +354,11 @@ const makeSession =
         for (let i = 0; i < 80 && !(existsSync(out) && statSync(out).size > 0); i++) await sleep(250);
         await sleep(1000);
         C('s1: Save wrote review/v170/out/s1-ocr.pdf', existsSync(out) && statSync(out).size > 0, '');
-        await dialogs.openFile(out);
+        // Through the menu like openScan: Ctrl+O is swallowed while the search field has the focus, which left this answer queued
+        // and made every later open one document behind.
+        await input.press('Escape');
+        await dialogs.answerOpenMany([out]);
+        await menu(T.file, T.open);
         await input
           .waitFor(`document.body.innerText.includes('s1-ocr')`, { timeoutMs: 20000, what: 'reopened tab' })
           .catch(() => {});
