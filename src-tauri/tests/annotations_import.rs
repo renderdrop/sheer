@@ -92,7 +92,7 @@ fn a_page_is_read_into_the_model_with_typed_kinds_and_opaque_leftovers() {
             "freeText",
             "rect",
             "ellipse",
-            "opaque",
+            "ink",
             "opaque"
         ]
     );
@@ -102,14 +102,14 @@ fn a_page_is_read_into_the_model_with_typed_kinds_and_opaque_leftovers() {
 
     let highlight = &listed[0];
     // None of these has an appearance stream, and the colour calls on an annotation itself are not made (they crash PDFium for an /AP
-    // without objects, and the two cannot be told apart): the default colour of the kind. The path route is covered by saved files.
-    assert_eq!(highlight.color, Rgb([255, 235, 0]));
+    // without objects): the colour is the file's `/C` (read with lopdf, `pdfwrite::foreign`), else the default of the kind.
+    assert_eq!(highlight.color, Rgb([255, 255, 0]));
     assert_eq!(highlight.contents, "Marked");
     assert_eq!(highlight.author.as_deref(), Some("Ada"));
     assert!(highlight
         .modified
         .as_deref()
-        .is_some_and(|d| d.starts_with("D:2024")));
+        .is_some_and(|d| d == "2024-01-02T03:04:05Z"));
     let AnnotationBody::Highlight { quads } = &highlight.body else {
         panic!("not a highlight")
     };
@@ -134,15 +134,19 @@ fn a_page_is_read_into_the_model_with_typed_kinds_and_opaque_leftovers() {
     let AnnotationBody::Rect { fill, .. } = &listed[5].body else {
         panic!("not a square")
     };
-    assert_eq!(*fill, None);
-    let subtypes: Vec<&str> = listed[7..]
+    assert_eq!(
+        *fill,
+        Some(Rgb([255, 128, 0])),
+        "the interior colour is read from /IC"
+    );
+    let subtypes: Vec<&str> = listed[8..]
         .iter()
         .map(|a| match &a.body {
             AnnotationBody::Opaque { subtype } => subtype.as_str(),
             _ => "typed",
         })
         .collect();
-    assert_eq!(subtypes, ["Ink", "Stamp"]);
+    assert_eq!(subtypes, ["Stamp"]);
 
     // A second list answers from the model, with the same ids.
     assert_eq!(state.list_annotations(info.id, page).unwrap(), listed);
@@ -175,7 +179,7 @@ fn commands_work_on_what_was_read_and_opaque_annotations_stay_read_only() {
     assert_eq!(undone.upserted[0], listed[0]);
     assert!(!undone.history.dirty);
 
-    let opaque = listed[7].id;
+    let opaque = listed[8].id;
     let refused = state.apply_command(
         info.id,
         command(serde_json::json!({"type": "deleteAnnotations", "ids": [opaque]})),

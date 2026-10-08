@@ -25,7 +25,7 @@ pub mod files;
 mod first_page;
 mod guard;
 pub mod host;
-mod import;
+pub(crate) mod import;
 mod ledger;
 mod links;
 mod outline;
@@ -976,13 +976,25 @@ impl Engine {
     /// Page `engine_index` (file order) as lines and runs for smart links (ADR-132, `smart_text`), at `Background` priority so renders go
     /// first. `invalid_argument` for a page the document does not have.
     pub fn smart_text(&self, id: DocumentId, engine_index: u32) -> Result<PageText, AppError> {
-        self.call(limits::TEXT_TIMEOUT, Rank::BACKGROUND, |reply| {
-            Job::SmartText {
+        self.smart_text_within(id, engine_index, limits::TEXT_TIMEOUT)
+    }
+
+    /// [`Engine::smart_text`] waiting at most `timeout` (a caller with a budget of its own passes what is left of it).
+    pub fn smart_text_within(
+        &self,
+        id: DocumentId,
+        engine_index: u32,
+        timeout: Duration,
+    ) -> Result<PageText, AppError> {
+        self.call(
+            timeout.min(limits::TEXT_TIMEOUT),
+            Rank::BACKGROUND,
+            |reply| Job::SmartText {
                 id,
                 engine_index,
                 reply,
-            }
-        })
+            },
+        )
     }
 
     /// Title, year and DOI found on page `engine_index` (ADR-119); `None` for what it does not find.
@@ -1128,15 +1140,29 @@ impl Engine {
         dpi: f32,
         burn: Vec<Rect>,
     ) -> Result<RasterPage, AppError> {
-        self.call(limits::RENDER_TIMEOUT, Rank::BACKGROUND, |reply| {
-            Job::RenderForRedaction {
+        self.render_for_redaction_within(id, engine_index, dpi, burn, limits::RENDER_TIMEOUT)
+    }
+
+    /// [`Engine::render_for_redaction`] waiting at most `timeout` (capped at `RENDER_TIMEOUT`).
+    pub fn render_for_redaction_within(
+        &self,
+        id: DocumentId,
+        engine_index: u32,
+        dpi: f32,
+        burn: Vec<Rect>,
+        timeout: Duration,
+    ) -> Result<RasterPage, AppError> {
+        self.call(
+            timeout.min(limits::RENDER_TIMEOUT),
+            Rank::BACKGROUND,
+            |reply| Job::RenderForRedaction {
                 id,
                 engine_index,
                 dpi,
                 burn,
                 reply,
-            }
-        })
+            },
+        )
     }
 
     /// Loads `bytes` as a snapshot: an engine-only document for one output job (ADR-049 §1, `Control`). Close it with

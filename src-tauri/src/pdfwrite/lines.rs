@@ -69,7 +69,7 @@ fn width_of(doc: &Document, dict: &Dictionary) -> f32 {
     }
 }
 
-fn read_line(doc: &Document, dict: &Dictionary) -> Option<LineRead> {
+pub(super) fn read_line(doc: &Document, dict: &Dictionary) -> Option<LineRead> {
     let l = numbers(doc, dict, b"L");
     let rect = numbers(doc, dict, b"Rect");
     let [x0, y0, x1, y1] = l.get(..4)?.try_into().ok()?;

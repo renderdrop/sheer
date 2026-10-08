@@ -165,6 +165,8 @@ fn read_one(doc: &Document, page_id: ObjectId) -> HashMap<u32, SheerKeys> {
     let mut position = 0u32;
     for entry in entries {
         let Some(Object::Dictionary(dict)) = resolve(doc, entry) else {
+            // A broken entry still takes its position, as in the engine (`engine::import`).
+            position = position.saturating_add(1);
             continue;
         };
         if is_popup(dict) {

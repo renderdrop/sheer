@@ -50,11 +50,11 @@ fn deref<'a>(doc: &'a Document, object: &'a Object) -> Option<&'a Object> {
     doc.dereference(object).ok().map(|(_, object)| object)
 }
 
-fn entry<'a>(doc: &'a Document, dict: &'a Dictionary, key: &[u8]) -> Option<&'a Object> {
+pub(super) fn entry<'a>(doc: &'a Document, dict: &'a Dictionary, key: &[u8]) -> Option<&'a Object> {
     dict.get(key).ok().and_then(|object| deref(doc, object))
 }
 
-fn int(doc: &Document, dict: &Dictionary, key: &[u8]) -> Option<i64> {
+pub(super) fn int(doc: &Document, dict: &Dictionary, key: &[u8]) -> Option<i64> {
     match entry(doc, dict, key)? {
         Object::Integer(value) => Some(*value),
         Object::Real(value) if value.is_finite() => Some(f64::from(*value) as i64),
@@ -62,7 +62,7 @@ fn int(doc: &Document, dict: &Dictionary, key: &[u8]) -> Option<i64> {
     }
 }
 
-fn number(object: &Object) -> Option<f32> {
+pub(super) fn number(object: &Object) -> Option<f32> {
     object.as_float().ok().filter(|value| value.is_finite())
 }
 
@@ -70,7 +70,11 @@ fn name_of(object: &Object) -> Option<Vec<u8>> {
     object.as_name().ok().map(<[u8]>::to_vec)
 }
 
-fn dict_of<'a>(doc: &'a Document, dict: &'a Dictionary, key: &[u8]) -> Option<&'a Dictionary> {
+pub(super) fn dict_of<'a>(
+    doc: &'a Document,
+    dict: &'a Dictionary,
+    key: &[u8],
+) -> Option<&'a Dictionary> {
     entry(doc, dict, key)?.as_dict().ok()
 }
 
@@ -138,7 +142,7 @@ fn state_text(doc: &Document, object: &Object) -> Option<String> {
 }
 
 /// A colour array of 1, 3 or 4 numbers (gray, RGB, CMYK); empty means transparent.
-fn color_of(doc: &Document, object: &Object) -> Option<Rgb> {
+pub(super) fn color_of(doc: &Document, object: &Object) -> Option<Rgb> {
     let array = deref(doc, object)?.as_array().ok()?;
     let mut values = [0.0f32; 4];
     if array.len() > 4 {

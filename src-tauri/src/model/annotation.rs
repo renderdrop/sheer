@@ -316,6 +316,27 @@ impl AnnotationBody {
         matches!(self, Self::Opaque { .. })
     }
 
+    /// The PDF subtype the kind is written as (what an import falls back to when the model cannot hold the annotation as its kind).
+    fn kind_word(&self) -> &'static str {
+        match self {
+            Self::Highlight { .. } => "Highlight",
+            Self::Underline { .. } => "Underline",
+            Self::Strikeout { .. } => "StrikeOut",
+            Self::Note { .. } => "Text",
+            Self::FreeText { .. } | Self::TextBox { .. } => "FreeText",
+            Self::Ink { .. } => "Ink",
+            Self::Rect { .. } => "Square",
+            Self::Ellipse { .. } => "Circle",
+            Self::Line { .. } => "Line",
+            Self::Signature { .. }
+            | Self::Mark { .. }
+            | Self::Stamp { .. }
+            | Self::Image { .. } => "Stamp",
+            Self::RedactMark { .. } => "Redact",
+            Self::Opaque { .. } => "Unknown",
+        }
+    }
+
     /// A text box or an image: page content that a save burns into the page. Not a comment, and not written as an annotation.
     pub fn is_content(&self) -> bool {
         matches!(self, Self::TextBox { .. } | Self::Image { .. })
@@ -1271,6 +1292,17 @@ impl Annotation {
             cite: None,
             tags: Vec::new(),
             body: imported.body.clone(),
+        };
+        if annotation.normalize().is_ok() {
+            return Some(annotation);
+        }
+        // A foreign annotation the model cannot hold as its kind (a value out of range) is still a comment of the file: it stays listed,
+        // opaque, with its text and author.
+        if annotation.body.is_opaque() {
+            return None;
+        }
+        annotation.body = AnnotationBody::Opaque {
+            subtype: annotation.body.kind_word().to_owned(),
         };
         annotation.normalize().ok()?;
         Some(annotation)

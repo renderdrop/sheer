@@ -32,8 +32,8 @@ use crate::model::doc_state::{ChangeSet, DocState, Stamp};
 use crate::model::ids::AnnotId;
 use crate::model::page::unrotated;
 use crate::model::quote::{quote_of, CARD_QUOTE_MAX};
-use crate::pdfwrite::lines::{self, LineRead};
-use crate::pdfwrite::reviews::{self, ReviewLink};
+use crate::pdfwrite::foreign::{self, ForeignRead};
+use crate::pdfwrite::reviews::ReviewLink;
 use crate::pdfwrite::sheer_keys::{self, SheerKeys};
 
 /// The Sheer keys of several pages: by page index, then by annotation position.
@@ -88,14 +88,6 @@ fn kind_of(body: &AnnotationBody) -> &'static str {
         AnnotationBody::RedactMark { .. } => "redactMark",
         AnnotationBody::Opaque { .. } => "opaque",
     }
-}
-
-/// Reads the review links of page `page_index` of the file at `path` on a thread of its own, with a deadline (as the form read does).
-fn read_links_file(
-    path: std::path::PathBuf,
-    page_index: u32,
-) -> Result<HashMap<u32, ReviewLink>, AppError> {
-    read_page_file(path, page_index, reviews::read_page)
 }
 
 /// Runs `read` over the bytes of the file at `path` and page `page_index`, on a thread of its own, with a deadline.
@@ -480,8 +472,8 @@ impl AppState {
         items: Vec<crate::model::annotation::Imported>,
         keys: Option<HashMap<u32, SheerKeys>>,
     ) -> Result<(), AppError> {
-        let items = self.lift_lines(id, page_index, items);
-        let links = self.review_links(id, page_index, &items);
+        let mut items = items;
+        let links = self.lift_foreign(id, page_index, &mut items);
         self.model(id, |state| {
             if !state.is_imported(page) {
                 state.import_page_linked(page, &items, &links);
@@ -543,54 +535,35 @@ impl AppState {
             .map(|mut all| all.remove(&page_index).unwrap_or_default()))
     }
 
-    /// Makes the `Line` annotations of the file that PDFium lists as opaque into lines the model can edit (`pdfwrite::lines`). Only a
-    /// page with such an annotation is looked at; a file that cannot be read again leaves them opaque.
-    fn lift_lines(
+    /// Reads what other programs wrote into the annotations of a page and PDFium does not report (`pdfwrite::foreign`), lifts it onto
+    /// the imported annotations (text from `/RC`, dates, opacity, icons, shapes, strokes, lines, ...) and answers the reply links and
+    /// review states. A page without annotations, an encrypted document, a file that cannot be read again or one that takes too long has
+    /// none of it: its comments are then listed as PDFium reports them, without threads.
+    fn lift_foreign(
         &self,
         id: DocumentId,
         page_index: u32,
-        mut items: Vec<crate::model::annotation::Imported>,
-    ) -> Vec<crate::model::annotation::Imported> {
-        let has_line = items.iter().any(
-            |item| matches!(&item.body, AnnotationBody::Opaque { subtype } if subtype == "Line"),
-        );
+        items: &mut [crate::model::annotation::Imported],
+    ) -> HashMap<u32, ReviewLink> {
         let readable = self.info(id).is_some_and(|info| !info.flags.encrypted);
-        if !has_line || !readable {
-            return items;
+        if items.is_empty() || !readable {
+            return HashMap::new();
         }
         let Some(path) = self.registry.path(id) else {
-            return items;
+            return HashMap::new();
         };
-        let found: HashMap<u32, LineRead> =
-            read_page_file(path, page_index, lines::read_page).unwrap_or_default();
-        for item in &mut items {
+        let found: HashMap<u32, ForeignRead> =
+            read_page_file(path, page_index, foreign::read_page).unwrap_or_default();
+        for item in items.iter_mut() {
             if let Some(read) = found.get(&item.origin.annot_index) {
-                lines::lift(item, read);
+                foreign::lift(item, read);
             }
         }
-        items
-    }
-
-    /// The reply links and review states the file has for the notes of a page (see `pdfwrite::reviews`). Only a page with a note is
-    /// looked at, and an encrypted document, a file that cannot be read again or one that takes too long has none: its comments are
-    /// then listed without threads, as before.
-    fn review_links(
-        &self,
-        id: DocumentId,
-        page_index: u32,
-        items: &[crate::model::annotation::Imported],
-    ) -> HashMap<u32, ReviewLink> {
-        let has_note = items
-            .iter()
-            .any(|item| matches!(item.body, AnnotationBody::Note { .. }));
-        let readable = self.info(id).is_some_and(|info| !info.flags.encrypted);
-        if !has_note || !readable {
-            return HashMap::new();
-        }
-        let Some(path) = self.registry.path(id) else {
-            return HashMap::new();
-        };
-        read_links_file(path, page_index).unwrap_or_default()
+        found
+            .into_iter()
+            .filter(|(_, read)| read.link != ReviewLink::default())
+            .map(|(position, read)| (position, read.link))
+            .collect()
     }
 
     /// What the reading of the file's annotations left out so far (a page, the document or the string budget was full). The pages

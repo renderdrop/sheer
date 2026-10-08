@@ -78,30 +78,67 @@ pub fn read_page(bytes: &[u8], page_index: u32) -> Result<HashMap<u32, ReviewLin
         .collect();
     let mut links = HashMap::new();
     for ((_, dict), position) in counted.iter().zip(0u32..) {
-        let reply_to = dict
-            .get(b"IRT")
-            .ok()
-            .and_then(|object| object.as_reference().ok())
-            .and_then(|id| positions.get(&id).copied())
-            .filter(|parent| *parent != position);
-        let model = text(&doc, dict, b"StateModel");
-        let state = match model.as_deref() {
-            Some(b"Review") | None => {
-                text(&doc, dict, b"State").and_then(|s| ReviewState::from_pdf(&s))
-            }
-            Some(_) => None,
-        };
-        // A `/StateModel` too long to be read is not the Review model either.
-        let state = if model.is_none() && dict.has(b"StateModel") {
-            None
-        } else {
-            state
-        };
-        if reply_to.is_some() || state.is_some() {
-            links.insert(position, ReviewLink { reply_to, state });
+        let link = link_of(&doc, dict, position, &positions);
+        if link != ReviewLink::default() {
+            links.insert(position, link);
         }
     }
+    break_cycles(&mut links);
     Ok(links)
+}
+
+/// Takes the reply link off every annotation that is on a cycle of replies (A replies to B and B to A, or a longer ring): such a link
+/// has no parent to hang under. The annotations that merely reply into a ring keep their link (the ring's members are roots).
+pub(super) fn break_cycles(links: &mut HashMap<u32, ReviewLink>) {
+    let mut on_cycle = Vec::new();
+    for start in links.keys() {
+        let mut at = *start;
+        // A walk longer than the number of links has entered a ring.
+        for _ in 0..=links.len() {
+            match links.get(&at).and_then(|link| link.reply_to) {
+                Some(parent) => at = parent,
+                None => break,
+            }
+            if at == *start {
+                on_cycle.push(*start);
+                break;
+            }
+        }
+    }
+    for position in on_cycle {
+        if let Some(link) = links.get_mut(&position) {
+            link.reply_to = None;
+        }
+    }
+    links.retain(|_, link| *link != ReviewLink::default());
+}
+
+/// The link of the annotation `dict` at `position`: what it replies to (`positions` maps the object ids of the page's annotations to
+/// their position) and the review state it gives.
+pub(super) fn link_of(
+    doc: &Document,
+    dict: &Dictionary,
+    position: u32,
+    positions: &HashMap<ObjectId, u32>,
+) -> ReviewLink {
+    let reply_to = dict
+        .get(b"IRT")
+        .ok()
+        .and_then(|object| object.as_reference().ok())
+        .and_then(|id| positions.get(&id).copied())
+        .filter(|parent| *parent != position);
+    let model = text(doc, dict, b"StateModel");
+    let state = match model.as_deref() {
+        Some(b"Review") | None => text(doc, dict, b"State").and_then(|s| ReviewState::from_pdf(&s)),
+        Some(_) => None,
+    };
+    // A `/StateModel` too long to be read is not the Review model either.
+    let state = if model.is_none() && dict.has(b"StateModel") {
+        None
+    } else {
+        state
+    };
+    ReviewLink { reply_to, state }
 }
 
 #[cfg(test)]
@@ -191,16 +228,18 @@ mod tests {
     }
 
     #[test]
-    fn replies_that_point_at_each_other_are_read_as_they_are() {
-        // A (1) replies to B (2) and B to A; a third replies to itself. The reader only reports the links (the model ends cycles).
+    fn replies_that_point_at_each_other_are_refused() {
+        // A (1) replies to B (2) and B to A: a cycle, no link; a third replies to itself; a fourth replies into the ring and keeps its link.
         let bytes = file(vec![
             dictionary! {"Subtype" => "Text", "IRT" => Object::Reference((3, 0))},
             dictionary! {"Subtype" => "Text", "IRT" => Object::Reference((2, 0))},
             dictionary! {"Subtype" => "Text", "IRT" => Object::Reference((4, 0))},
+            dictionary! {"Subtype" => "Text", "IRT" => Object::Reference((2, 0))},
         ]);
         let links = read_page(&bytes, 0).unwrap();
-        assert_eq!(links.get(&0).and_then(|l| l.reply_to), Some(1));
-        assert_eq!(links.get(&1).and_then(|l| l.reply_to), Some(0));
+        assert_eq!(links.get(&0), None, "a cycle is no thread");
+        assert_eq!(links.get(&1), None);
+        assert_eq!(links.get(&3).and_then(|l| l.reply_to), Some(0));
         assert_eq!(links.get(&2), None, "a reply to itself is no reply");
     }
 }

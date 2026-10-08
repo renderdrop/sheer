@@ -1,7 +1,7 @@
 //! The annotations of a page as the file has them, read on the worker into the model (ADR-003, ARCHITECTURE §5 annotations).
 //!
 //! PDFium only reads here; it never saves (ADR-002 §7). What the model edits is read into its own types: the three text markups
-//! (with their quads), notes, free text, squares and circles. Link, widget and popup annotations are not annotations of the model
+//! (with their quads), notes, free text, squares and circles (what PDFium cannot say is added from the file by `pdfwrite::foreign`). Link, widget and popup annotations are not annotations of the model
 //! (links and forms have their own reads) and are left out. Everything else (ink and lines from other programs, stamps, squiggly,
 //! file attachments, ...) comes as [`AnnotationBody::Opaque`]: it is listed with its rectangle, so the UI can show and select it, and
 //! never changed. PDFium's own render keeps drawing it from its appearance stream.
@@ -20,7 +20,7 @@ use crate::model::annotation::{
     normalize_angle, rotated_bounds, AnnotationBody, Imported, NoteIcon, PdfOrigin, Rgb,
     SignatureArtRef, SignatureRole, TextAlign, MIN_SIGNATURE_SIDE_PT,
 };
-use crate::model::geometry::{PageBox, Point, Quad, Rect};
+use crate::model::geometry::{normalize_quad, PageBox, Point, Quad, Rect};
 use crate::pdfwrite::appearance::FREE_TEXT_PAD_PT;
 use crate::signatures::marks::{parse_name, split_turn, Named, Turn};
 
@@ -42,7 +42,7 @@ fn is_format_char(c: char) -> bool {
 }
 
 /// `text` without control and format characters (a tab and line breaks excepted; `\r` goes), at most `max` characters.
-fn clean(text: &str, max: usize) -> String {
+pub(crate) fn clean(text: &str, max: usize) -> String {
     text.chars()
         .filter(|c| (!c.is_control() || matches!(c, '\n' | '\t')) && !is_format_char(*c))
         .take(max)
@@ -162,15 +162,16 @@ fn quads_of(annotation: &PdfPageAnnotation<'_>, page_box: PageBox, rect: Rect) -
         if quads.len() >= limits::MAX_ANNOT_QUADS {
             break;
         }
-        // PDF order of the corners as Acrobat writes them: top left, top right, bottom left, bottom right.
+        // The corners come in the order the writer chose (Acrobat: top left, top right, bottom left, bottom right; the specification and
+        // other programs: counterclockwise), so they are put in the model's order.
         let corner = |x: PdfPoints, y: PdfPoints| page_box.point(x.value, y.value);
         let quad = (|| {
-            Some([
+            Some(normalize_quad([
                 corner(points.x1(), points.y1())?,
                 corner(points.x2(), points.y2())?,
                 corner(points.x3(), points.y3())?,
                 corner(points.x4(), points.y4())?,
-            ])
+            ]))
         })();
         if let Some(quad) = quad {
             quads.push(quad);
@@ -288,7 +289,13 @@ fn read_one(
     let (stroke, fill) = path_colors(annotation);
     let contents = annotation
         .contents()
-        .map(|text| clean(&text, limits::MAX_ANNOT_CONTENTS_CHARS))
+        // Acrobat ends the lines of a note and of a free text with a bare carriage return: they stay line breaks.
+        .map(|text| {
+            clean(
+                &text.replace("\r\n", "\n").replace('\r', "\n"),
+                limits::MAX_ANNOT_CONTENTS_CHARS,
+            )
+        })
         .unwrap_or_default();
 
     // Parsed once: the match guard only tests it, the arm takes it.
@@ -452,15 +459,32 @@ pub(super) fn read_annotations(
     let annotations = page.annotations();
     let scanned = annotations.len().min(limits::MAX_IMPORT_PER_PAGE);
     let mut imported = Vec::new();
-    for (position, at) in (0..scanned).zip(0u32..) {
+    // The position of an annotation is its place among the entries that are not popups, as every reader of the file counts them
+    // (`pdfwrite::reviews`, `foreign`, `save::Slots`); PDFium lists the popups in between.
+    let mut at = 0u32;
+    for position in 0..scanned {
         let Ok(annotation) = annotations.get(position) else {
+            at = at.saturating_add(1);
             continue;
         };
+        if annotation.annotation_type() == PdfPageAnnotationType::Popup {
+            continue;
+        }
         if let Some(item) = read_one(&annotation, page_box, index, at) {
             imported.push(item);
         }
+        at = at.saturating_add(1);
     }
     Ok(imported)
+}
+
+/// The index PDFium lists each annotation under, by position (counted without popups, see [`read_annotations`]): built once per page.
+fn raw_indexes(annotations: &PdfPageAnnotations<'_>) -> Vec<usize> {
+    (0..annotations.len().min(limits::MAX_IMPORT_PER_PAGE))
+        .filter(|raw| {
+            !matches!(annotations.get(*raw), Ok(a) if a.annotation_type() == PdfPageAnnotationType::Popup)
+        })
+        .collect()
 }
 
 /// Sets the Hidden flag of each `(page index, position)` in `hide` and clears it in `show`, in PDFium's memory only. A position the page
@@ -476,17 +500,27 @@ pub(super) fn set_hidden(
         .map(|at| (*at, true))
         .chain(show.iter().map(|at| (*at, false)))
         .take(limits::MAX_ANNOTATIONS_PER_DOC.saturating_mul(2));
+    // Per page, so each page is loaded and its positions mapped once.
+    let mut by_page: std::collections::BTreeMap<u32, Vec<(usize, bool)>> = Default::default();
     for ((page_index, position), hidden) in wanted {
         let page_index = limits::validate_page_index(page_index, count)?;
+        if let Ok(position) = usize::try_from(position) {
+            by_page
+                .entry(page_index)
+                .or_default()
+                .push((position, hidden));
+        }
+    }
+    for (page_index, changes) in by_page {
         let page = load_page(document, page_index)?;
         let annotations = page.annotations();
-        let Ok(position) = usize::try_from(position) else {
-            continue;
-        };
-        let found = annotations.get(position);
-        if let Ok(mut annotation) = found {
-            // A flag PDFium refuses to set only leaves the original drawn; nothing else depends on it.
-            let _ = annotation.set_is_hidden(hidden);
+        let raw = raw_indexes(annotations);
+        for (position, hidden) in changes {
+            let found = raw.get(position).map(|raw| annotations.get(*raw));
+            if let Some(Ok(mut annotation)) = found {
+                // A flag PDFium refuses to set only leaves the original drawn; nothing else depends on it.
+                let _ = annotation.set_is_hidden(hidden);
+            }
         }
     }
     Ok(())

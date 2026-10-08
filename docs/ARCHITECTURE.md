@@ -257,7 +257,7 @@ M6: see "Convert and output" below (ADR-049; `print_document` became `prepare_pr
 - *Ownership.* `model` has no PDFium or lopdf import. A `DocState` per open document (created on first use, dropped by `close_document`) holds the annotations, the revision, the history and the set of
   imported pages. PDFium reads annotations (`engine::import`, an `Interactive` job) and never saves; saving is a later package (lopdf) that works from `DocState::entries` (`persisted` origin, `tombstone`) and then calls `mark_clean`.
 - *No event channel.* The model changes only as the answer to a command of the UI, so the answer is the delta (`ChangeSet`); the UI replica (`stores/annotations.ts`) applies it, ignores one older than its `rev`, and never lets a page list that was on its way meanwhile overwrite or resurrect what commands decided.
-- *Import.* Highlight, underline and strikeout (quads), text notes, free text, squares and circles become typed annotations (`sync: clean`). Ink, lines, stamps, squiggly and the rest are `opaque { subtype }`: listed, selectable, never changed. Links, widgets and popups are not annotations
+- *Import.* Highlight, underline and strikeout (quads), text notes, free text, squares and circles become typed annotations (`sync: clean`). Foreign comments (Acrobat, Foxit, PDF-XChange, Preview, Edge, Okular; F19.1, ADR-141) are read in two steps: PDFium gives kind and geometry, then `pdfwrite::foreign` (lopdf, one parse per page, with the reply links) adds what PDFium does not report: `/RC` plain text when `/Contents` is empty, `/M`/`/CreationDate` in any spelling normalised to ISO 8601 UTC, `/CA`, `/C`, `/IC`, `/BS`/`/Border` width and dash, the note icon, `/DA`/`/Q` of a free text, ink strokes (outline made from the width), lines, and squiggly (an underline of the model). Quad corners come in any order and are put in the model order. Polygons, polylines, carets, stamps of other programs and the rest stay `opaque { subtype }`: listed with their text, author and date, selectable, never changed. An annotation the model cannot hold as its kind falls back to opaque instead of being dropped. `origin.annotIndex` counts the `/Annots` entries that are not popups. No IPC signature changed. Links, widgets and popups are not annotations
   of the model. What PDFium cannot say (opacity, stroke width, a free text's font size, `/IRT`) is read as the default. A page is read once (≤ 2 000 annotations looked at); strings are cut and stripped of control characters, and an annotation that fails validation is left out.
 - *Commands.* Every apply validates before it changes anything and returns its exact inverse as slots (`id → previous entry | none`); undo applies it, and the inverse of that is the redo, so ids and snapshots return exactly. A `Batch` rolls back whole on an error. A reply (`inReplyTo`) needs a live parent on the same page; deleting a parent deletes its replies.
   Opaque annotations and locked ones (an update that only unlocks excepted) are refused (`invalid_argument`). `rect` is always computed by Rust. Updates with the same `coalesce` key on one annotation within 1.5 s share one undo step. History ≤ 500 steps; `dirty` compares the top step with the clean marker.
@@ -1281,6 +1281,7 @@ pub struct HfSpec {
     pub margin: f32,             // 12..=72 pt from the shown edge, default 28
     pub color: Rgb,              // default Ink
     pub date: String,            // {date}, formatted by the UI when the dialog applies (≤ 32, WinAnsi)
+    pub background: bool,        // F19.12: white box (page colour) behind each run, BACKGROUND_PAD = 3 pt around the text; default false
 }
 pub struct HeaderFooterState { file: Option<HfSpec>, file_layers: u32, pending: Option<Option<HfSpec>> }   // DocState.header_footer
 DocCommand::SetHeaderFooter { spec: Option<HfSpec> }        // None = remove; one undo step, labels `headerFooter.set` | `headerFooter.remove`;
@@ -1318,6 +1319,15 @@ Tokens `{page}` (position + 1), `{total}` (page count), `{date}` (the spec's), `
   object handle and the raw bindings accessor are crate-private), so the fallback is in force and `Job::SetPaginationHidden` is not
   built: `resolve_header_footer` answers `underFileLayer` per page (the engine copy still shows the file's layer, which the save
   replaces) and the overlay skips those pages. Revisit if the crate exposes `FPDFPageObj_GetMark`.
+- *Existing headers and footers (F19.12).* `detect_header_footer` (`commands/hf_detect.rs`) reads up to 8 pages spread over the document
+  through `Engine::smart_text` (bounded chars/time per page, `Background` priority; pages that show a layer of ours are skipped) and
+  `hf_detect::detect` (pure) keeps the text pieces in the top/bottom band (12 % of the page, 36..96 pt) that recur on at least half of
+  the sampled pages (>= 2 when more than one was read); digits normalise to `#`, so `Page 3 of 9` is a `pageNumber`. ≤ 400 lines, ≤ 64
+  runs per line, ≤ 64 keys, ≤ 12 items, texts ≤ 80 chars. The dialog outlines them in the preview and warns when a new run's box
+  (`features/headerFooter/overlap.ts`, same geometry as the writer) overlaps one.
+- *Background.* `HfSpec.background` (default false; absent in older files) puts a white `re`-free polygon fill (`1 1 1 rg … m l l l h f`)
+  per run inside the same `/Artifact` stream, before the text: the text box (descender to ascender, run width) plus 3 pt on every side,
+  turned with the page. White stands for the page colour (no sampling). Only our layer carries it; the page content is not changed.
 - *Refusals.* Signed or certified documents: `read_only` (`signed`), as `ocr_start`; no `edit` permission: `read_only` (`permission`);
   the welcome document applies and is saved through Save As. Redacted pages rebuild their content and lose the key: their header is
   then page content (accepted).
@@ -1399,10 +1409,11 @@ function formatFootnote(r: BibRecord, locator: string, occurrence: Occurrence, l
 | `apply_command` | `createAnnotation` with a `stamp` body; `updateAnnotation` with `stampText`/`stampDate`/`stampTone`; `setHeaderFooter { spec: HfSpec \| null }` | `ChangeSet` |
 | `get_header_footer` | `docId` | `HeaderFooterInfo { spec: HfSpec \| null /* current, pending included */; defaults: HfSpec; pending: boolean; fileLayers: number; refusal: 'signed' \| 'permission' \| null }` |
 | `resolve_header_footer` | `docId, spec: HfSpec \| null /* null = current */, pages: PageId[] /* ≤ 64 */` | `{ pageId: PageId; runs: PlacedRun[]; underFileLayer: boolean /* the engine copy still shows the file's layer: the overlay skips the page */ }[]` (dialog preview and overlay) |
+| `detect_header_footer` | `docId` | `{ items: DetectedItem[] /* <= 12 */; sampled: number; pageCount: number }`, `DetectedItem { edge: 'header' \| 'footer'; slot: 'left' \| 'center' \| 'right'; kind: 'text' \| 'pageNumber'; text /* <= 80 */; rect /* page pt, y down, union over the sampled pages */; pages }` (F19.12, read only, see 16.2) |
 | `export_comments` | `docId, opts: CommentExportOptions, onEvent` | `JobId \| null` |
 | `save_citation_list` | style gains `germanNotes` | unchanged |
 
-TS wrappers: `src/api/stamps.ts` (body builders, `parseStamp`), `src/api/headerFooter.ts` (`getHeaderFooter`, `resolveHeaderFooter`,
+TS wrappers: `src/api/stamps.ts` (body builders, `parseStamp`), `src/api/headerFooter.ts` (`getHeaderFooter`, `resolveHeaderFooter`, `detectHeaderFooter`,
 `setHeaderFooter`), `src/api/commentExport.ts`; each parses its answer and treats a wrong shape as `internal`. `HfSpec` in TS is the
 camelCase twin (`slots: Record<'headerLeft' | 'headerCenter' | 'headerRight' | 'footerLeft' | 'footerCenter' | 'footerRight', string>`).
 

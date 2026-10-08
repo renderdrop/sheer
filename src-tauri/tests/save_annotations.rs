@@ -322,7 +322,7 @@ fn every_type_is_written_with_an_appearance_and_pdfium_reads_it_back() {
             "strikeout",
             "note",
             "freeText",
-            "opaque",
+            "ink",
             "rect",
             "ellipse",
             "line"

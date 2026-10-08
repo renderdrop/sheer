@@ -12,6 +12,7 @@ pub mod crypt;
 pub mod export;
 pub mod field_ap;
 pub mod flatten;
+pub mod foreign;
 pub mod forms;
 pub mod header_footer;
 pub mod images_pdf;

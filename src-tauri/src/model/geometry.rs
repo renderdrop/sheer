@@ -100,9 +100,48 @@ impl PageBox {
     }
 }
 
+/// The four corners of a text markup in the order the model keeps (top left, top right, bottom left, bottom right), whatever order the
+/// file lists them in: Acrobat writes top left, top right, bottom left, bottom right; the PDF specification says counterclockwise from
+/// the bottom left, and other writers follow either or their own. The corners are put in a cycle around their centre and the cycle is
+/// started at the corner nearest the top left, so a quad turned on the page keeps its shape. Points are on the page (y down).
+pub fn normalize_quad(points: [Point; 4]) -> Quad {
+    let (cx, cy) = points
+        .iter()
+        .fold((0.0f32, 0.0f32), |(x, y), p| (x + p.x / 4.0, y + p.y / 4.0));
+    let mut cycle = points;
+    // Clockwise on the page: y points down, so the angle grows clockwise.
+    cycle.sort_by(|a, b| {
+        let angle = |p: &Point| (p.y - cy).atan2(p.x - cx);
+        angle(a).total_cmp(&angle(b))
+    });
+    let first = (0..4)
+        .min_by(|&a, &b| (cycle[a].x + cycle[a].y).total_cmp(&(cycle[b].x + cycle[b].y)))
+        .unwrap_or(0);
+    let at = |step: usize| cycle[(first + step) % 4];
+    [at(0), at(1), at(3), at(2)]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pt(x: f32, y: f32) -> Point {
+        Point { x, y }
+    }
+
+    #[test]
+    fn a_quad_is_put_in_the_models_order_from_any_vertex_order() {
+        let expected = [pt(0.0, 0.0), pt(10.0, 0.0), pt(0.0, 4.0), pt(10.0, 4.0)];
+        // Acrobat's order, the specification's counterclockwise order from the bottom left, and a reversed one.
+        for given in [
+            [pt(0.0, 0.0), pt(10.0, 0.0), pt(0.0, 4.0), pt(10.0, 4.0)],
+            [pt(0.0, 4.0), pt(10.0, 4.0), pt(10.0, 0.0), pt(0.0, 0.0)],
+            [pt(10.0, 4.0), pt(0.0, 4.0), pt(0.0, 0.0), pt(10.0, 0.0)],
+            [pt(10.0, 0.0), pt(0.0, 4.0), pt(10.0, 4.0), pt(0.0, 0.0)],
+        ] {
+            assert_eq!(normalize_quad(given), expected);
+        }
+    }
 
     fn page_box() -> PageBox {
         // A crop box that starts at (10, 20) of user space and is 792 pt high: its top edge is at y = 812.
