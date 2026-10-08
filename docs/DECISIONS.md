@@ -3026,3 +3026,33 @@ regular Sheer comments (editable, in the panel and the margin), to prove interop
 **ADR-141 addendum (F19.8, FX-5).** Turning Redact on no longer opens its options popover (a `role=dialog` surface over the
 top of the page that took focus and caught the next drags — the "dialog on every mark" of the owner report). A click while
 Redact is on opens and closes the options (slot flag `optionsWhenOn`, `src/features/modes`).
+
+## ADR-143 — Session "v2.0.0-rc.3 — beta feedback F19 part 2"
+
+**Status:** accepted (2026-10-08, owner instruction). Tempo level 4 (ADR-141), model policy ADR-142, rules 13–17 unchanged.
+
+**Owner decisions.**
+1. *Foreign stamps stay non-editable* (answers the rc.2 report question): stamps and polygons made in other apps are listed in the
+   comments panel but keep their appearance and are never rewritten.
+2. *Layout templates.* The owner supplied two images (`docs/brand/editor-rc3.png`, `docs/brand/home-rc3.png`). The designer derives
+   sizes, spacing and components from them and does not redesign; deviations only for technical reasons, justified in the report.
+3. *Palettes (F19.14)* now specified (FEEDBACK F19.19): default set plus three presets Earth, Berry, Study; preset chooser behind a
+   small palette button; the choice is app-wide and local, never per PDF; a switch never recolours existing annotations.
+
+**Defaults recorded so no question is needed.**
+- The two template images show file names from the owner corpus and a person's name; under rule 16 they are not versioned
+  (`.gitignore`), the spec refers to them by path only and uses neutral sample names.
+- Order: F19.16/F19.17 (editor + home, one designer spec) → F19.19 palettes → F19.20–F19.23 in parallel (backend waves first, ADR-038).
+- "Bestehendes Gelb" in the default palette = Solar `#FFF84D` (DESIGN §1.4). Highlights keep their 45 % opacity and multiply blend;
+  stroke tools keep full opacity; the Solar stroke rule (fills only) is replaced by the palette rule: every palette colour is valid
+  for every tool, the tool's own transparency applies.
+- Footnote coverage gate (F19.20): the three owner PDFs with the most footnote markers (ground truth counted by hand once and kept
+  in the untracked `review/owner/footnotes-truth.json`, IDs only); coverage = linked markers / true markers ≥ 90 % each.
+- Source detection hit rate (F19.21) is measured against a hand-made truth file in `review/owner/` (untracked), reported per field.
+- "Save as text PDF" (F19.22) is a new export from the OCR result; no columns or tables are reconstructed. Tinos (Apache-2.0)
+  is already bundled in `src-tauri/resources/fonts/`; Inter so far only exists as a variable tooling asset, so static Inter
+  instances (Regular, Bold; OFL-1.1) are added as resources and logged in `docs/LICENSES.md`. Inter is the default face, Tinos
+  the serif alternative (one choice in the export options).
+- History panel (F19.23) uses the existing undo stack: jumping to a state = repeated undo/redo; deleting an annotation from the
+  list is a new undoable command; text edits stay linear (no jump past them out of order).
+- Result: pre-release `v2.0.0-rc.3`, report in `docs/reports/`.

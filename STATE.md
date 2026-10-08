@@ -1,12 +1,12 @@
 # STATE
-phase: session "v2.0.0-rc.2 — F19 part 1" (ADR-141, tempo level 4) closed: v2.0.0-rc.2 pre-released
+phase: session "v2.0.0-rc.3 — F19 part 2" (ADR-143, tempo level 4, model policy ADR-142) in progress
 version: 2.0.0-rc.2 (tag v2.0.0-rc.2, pre-release; latest stable v1.9.0)
-current_item: none — next session: owner decides (proposal: F19 part 2 starting with the palette spec F19.14, then v2.0.0 final)
+current_item: F19.16/F19.17 designer spec (DESIGN §3.18) → wave L (layout) → F19.19 palettes → wave S (F19.20–F19.23)
 packages:
-  wave 1: A F19.1 foreign comments (backend, cargo) · B F19.7 crop (cargo) · C F19.3/.4/.15 sidebar, last tab, focus ring · D F19.5/.6 home
-  wave 2: E F19.12 header/footer (cargo) · F F19.2/.13/.14 tool hover, shapes, palettes · G F19.9/.10/.11 selection bar, bubbles, panel quote · H F19.8 redact
-last_completed: v2.0.0-rc.2 — F19.1–F19.15 except F19.14 (palette spec pending); report docs/reports/2026-10-08-v2.0.0-rc.2-f19-teil1.md
-loop_count_this_session: 3 (session closed, STOP set)
+  spec: designer §3.18 editor + home (Opus)
+  (waves cut after the spec)
+last_completed: v2.0.0-rc.2 — report docs/reports/2026-10-08-v2.0.0-rc.2-f19-teil1.md
+loop_count_this_session: 0
 open_blockers: 3 (B-002, B-005, B-008, human-only)
 notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
   ADR-120: every push starts with `bash scripts/ci-status.sh`; red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs`; real input only `smoke-real.mjs` (≤ 5 min, announced).
