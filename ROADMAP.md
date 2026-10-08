@@ -391,10 +391,10 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 ### v2.0-rc.1 (ADR-135 §6)
 - [x] v2.0 polish — every open Politur ticket (v1.6, backlog, v1.7–v1.9 minors) (packages R1, R2, R3, F1, F2; reviewer PASS on R1, R2)
 - [x] v2.0 security — final security audit with the fuzz corpus (two security-reviewer passes PASS, 0 critical/high; fuzz_corpus 6/6 release; cargo deny 0, npm audit 0; lows fixed in R3 or closed with reason)
-- [ ] v2.0 performance — budget re-measured (500-page open < 1 s, scroll p95)
-- [ ] v2.0 accessibility — screen-reader pass (Narrator), keyboard-only pass
-- [ ] v2.0 owner decisions — collect open owner decisions from every report since v1.5 into the final report
-- [ ] v2.0-rc.1 — pre-release
+- [x] v2.0 performance — budget re-measured (500-page open < 1 s, scroll p95) (acceptance build, v20-perf: open 75 ms, scroll/zoom/panels p95 16.8 ms at 60 fps, OCR 0.15 s/page, edit preview p95 106 ms, Apply 30 ms; no deviations)
+- [x] v2.0 accessibility — screen-reader pass (Narrator), keyboard-only pass (v20-a11y: AX tree as UIA/Narrator reads it + axe-core incl. contrast on 61 screens, keyboard pass in all five modes; 81 → 0 violations, 2789536; listening with the real Narrator voice → human list)
+- [x] v2.0 owner decisions — collect open owner decisions from every report since v1.5 into the final report (docs/reports/2026-10-08-v2.0.0-rc.1.md, appendices A and B)
+- [x] v2.0-rc.1 — pre-release (acceptance: all scripts green, gate 2636/2636, smoke 17/17, real-input PASS, designer PASS; tag v2.0.0-rc.1)
 
 ## v2.1 backlog (Should features moved by ADR-135 §1)
 - v1.7.2 OCR text as editable paragraphs; skew correction (image deskew)
@@ -437,4 +437,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [ ] Politur v2.1 — picked in the v2.1 session
   - (R1 review) text_edit deadline not cleared explicitly (safe: fresh thread per run); `i % 512` restarts per form slice; no test of the contained() wiring
   - (R2 review) test_support::bind is not reentrant (document: never nest); token colour test panics unclearly on rgb()/3-digit hex
+  - (designer v2.0-rc.1, minor) second document tab truncates while the top bar has room; home "Oder öffnen" reads as caption text — consider a Secondary button
+  - (acceptance v2.0) recovery banner left by killed acceptance sessions shortens the viewport in later script runs (acceptance profile only)
+  - (a11y v2.0) no unit tests for the new region landmarks, tab stops and the Settings opener; v20-a11y skips the menu layer for axe region
   - (security v2.0, low) signing key visible to the whole `tauri build` step; macOS sidecar without rlimit; sidecar integrity relies on code signing (B-002)

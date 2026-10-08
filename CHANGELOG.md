@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-rc.1] - 2026-10-08
+
+Release candidate for 2.0: every open polish ticket since 1.5, a final security audit, the performance budget re-measured and a screen-reader and keyboard pass.
+
+### Accessibility
+- Screen readers hear a window heading with the document name; the top bar, mode rows and panel divider are named regions.
+- Closing a dialog opened from the menu bar returns focus to that menu; Settings returns focus to its button.
+- The stamp picker is a modal dialog; Esc closes the welcome-tour cards; long menus can be scrolled with the keyboard.
+
 ### Changed
 - Disabled menu items say why they are disabled (a muted second line, also read by screen readers).
 - Stamps stay upright on rotated pages; header and footer texts that do not fit are shortened with an ellipsis instead of overlapping.
@@ -16,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Save dialogs without an open document start in the Documents folder.
 
 ### Fixed
+- Back after following a smart link restores the exact position, also when the view started between two pages.
 - Long text edits and OCR jobs can be stopped by their time limit inside the content-stream walk.
 - A refused text recognition (signed or protected document) shows its specific reason.
 - The updater never offers a version that is not newer than the installed one.

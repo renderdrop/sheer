@@ -1,16 +1,20 @@
 # STATE
-phase: session "v1.9 Backlog" (ADR-139) closed: v1.9.0 released
-version: 1.9.0 (tag v1.9.0, latest stable)
-current_item: none — next session: owner decides (proposal: v2.0-rc.1). Open owner items: B-008 Mac check, faculty citation variants, several sources per document
-last_completed: v1.9.0 — tip ids 8df4c63, pipefail f5e0975, specs 8c698c8, citations 6b67fb6, stamps debc3f1, header-footer 0b4c56b, comment export a42fb23, save fix b0066da, menus above modals + designer/gate fixes ..e3fcd66; report docs/reports/2026-10-08-v1.9.0-backlog.md
-loop_count_this_session: 0 (session closed, STOP set)
-open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
+phase: session "v2.0-rc.1" (ADR-140) closed: v2.0.0-rc.1 pre-released
+version: 2.0.0-rc.1 (tag v2.0.0-rc.1, pre-release; latest stable v1.9.0)
+current_item: none — next session: owner decides (proposal: v2.0.0 final after the human list in the rc.1 report, appendix B; or v2.1). Open owner items: E1 Mac check (B-008), E2 faculty citation styles, E3 git history cleanup
+last_completed: v2.0.0-rc.1 — polish 0e56653/861d6dc, PDFium test bind 3186d17, a11y 2789536, FX-BACK/FX-REASON 2ca6a96, scripts a238d82; report docs/reports/2026-10-08-v2.0.0-rc.1.md
+loop_count_this_session: 2 (session closed, STOP set)
+open_blockers: 3 (B-002, B-005, B-008, human-only; see the rc.1 report appendix B)
 notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
   ADR-120: every push starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs` (CDP, dialog guard); real input only `smoke-real.mjs` (≤ 5 min, announced). Never launch target/release or anything installed.
   Split staging across packages can break an intermediate commit (run #108): stage whole files per package when possible.
   Never run the dev window while agents run cargo/vitest; stop it by killing only processes whose path is target\debug\sheer.exe (never `taskkill /IM sheer.exe`, which would hit an installed instance) + Stop-Process on tauri.js/vite.js.
   Rule 17 / ADR-136 (resources and pace): ≤ 2 cargo agents at once (frontend up to 4); agents run `npm run check:fast` and `npm run cargo -- …`; the full `npm run check` once before each commit (orchestrator); `npm run target:budget` (cargo sweep, target ≤ 60 GB) instead of cargo clean; sccache in .tools/ (`npm run tools:install`); wait for agents by notification/run_in_background, no foreground sleep > 2 min; `npm run accept:clean` after every acceptance; guard-resources blocks builds under 8 GB RAM / 40 GB disk.
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - f162738..273b81d ADR-140, v2.0 polish backend/ui, v20 scripts → run #139 (37709850350) red: ocr_layer line test CI-loud, bind() failed while the engine held PDFium → fixed 3186d17
+  - 3186d17..7a2a611 PDFium test bind reuse, v20 script fixes → run #140 (37713489154) GREEN
+  - 2789536 a11y fixes (81 → 0) → run #141 (37718283927) GREEN
+  - 2ca6a96..a238d82 FX-BACK, FX-REASON, acceptance script fixes → run #142 (37724547453) pending
   - 85aedee release v1.9.0 → run #138 (37704883866) GREEN; release run #20 (37704883995) success (universal DMG, NSIS; stable)
   - b0066da..e3fcd66 save fix, acceptance, menus above modals, designer + gate fixes → runs #135–#137 GREEN
   - 15035be keychain deflake → run #134 (37694753207) GREEN
