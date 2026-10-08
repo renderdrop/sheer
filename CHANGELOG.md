@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Disabled menu items say why they are disabled (a muted second line, also read by screen readers).
+- Stamps stay upright on rotated pages; header and footer texts that do not fit are shortened with an ellipsis instead of overlapping.
+- The comment summary PDF shows a small type icon before each entry; {file} in headers uses the new name after Save As.
+- Tool popovers no longer cover the recovery banner; the colour popover keeps its 8 px gap from the mini bar.
+- The text edit box shows the untouched line in its real font right away.
+- Document tabs keep the active tab readable at narrow widths; smart links fade out when switched off.
+- Save dialogs without an open document start in the Documents folder.
+
+### Fixed
+- Long text edits and OCR jobs can be stopped by their time limit inside the content-stream walk.
+- A refused text recognition (signed or protected document) shows its specific reason.
+- The updater never offers a version that is not newer than the installed one.
+
+### Security
+- Final v2.0 audit: no critical or high findings; release manifest generation fails on unsigned packages.
+
 ## [1.9.0] - 2026-10-08
 
 v1.9 "Backlog" (ADR-139, DESIGN §3.14–§3.17). Unsigned installers (BLOCKERS B-002).

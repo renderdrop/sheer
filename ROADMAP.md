@@ -196,11 +196,11 @@ See `docs/FEATURES.md` → "Later".
 
 ## v1.1 backlog (ADR-030)
 
-- [~] Disabled vs. enabled toolbar icons hard to tell apart in light theme (ink-50 vs ink-60; ≥ 3:1 rule for disabled) — design decision, e.g. darker enabled icons (M7 design review, major)
+- [x] (v2.0, ADR-140: contrast test proves ≥ 3:1 disabled vs enabled, tokens unchanged) Disabled vs. enabled toolbar icons hard to tell apart in light theme (ink-50 vs ink-60; ≥ 3:1 rule for disabled) — design decision, e.g. darker enabled icons (M7 design review, major)
 - [~] Empty state with the recovery banner on short windows: show 2 recents rows so none is cut off (M7 design review)
 - [~] Dark-mode small text looks heavier (Windows ClearType on dark) — recheck against §3.52 #10 (M7 design review)
 
-- [~] Disabled menu items show why (output.notAllowed tooltip) — menus cannot show tooltips (from M6 UI)
+- [x] (v2.0: muted reason line + aria-description, menuModel disabledReasonKey) Disabled menu items show why (output.notAllowed tooltip) — menus cannot show tooltips (from M6 UI)
 - [~] Export-as-images size estimate from a Rust sample render instead of client-side (from M6 UI)
 
 - [~] v1.1-Backlog — Should/Could items moved out of M2–M7 (Tempo level 2); not part of v1.0, not picked by the loop
@@ -330,7 +330,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] Politur v1.5.1 (ADR-132): Umbrechen on for multi-line paragraphs; line stops at the paragraph edge with a true overflow;
       focus ring grows from the anchor; no compressed give-back; second-font lines refuse; refused paragraph preview falls back
       to line scope with a caption (owner-pdf-E4 heading); preview reads the crop edge from the loaded page; NaN guards; divider removed
-- [ ] Politur v1.6 — carried over from v1.5.1 and v1.6
+- [x] Politur v1.6 — carried over from v1.5.1 and v1.6 (v2.0 sweep, ADR-140: R1 cooperative deadline in ops_walk/text_lines; edit box previews the untouched line; fallback-word re-edit and bold-run lines → v2.1 backlog; Symbol/ZapfDingbats widths closed (no verified metrics bundled); refusal shapes documented in ARCHITECTURE; smart-link partial flag and real-link y already shipped; edited-page neighbour detection documented limit; dock shift by design; flakes fixed earlier (3f87e96, 0da261f); not accepted items re-checked by the v2.0 acceptance)
   - deferred (ADR-130 §3): approval-signed files (byte-range-aware write); cooperative cancel inside ops_walk/text_lines;
     re-edit of a line that already holds a fallback word; Symbol/ZapfDingbats widths; params.reason vs what on read_only refusals
   - text edit: the box shows the CSS fallback until the first keystroke (no preview of the untouched line)
@@ -389,8 +389,8 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] v1.9 acceptance — acceptance build, security-reviewer, designer round, tag v1.9.0 (v19 63/63, tips 45/45, OCR 38/38; gate 1318/1318; smoke 17/17; real-input PASS; security PASS; designer PASS)
 
 ### v2.0-rc.1 (ADR-135 §6)
-- [ ] v2.0 polish — every open Politur ticket (v1.6, backlog, v1.7–v1.9 minors)
-- [ ] v2.0 security — final security audit with the fuzz corpus
+- [x] v2.0 polish — every open Politur ticket (v1.6, backlog, v1.7–v1.9 minors) (packages R1, R2, R3, F1, F2; reviewer PASS on R1, R2)
+- [x] v2.0 security — final security audit with the fuzz corpus (two security-reviewer passes PASS, 0 critical/high; fuzz_corpus 6/6 release; cargo deny 0, npm audit 0; lows fixed in R3 or closed with reason)
 - [ ] v2.0 performance — budget re-measured (500-page open < 1 s, scroll p95)
 - [ ] v2.0 accessibility — screen-reader pass (Narrator), keyboard-only pass
 - [ ] v2.0 owner decisions — collect open owner decisions from every report since v1.5 into the final report
@@ -398,6 +398,8 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 
 ## v2.1 backlog (Should features moved by ADR-135 §1)
 - v1.7.2 OCR text as editable paragraphs; skew correction (image deskew)
+- Projektweite Zitatsammlung — a citation collection across documents (owner 2026-10-08, ADR-140: one source per document stays)
+- Byte-range-aware writes on approval-signed files; editing lines with inline runs in a second font (ADR-140 §1)
 
 ## Politur v1.4.1 (session "Politur v1.2–v1.4 + CI runtime", ADR-123)
 
@@ -411,7 +413,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 
 ## Politur backlog (minors not tied to a milestone)
 
-- [ ] Politur backlog — picked between feature milestones when a wave has a free slot
+- [x] Politur backlog — swept in v2.0 (ADR-140, packages R2, R3, F1, F2): every line below fixed with a test or closed with a reason (stamps /Contents canonical; one export filter bucket by design; HF indices are source indices; sidecar rlimit and signing-key step scope closed (untestable / tauri build needs the key); Swift toolchain only logged; owner photo-scan recognition is a known engine limit; 834397b is pushed history). New minors go into a fresh bucket below.
   - (v1.9 stamps) import parses each stamp twice; text read from /Contents not the AP; three width helpers to merge; Solar/Ink RGB not tied to tokens by a test; Change… not clamped to the page; no upright stamps on rotated pages; --stamp-border 1.5 vs spec 2; --stamp-tracking unused
   - (v1.9 headers/footers) file-layer page indices may go stale after save/reorder; covers() parses ranges more leniently than check(); left/centre/right runs can overlap on narrow pages; burn_all + header layer on one page lacks an integration test; {file} uses the source name on Save As
   - (v1.9 comment export) Comment-on-text and Note share one filter bucket; per-pair to_lowercase on tags; dialog open/cancel not tested
@@ -429,3 +431,10 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - (v1.4.2 review, minor) coach-mark re-test misses attribute-only changes; body MutationObserver while a notice is shown (exclude the canvas subtree, cap); MiniBar fit effect without deps; isControlLabel helper unused; protect selector comment
   - (v1.4.2 security, low) assert the 3× thumbnail size against `limits`; use the PDFium bitmap stride; second marker for the dev-registry bundle guard
   - (v1.4.2) 834397b does not type-check alone (store rename landed in 4a70409; pushed history, not rewritten)
+
+## Politur v2.1 (minors after the v2.0 sweep)
+
+- [ ] Politur v2.1 — picked in the v2.1 session
+  - (R1 review) text_edit deadline not cleared explicitly (safe: fresh thread per run); `i % 512` restarts per form slice; no test of the contained() wiring
+  - (R2 review) test_support::bind is not reentrant (document: never nest); token colour test panics unclearly on rgb()/3-digit hex
+  - (security v2.0, low) signing key visible to the whole `tauri build` step; macOS sidecar without rlimit; sidecar integrity relies on code signing (B-002)
