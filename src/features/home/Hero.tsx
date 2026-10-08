@@ -4,6 +4,7 @@ import { useEffect, type RefObject } from 'react';
 import { shortcutFor } from '../../actions/registry';
 import type { Platform } from '../../api/app';
 import { Field, Icon, SolarGlow, Tooltip } from '../../components';
+import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
 
 /** True when a key press in this target is typing into something, so `/` must stay a character. */
@@ -36,6 +37,8 @@ export interface HeroProps {
   onOpen: () => void;
   /** Enter in the search opens the first hit. */
   onOpenFirst?: () => void;
+  /** Files are listed below: a lower hero with less padding, so the tools stay in view. */
+  compact?: boolean;
 }
 
 /**
@@ -43,14 +46,26 @@ export interface HeroProps {
  * `.t-display`, 24 below it the search field (44 high, at most 480 wide, `/` as key chip), and the round Solar "+" (Open) 24 from
  * the top and the end. Text over the glow is Ink.
  */
-export function Hero({ query, onQuery, searchRef, opening, platform, onOpen, onOpenFirst }: HeroProps) {
+export function Hero({
+  query,
+  onQuery,
+  searchRef,
+  opening,
+  platform,
+  onOpen,
+  onOpenFirst,
+  compact = false,
+}: HeroProps) {
   const t = useT();
   const openKey = shortcutFor('open', platform, t);
   return (
     <section
       aria-label={t('home.hero.label')}
       data-home-hero=""
-      className="relative flex min-h-(--home-hero-min) flex-col justify-center gap-6 overflow-hidden rounded-xl bg-subtle p-10"
+      className={cx(
+        'relative flex flex-col justify-center gap-6 overflow-hidden rounded-xl bg-subtle',
+        compact ? 'min-h-(--home-hero-compact) p-6' : 'min-h-(--home-hero-min) p-10',
+      )}
     >
       <SolarGlow variant="hero" />
       <h1 className="t-display relative m-0 whitespace-pre-line text-text">{t('home.hero.title')}</h1>

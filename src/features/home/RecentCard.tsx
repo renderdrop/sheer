@@ -115,7 +115,7 @@ export function RecentCard({
           <span className="t-caption truncate">{age}</span>
         </span>
       </button>
-      <div className="absolute inset-y-0 end-3 flex items-center gap-1">
+      <div className="absolute inset-y-1 end-2 flex flex-col items-center justify-between">
         <span className={cx('transition-opacity', entry.starred ? 'opacity-100' : `opacity-0 ${reveal}`)}>
           <IconButton
             size="sm"
@@ -124,7 +124,7 @@ export function RecentCard({
             tabIndex={-1}
             onClick={() => onToggleStar(entry)}
           >
-            <Icon icon={Star} size={16} className={cx(entry.starred && 'fill-current')} />
+            <Icon icon={Star} size={16} className={cx('text-text', entry.starred && 'fill-hl-solar')} />
           </IconButton>
         </span>
         <span className={cx('opacity-0 transition-opacity', reveal)}>

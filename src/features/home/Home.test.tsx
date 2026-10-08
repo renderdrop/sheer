@@ -3,10 +3,11 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useSettingsPopover } from '../settings/state';
+import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { Home } from './Home';
-import { filterByName, formatAge } from './recents';
+import { filterByName, formatAge, visibleRecents, withoutOpen } from './recents';
 import { gridTarget } from './roving';
 
 const api = vi.hoisted(() => ({
@@ -49,7 +50,8 @@ beforeEach(() => {
   api.getRecentThumbnail.mockReset().mockRejectedValue({ code: 'not_found' });
   hub.runHubCard.mockReset();
   dispatch.runAction.mockReset();
-  useUi.setState({ toast: null, banner: null });
+  useUi.setState({ toast: null, banner: null, view: 'home' });
+  useDocuments.setState({ byId: {}, order: [], activeId: null });
   useSettingsPopover.setState({ open: false });
 });
 
@@ -156,12 +158,67 @@ describe('Home', () => {
     expect(useSettingsPopover.getState().open).toBe(true);
   });
 
-  it('shows Show all only beyond twelve cards', async () => {
+  it('caps Recent at two rows and expands under Show all', async () => {
     api.listRecents.mockResolvedValue(Array.from({ length: 13 }, (_, i) => entry(i + 1, `File ${i + 1}.pdf`)));
     const { user } = setup(<Home platform="macos" />);
-    await user.click(await screen.findByRole('button', { name: 'Show all' }));
-    expect(screen.getByRole('heading', { level: 1, name: 'Recent' })).toBeTruthy();
+    await screen.findByRole('button', { name: /^File 1\.pdf/ });
+    // Without layout (jsdom) four columns are assumed: two rows are eight cards.
+    expect(screen.getAllByRole('button', { name: /^File \d+\.pdf/ })).toHaveLength(8);
+    await user.click(screen.getByRole('button', { name: 'Show all' }));
     expect(screen.getAllByRole('button', { name: /^File \d+\.pdf/ })).toHaveLength(13);
+    await user.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(screen.getAllByRole('button', { name: /^File \d+\.pdf/ })).toHaveLength(8);
+  });
+
+  it('offers no Show all when the recents fit in two rows', async () => {
+    setup(<Home platform="macos" />);
+    await screen.findByRole('button', { name: /^Alpha\.pdf/ });
+    expect(screen.queryByRole('button', { name: 'Show all' })).toBeNull();
+  });
+
+  it('hides the Open section without tabs and lists open tabs above Recent without duplicating them', async () => {
+    const { user } = setup(<Home platform="windows" />);
+    await screen.findByRole('button', { name: /^Alpha\.pdf/ });
+    expect(screen.queryByRole('heading', { name: 'Open' })).toBeNull();
+    useDocuments.setState({
+      byId: {
+        7: { id: 7, pageCount: 1, displayName: 'Alpha.pdf' },
+        8: { id: 8, pageCount: 2, displayName: 'Gamma.pdf' },
+      },
+      order: [7, 8],
+      activeId: 8,
+    });
+    const heading = await screen.findByRole('heading', { name: 'Open' });
+    const list = within(heading.closest('section') as HTMLElement);
+    expect(list.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Alpha.pdf', 'Gamma.pdf']);
+    // Alpha is open: it is not listed again under Recent.
+    expect(screen.getAllByRole('button', { name: /^Alpha\.pdf/ })).toHaveLength(1);
+    await user.click(list.getByRole('button', { name: 'Alpha.pdf' }));
+    expect(useDocuments.getState().activeId).toBe(7);
+    expect(useUi.getState().view).toBe('editor');
+  });
+
+  it('shows Home, not the empty state, when only tabs are open; arrows rove through the Open cards', async () => {
+    api.listRecents.mockResolvedValue([]);
+    useDocuments.setState({
+      byId: { 1: { id: 1, pageCount: 1, displayName: 'One.pdf' }, 2: { id: 2, pageCount: 1, displayName: 'Two.pdf' } },
+      order: [1, 2],
+      activeId: 1,
+    });
+    const { user } = setup(<Home platform="windows" />);
+    (await screen.findByRole('button', { name: 'One.pdf' })).focus();
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Two.pdf' }));
+  });
+});
+
+describe('the Recent window', () => {
+  it('takes two rows of the column count and drops open files', () => {
+    const list = Array.from({ length: 10 }, (_, i) => entry(i, `F${i}`));
+    expect(visibleRecents(list, 3, false)).toHaveLength(6);
+    expect(visibleRecents(list, 3, true)).toHaveLength(10);
+    expect(visibleRecents(list, 0, false)).toHaveLength(2);
+    expect(withoutOpen(list, ['F1', 'F2']).map((e) => e.id)).not.toContain(1);
   });
 });
 

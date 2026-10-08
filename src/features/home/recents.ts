@@ -16,9 +16,6 @@ import { useUi } from '../../stores/ui';
 import { setPendingSource } from '../viewer/openTransition';
 import { adoptOpenOutcomes } from '../viewer/useViewer';
 
-/** The most cards Home's Zuletzt section shows before "Alle anzeigen" (DESIGN v2 3.1). */
-export const HOME_RECENT_LIMIT = 12;
-
 const UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number])[] = [
   ['year', 31_536_000],
   ['month', 2_592_000],
@@ -36,6 +33,21 @@ export function formatAge(lastOpened: number, nowSeconds: number, locale: Locale
     if (elapsed >= seconds) return format.format(-Math.floor(elapsed / seconds), unit);
   }
   return format.format(0, 'second');
+}
+
+/** Home's Recent section shows this many rows of cards; the rest is behind "Show all". */
+export const HOME_RECENT_ROWS = 2;
+
+/** The cards shown for `columns` columns: two full rows, or all of them once expanded. */
+export function visibleRecents<T>(entries: readonly T[], columns: number, expanded: boolean): readonly T[] {
+  return expanded ? entries : entries.slice(0, Math.max(1, columns) * HOME_RECENT_ROWS);
+}
+
+/** The entries whose file is not open as a tab. The frontend holds no paths, so the display name is the match. */
+export function withoutOpen(entries: readonly RecentEntry[], openNames: readonly string[]): readonly RecentEntry[] {
+  if (openNames.length === 0) return entries;
+  const open = new Set(openNames);
+  return entries.filter((entry) => !open.has(entry.displayName));
 }
 
 /** The entries whose display name contains `query` (case-insensitive); all of them for an empty query. */
