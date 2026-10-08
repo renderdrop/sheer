@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { toAppError } from './errors';
 import {
+  detectHeaderFooter,
   getHeaderFooter,
+  parseHfSpec,
   parseHeaderFooterInfo,
   resolveHeaderFooter,
   setHeaderFooter,
@@ -29,6 +31,7 @@ const SPEC: HfSpec = {
   margin: 28,
   color: [15, 15, 15],
   date: '07.10.2026',
+  background: false,
 };
 
 const INFO = { spec: SPEC, defaults: SPEC, pending: true, fileLayers: 2, refusal: null };
@@ -87,6 +90,38 @@ describe('header and footer api', () => {
       docId: 7,
       command: { type: 'setHeaderFooter', spec: null },
     });
+  });
+
+  it('reads a spec without a background key as one without a background', () => {
+    const old: Record<string, unknown> = { ...SPEC };
+    delete old.background;
+    expect(parseHfSpec(old)?.background).toBe(false);
+    expect(parseHfSpec({ ...SPEC, background: true })?.background).toBe(true);
+    expect(parseHfSpec({ ...SPEC, background: 'yes' })).toBeNull();
+  });
+
+  it('reads the detected headers and footers and refuses other shapes', async () => {
+    const item = {
+      edge: 'footer',
+      slot: 'center',
+      kind: 'pageNumber',
+      text: 'Page 1 of 9',
+      rect: { x: 280, y: 750, w: 50, h: 9 },
+      pages: 4,
+    };
+    invokeMock.mockResolvedValueOnce({ items: [item], sampled: 4, pageCount: 9 });
+    expect(await detectHeaderFooter(3)).toEqual({ items: [item], sampled: 4, pageCount: 9 });
+    expect(invokeMock).toHaveBeenCalledWith('detect_header_footer', { docId: 3 });
+    for (const bad of [
+      'nope',
+      { items: [{ ...item, edge: 'side' }], sampled: 1, pageCount: 1 },
+      { items: [{ ...item, rect: { x: 1 } }], sampled: 1, pageCount: 1 },
+      { items: Array.from({ length: 13 }, () => item), sampled: 1, pageCount: 1 },
+      { items: [], sampled: -1, pageCount: 1 },
+    ]) {
+      invokeMock.mockResolvedValueOnce(bad);
+      expect(toAppError(await detectHeaderFooter(1).catch((e: unknown) => e)).code).toBe('internal');
+    }
   });
 
   it('passes a refusal of the backend on', async () => {

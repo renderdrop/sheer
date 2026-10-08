@@ -21,6 +21,7 @@ const EMPTY: HfSpec = {
   margin: 24,
   color: [15, 15, 15],
   date: '7 Oct 2026',
+  background: false,
 };
 
 function info(spec: HfSpec | null, fileLayers: number): HeaderFooterInfo {

@@ -588,7 +588,7 @@ impl AppState {
             Some(path) => super::header_footer::target_stem(path),
             None => self.header_file_name(id),
         };
-        self.model(id, |state| {
+        let mut staged = self.model(id, |state| {
             let pages = state.page_plan();
             let position: std::collections::HashMap<u32, u32> = pages
                 .pages
@@ -622,7 +622,13 @@ impl AppState {
             let mut extras = save_plan_of(state, &pages, false);
             extras.header_footer = crate::model::header_footer::plan(state, &pages, &file);
             Ok((pages, plan, extras, form, strip_xfa))
-        })
+        })?;
+        // The page colour under the background boxes needs the engine, so it is read after the model lock is released.
+        let (pages, _, extras, _, _) = &mut staged;
+        if let Some(write) = extras.header_footer.as_mut() {
+            self.sample_header_fills(id, pages, write);
+        }
+        Ok(staged)
     }
 
     /// The current state of document `id` as a Full, plain PDF in memory (ADR-049 §1): what a save would write (content objects burned

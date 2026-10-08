@@ -179,6 +179,7 @@ pub fn run() -> Result<(), AppError> {
             commands::bibliography::get_bibliography,
             commands::header_footer::get_header_footer,
             commands::header_footer::resolve_header_footer,
+            commands::hf_detect::detect_header_footer,
             commands::citation_export::save_citation_list,
             commands::identities::list_signing_identities,
             commands::identities::create_signing_identity,

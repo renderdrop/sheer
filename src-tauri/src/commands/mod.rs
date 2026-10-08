@@ -44,6 +44,7 @@ pub mod export_images;
 pub mod export_pdf;
 pub mod forms;
 pub mod header_footer;
+pub mod hf_detect;
 pub mod identities;
 pub mod images_pdf;
 pub mod jobs;

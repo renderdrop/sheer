@@ -29,6 +29,8 @@ export interface Draft {
   fontSize: number;
   margin: number;
   allPages: boolean;
+  /** A box in the page colour behind the text (F19.12). */
+  background: boolean;
   /** The range inputs, as typed. */
   from: string;
   to: string;
@@ -72,6 +74,7 @@ export function defaultDraft(): Draft {
     fontSize: DEFAULT_FONT_SIZE,
     margin: DEFAULT_MARGIN,
     allPages: true,
+    background: false,
     from: '',
     to: '',
   };
@@ -184,6 +187,7 @@ export function draftFromSpec(spec: HfSpec, total: number): Draft {
     fontSize: spec.fontSize,
     margin: spec.margin,
     allPages: range === null,
+    background: spec.background,
     from: range === null ? '' : String(range.from),
     to: range === null ? '' : String(range.to),
   };
@@ -233,6 +237,7 @@ export function buildSpec(draft: Draft, context: SpecContext): HfSpec | null {
     margin: clamp(draft.margin, HF_LIMITS.margin),
     color: context.color,
     date: context.date.slice(0, HF_LIMITS.dateChars),
+    background: draft.background,
   };
 }
 

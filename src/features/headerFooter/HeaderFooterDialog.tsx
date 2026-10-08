@@ -1,9 +1,9 @@
 import { ChevronDown, PanelTop } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
-import { useId, useMemo, useState, type ComponentProps, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useState, type ComponentProps, type FormEvent } from 'react';
 
-import { type HfSlot } from '../../api/headerFooter';
-import { Button, Field, Icon, Menu, Segmented, type MenuItemSpec } from '../../components';
+import { detectHeaderFooter, type DetectedItem, type HfSlot } from '../../api/headerFooter';
+import { Button, Checkbox, Field, Icon, Menu, Segmented, type MenuItemSpec } from '../../components';
 import { cx } from '../../components/cx';
 import { APP_NAME } from '../../config/app';
 import { useLocale, useT } from '../../i18n';
@@ -69,6 +69,31 @@ function Dialog({ request }: { request: HfDialogState }) {
   const patch = (next: Partial<Draft>) => setDraft((old) => ({ ...old, ...next }));
   const patchSlot = (slot: HfSlot, next: Partial<Draft['slots'][HfSlot]>) =>
     setDraft((old) => ({ ...old, slots: { ...old.slots, [slot]: { ...old.slots[slot], ...next } } }));
+
+  // What the pages already have in their margin bands (a hint: a failed look is no error), and which of it the new text lands on.
+  const [detected, setDetected] = useState<DetectedItem[]>([]);
+  const [overlapping, setOverlapping] = useState<DetectedItem[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    detectHeaderFooter(docId)
+      .then((found) => {
+        if (!cancelled) setDetected(found.items);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [docId]);
+  const where = (item: DetectedItem) =>
+    t('hf.slotOptions', {
+      row: t(`hf.${item.edge}`),
+      column: t(`hf.${item.slot === 'center' ? 'centre' : item.slot}`),
+    });
+  const describe = (items: readonly DetectedItem[]) =>
+    items
+      .slice(0, 4)
+      .map((item) => t('hf.detectedItem', { where: where(item), text: item.text }))
+      .join('; ') + (items.length > 4 ? ' …' : '');
 
   const range = rangeOf(draft, total);
   const applicable = canApply(draft, total);
@@ -242,6 +267,34 @@ function Dialog({ request }: { request: HfDialogState }) {
                 onValueChange={(value) => patch({ margin: Number(value) })}
               />
             </div>
+            <div className="flex flex-col gap-1" data-hf="background">
+              <label className="t-body flex cursor-pointer items-center gap-2">
+                <Checkbox
+                  checked={draft.background}
+                  aria-describedby={`${id}-background-hint`}
+                  data-hf="background-toggle"
+                  onChange={(event) => patch({ background: event.target.checked })}
+                />
+                {t('hf.background')}
+              </label>
+              <span id={`${id}-background-hint`} className="t-caption text-text-muted">
+                {t('hf.backgroundHint')}
+              </span>
+            </div>
+            {detected.length > 0 && (
+              <div className="flex flex-col gap-1" data-hf="detected">
+                <p className="t-caption m-0 text-text-muted">{t('hf.detected', { items: describe(detected) })}</p>
+                {overlapping.length > 0 && (
+                  <p
+                    role={draft.background ? undefined : 'alert'}
+                    className={cx('t-caption m-0', draft.background ? 'text-text-muted' : 'text-error-text')}
+                    data-hf={draft.background ? 'covers' : 'overlap'}
+                  >
+                    {t(draft.background ? 'hf.covered' : 'hf.overlap', { items: describe(overlapping) })}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="flex flex-col gap-1" data-hf="pages">
               <div className="flex items-center gap-2">
                 <Segmented
@@ -286,7 +339,13 @@ function Dialog({ request }: { request: HfDialogState }) {
             </div>
           </div>
           <div className="flex w-[var(--hf-preview-w)] shrink-0 flex-col items-center gap-1">
-            <Preview docId={docId} pageNumber={previewPage} spec={spec} />
+            <Preview
+              docId={docId}
+              pageNumber={previewPage}
+              spec={spec}
+              detected={detected}
+              onOverlap={setOverlapping}
+            />
             <span className="t-caption text-text-muted" aria-hidden="true">
               {t('hf.previewPage', { n: previewPage })}
             </span>

@@ -15,7 +15,7 @@ import { HeaderFooterDialog } from './HeaderFooterDialog';
 import { openHeaderFooterDialog } from './runtime';
 import { useHeaderFooter } from './store';
 
-const api = vi.hoisted(() => ({ getHeaderFooter: vi.fn(), resolveHeaderFooter: vi.fn() }));
+const api = vi.hoisted(() => ({ getHeaderFooter: vi.fn(), resolveHeaderFooter: vi.fn(), detectHeaderFooter: vi.fn() }));
 vi.mock('../../api/headerFooter', async (importOriginal) => ({ ...(await importOriginal<object>()), ...api }));
 vi.mock('../../api/render', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -47,6 +47,7 @@ const DEFAULTS: HfSpec = {
   margin: 28,
   color: [15, 15, 15],
   date: '',
+  background: false,
 };
 const info = (patch: Partial<HeaderFooterInfo> = {}): HeaderFooterInfo => ({
   spec: null,
@@ -65,6 +66,7 @@ beforeEach(() => {
   usePages.getState().setSlots(1, slots);
   api.getHeaderFooter.mockReset();
   api.resolveHeaderFooter.mockReset().mockResolvedValue([]);
+  api.detectHeaderFooter.mockReset().mockResolvedValue({ items: [], sampled: 0, pageCount: 5 });
   applyCommand
     .mockReset()
     .mockResolvedValue({ rev: 1, upserted: [], removed: [], pages: null, doc: ['headerFooter'], history: null });
@@ -117,6 +119,47 @@ describe('the dialog', () => {
     await waitFor(() => expect(applyCommand).toHaveBeenCalledTimes(1));
     expect(applyCommand.mock.calls[0]?.[1]).toEqual({ type: 'setHeaderFooter', spec: null });
     await waitFor(() => expect(useUi.getState().toast?.message).toBe('Headers and footers removed'));
+  });
+});
+
+describe('existing headers and footers', () => {
+  const footerNumber = {
+    edge: 'footer',
+    slot: 'right',
+    kind: 'pageNumber',
+    text: 'Page 1 of 9',
+    rect: { x: 480, y: 745, w: 60, h: 10 },
+    pages: 5,
+  };
+  // The new page number "Page 1 of 5" at the right margin lands on it.
+  const run = { text: 'Page 1 of 5', origin: { x: 490, y: 753 }, angle: 0, size: 10, width: 55 };
+
+  it('names what is there, warns about an overlap and says covered once the background is on', async () => {
+    api.detectHeaderFooter.mockResolvedValue({ items: [footerNumber], sampled: 5, pageCount: 5 });
+    api.resolveHeaderFooter.mockResolvedValue([{ pageId: 10, runs: [run], underFileLayer: false }]);
+    useHeaderFooter.getState().openDialog({ docId: 1, info: info(), preselect: null });
+    const { user } = setup(<HeaderFooterDialog />);
+    expect(await screen.findByText(/Already on the pages: Footer, Right: “Page 1 of 9”/)).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toMatch(/^Overlaps existing text: Footer, Right/),
+    );
+    await user.click(screen.getByRole('checkbox', { name: /Cover what is underneath/ }));
+    await waitFor(() =>
+      expect(document.querySelector('[data-hf="covers"]')?.textContent).toMatch(/^Covers existing text/),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(applyCommand).toHaveBeenCalledTimes(1));
+    const command = applyCommand.mock.calls[0]?.[1] as { spec: HfSpec };
+    expect(command.spec.background).toBe(true);
+  });
+
+  it('shows no warning when nothing overlaps or the look failed', async () => {
+    api.detectHeaderFooter.mockRejectedValue(new Error('no'));
+    useHeaderFooter.getState().openDialog({ docId: 1, info: info(), preselect: null });
+    setup(<HeaderFooterDialog />);
+    await screen.findByRole('button', { name: 'Apply' });
+    expect(document.querySelector('[data-hf="detected"]')).toBeNull();
   });
 });
 

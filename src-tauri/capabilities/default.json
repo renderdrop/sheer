@@ -42,6 +42,7 @@
     "allow-get-bibliography",
     "allow-get-header-footer",
     "allow-resolve-header-footer",
+    "allow-detect-header-footer",
     "allow-save-citation-list",
     "allow-list-signing-identities",
     "allow-create-signing-identity",

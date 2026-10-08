@@ -66,6 +66,7 @@ fn main() {
         "get_bibliography",
         "get_header_footer",
         "resolve_header_footer",
+        "detect_header_footer",
         "save_citation_list",
         "list_signing_identities",
         "create_signing_identity",

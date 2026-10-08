@@ -2,7 +2,7 @@ import { applyCommand, type ChangeSet, type Rgb } from './annotations';
 import { call } from './call';
 import { toAppError } from './errors';
 import type { PageId } from './jobs';
-import { isRecord, isUint, parsePoint, type Point } from './wire';
+import { isRecord, isUint, parsePoint, parseRect, type Point, type Rect } from './wire';
 
 /**
  * Headers and footers (ADR-139, ARCHITECTURE section 16.2 and 16.5). The spec is staged by `setHeaderFooter` (one undo step) and
@@ -36,7 +36,12 @@ export interface HfSpec {
   color: Rgb;
   /** What `{date}` is, formatted by the UI (at most 32 WinAnsi characters). */
   date: string;
+  /** A box in the page colour (white) behind each run, `HF_BACKGROUND_PAD` around the text, so that what lies under it is covered. */
+  background: boolean;
 }
+
+/** Points the background box reaches past the text on every side (mirrors `BACKGROUND_PAD` in Rust). */
+export const HF_BACKGROUND_PAD = 3;
 
 /** Limits the backend enforces; mirrored so the dialog can stop typing early. */
 export const HF_LIMITS = {
@@ -112,7 +117,17 @@ export function parseHfSpec(value: unknown): HfSpec | null {
   } else return null;
   const color = parseRgb(value.color);
   if (!finite(value.fontSize) || !finite(value.margin) || color === null || typeof value.date !== 'string') return null;
-  return { slots, pages, fontSize: value.fontSize, margin: value.margin, color, date: value.date };
+  // A spec an older file carries has no `background`.
+  if (value.background !== undefined && typeof value.background !== 'boolean') return null;
+  return {
+    slots,
+    pages,
+    fontSize: value.fontSize,
+    margin: value.margin,
+    color,
+    date: value.date,
+    background: value.background === true,
+  };
 }
 
 export function parseHeaderFooterInfo(value: unknown): HeaderFooterInfo {
@@ -177,6 +192,57 @@ export async function resolveHeaderFooter(
   pages: readonly PageId[],
 ): Promise<ResolvedPage[]> {
   return parseResolvedPages(await call<unknown>('resolve_header_footer', { docId, spec, pages }));
+}
+
+/** One text piece the document already has in a margin band of its pages. */
+export interface DetectedItem {
+  edge: 'header' | 'footer';
+  slot: 'left' | 'center' | 'right';
+  kind: 'text' | 'pageNumber';
+  /** At most 80 characters. */
+  text: string;
+  /** Page points, top left of the unrotated page, y down; the union over the sampled pages. */
+  rect: Rect;
+  /** On how many of the sampled pages it was found. */
+  pages: number;
+}
+
+export interface HeaderFooterDetected {
+  items: DetectedItem[];
+  sampled: number;
+  pageCount: number;
+}
+
+const DETECTED_MAX = 12;
+
+export function parseHeaderFooterDetected(value: unknown): HeaderFooterDetected {
+  if (!isRecord(value) || !Array.isArray(value.items) || value.items.length > DETECTED_MAX) return bad('detected');
+  if (!isUint(value.sampled) || !isUint(value.pageCount)) return bad('detected');
+  const items = value.items.map((entry): DetectedItem => {
+    if (!isRecord(entry)) return bad('detected item');
+    const rect = parseRect(entry.rect);
+    const { edge, slot, kind } = entry;
+    if (
+      rect === null ||
+      (edge !== 'header' && edge !== 'footer') ||
+      (slot !== 'left' && slot !== 'center' && slot !== 'right') ||
+      (kind !== 'text' && kind !== 'pageNumber') ||
+      typeof entry.text !== 'string' ||
+      !isUint(entry.pages)
+    ) {
+      return bad('detected item');
+    }
+    return { edge, slot, kind, text: entry.text.slice(0, 80), rect, pages: entry.pages };
+  });
+  return { items, sampled: value.sampled, pageCount: value.pageCount };
+}
+
+/**
+ * What the document already has in the top and bottom bands of its pages (a read-only look at up to eight pages): running
+ * headers, footers and page numbers, for the overlap warning of the dialog.
+ */
+export async function detectHeaderFooter(docId: number): Promise<HeaderFooterDetected> {
+  return parseHeaderFooterDetected(await call<unknown>('detect_header_footer', { docId }));
 }
 
 /** Stages `spec` (`null` removes the headers and footers) as one undo step; the next save writes it. `changes.doc` has `headerFooter`. */

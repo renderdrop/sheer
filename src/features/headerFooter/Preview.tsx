@@ -1,16 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { resolveHeaderFooter, type HfSpec, type ResolvedPage } from '../../api/headerFooter';
+import {
+  HF_BACKGROUND_PAD,
+  resolveHeaderFooter,
+  type DetectedItem,
+  type HfSpec,
+  type PlacedRun,
+  type ResolvedPage,
+} from '../../api/headerFooter';
 import { renderPage } from '../../api/render';
 import { bucketFor } from '../../engine/buckets';
 import { CSS_PX_PER_PT } from '../../lib/zoom';
 import { drawnSize, pageIdAt, readSlots } from '../../stores/pages';
+import { findOverlaps, overlappedItems, runRect } from './overlap';
 
 /** The preview box in CSS px (DESIGN 3.15 HF2: 216 x 306); the page is contained in it. */
 const BOX_W = 216;
 const BOX_H = 306;
 /** The wait before the draft is resolved again (HF2: debounced 120 ms). */
 export const PREVIEW_DEBOUNCE_MS = 120;
+const NO_RUNS: readonly PlacedRun[] = [];
 
 /**
  * One page with the draft's text on it. The page image is the render of the page (the lowest priority, like a thumbnail); the
@@ -18,7 +27,21 @@ export const PREVIEW_DEBOUNCE_MS = 120;
  * stays until the next one is there; only the latest answer counts. A page that still shows the file's own layer is shown
  * without the draft (`underFileLayer`, ADR-139 addendum C). Decorative: the controls carry the meaning.
  */
-export function Preview({ docId, pageNumber, spec }: { docId: number; pageNumber: number; spec: HfSpec | null }) {
+export function Preview({
+  docId,
+  pageNumber,
+  spec,
+  detected,
+  onOverlap,
+}: {
+  docId: number;
+  pageNumber: number;
+  spec: HfSpec | null;
+  /** What the document already has in its margin bands (drawn as outlines; the ones the new text lands on are marked). */
+  detected: readonly DetectedItem[];
+  /** The existing pieces the preview page's new text overlaps. */
+  onOverlap: (items: DetectedItem[]) => void;
+}) {
   const pageId = pageIdAt(docId, pageNumber - 1);
   const slot = readSlots(docId)[pageNumber - 1];
   const [image, setImage] = useState<{ pageId: number; url: string } | null>(null);
@@ -74,6 +97,12 @@ export function Preview({ docId, pageNumber, spec }: { docId: number; pageNumber
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId, pageId, specKey]);
 
+  const runs = resolved !== null && resolved.pageId === pageId && !resolved.underFileLayer ? resolved.runs : NO_RUNS;
+  const background = spec?.background === true;
+  const overlaps = useMemo(() => findOverlaps(runs, detected, background), [runs, detected, background]);
+  const hit = useMemo(() => overlappedItems(overlaps), [overlaps]);
+  useEffect(() => onOverlap(hit), [hit, onOverlap]);
+
   if (slot === undefined) return null;
   const [dw, dh] = drawnSize(slot);
   const scale = Math.min(BOX_W / dw, BOX_H / dh);
@@ -83,7 +112,6 @@ export function Preview({ docId, pageNumber, spec }: { docId: number; pageNumber
   // The runs are in the unrotated page's space; the SVG is that page, turned like the displayed one.
   const innerW = quarter ? h : w;
   const innerH = quarter ? w : h;
-  const runs = resolved !== null && resolved.pageId === pageId && !resolved.underFileLayer ? resolved.runs : [];
   return (
     <div
       aria-hidden="true"
@@ -105,6 +133,35 @@ export function Preview({ docId, pageNumber, spec }: { docId: number; pageNumber
           className="absolute start-1/2 top-1/2"
           style={{ transform: `translate(-50%, -50%) rotate(${slot.rotation}deg)` }}
         >
+          {background &&
+            runs.map((run, index) => {
+              const box = runRect(run, HF_BACKGROUND_PAD);
+              return (
+                <rect
+                  key={`bg-${index}`}
+                  x={box.x}
+                  y={box.y}
+                  width={box.w}
+                  height={box.h}
+                  className="fill-white"
+                  data-hf="preview-background"
+                />
+              );
+            })}
+          {detected.map((item, index) => (
+            <rect
+              key={`found-${index}`}
+              x={item.rect.x}
+              y={item.rect.y}
+              width={item.rect.w}
+              height={item.rect.h}
+              strokeWidth={0.75}
+              strokeDasharray="3 2"
+              fill="none"
+              className={hit.includes(item) && !background ? 'stroke-error-text' : 'stroke-text-muted'}
+              data-hf={hit.includes(item) ? 'preview-overlap' : 'preview-existing'}
+            />
+          ))}
           {runs.map((run, index) => (
             <text
               key={index}

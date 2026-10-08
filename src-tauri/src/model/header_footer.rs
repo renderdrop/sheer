@@ -23,8 +23,10 @@ pub const DATE_CHARS_MAX: usize = 32;
 /// Longest page range text (characters).
 pub const RANGES_CHARS_MAX: usize = 256;
 /// The distance from the top of the text to its baseline, and from the baseline to its bottom, in em (Helvetica ascender, descender).
-const ASCENT: f32 = 0.72;
-const DESCENT: f32 = 0.21;
+pub const ASCENT: f32 = 0.72;
+pub const DESCENT: f32 = 0.21;
+/// Points the background box reaches past the text on every side.
+pub const BACKGROUND_PAD: f32 = 3.0;
 
 /// The texts of the six places; `""` is none.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,6 +82,9 @@ pub struct HfSpec {
     pub color: Rgb,
     /// What `{date}` is, formatted by the UI when the dialog applies.
     pub date: String,
+    /// A white box (the page colour) behind each run, `BACKGROUND_PAD` around the text, so that what lies under it is not seen. Only
+    /// our own layer carries it; the page content is never changed.
+    pub background: bool,
 }
 
 impl Default for HfSpec {
@@ -96,6 +101,7 @@ impl Default for HfSpec {
             margin: 28.0,
             color: Rgb([0x0F, 0x0F, 0x0F]),
             date: String::new(),
+            background: false,
         }
     }
 }
@@ -231,6 +237,25 @@ pub struct PlacedRun {
     pub angle: u16,
     pub size: f32,
     pub width: f32,
+    /// The page colour under the background box, sampled at save time (`None`: white). Not sent to the UI.
+    #[serde(skip)]
+    pub fill: Option<Rgb>,
+}
+
+/// The bounding box `[x0, y0, x1, y1]` of a run's text box in page space (y down), `pad` points larger on every side: what the
+/// background box covers (the UI computes the same in `overlap.ts`).
+pub fn box_rect(run: &PlacedRun, pad: f32) -> [f32; 4] {
+    let a = f32::from(run.angle).to_radians();
+    let (dir, up) = ((a.cos(), -a.sin()), (-a.sin(), -a.cos()));
+    let mut out = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+    for s in [-pad, run.width + pad] {
+        for t in [-(DESCENT * run.size + pad), ASCENT * run.size + pad] {
+            let x = run.origin.x + s * dir.0 + t * up.0;
+            let y = run.origin.y + s * dir.1 + t * up.1;
+            out = [out[0].min(x), out[1].min(y), out[2].max(x), out[3].max(y)];
+        }
+    }
+    out
 }
 
 /// `file` with every character WinAnsi cannot show replaced by `?`.
@@ -334,6 +359,7 @@ pub fn resolve(
                 angle: geom.rotate % 360,
                 size,
                 width,
+                fill: None,
             });
         }
     }

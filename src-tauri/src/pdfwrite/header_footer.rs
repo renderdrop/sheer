@@ -11,7 +11,7 @@ use super::page_layer::{self, num, page_geom, PageGeom, Wrap, HF_HEAD, HF_KEY};
 use crate::content::std14;
 use crate::error::{AppError, ErrorCode};
 use crate::model::annotation::Rgb;
-use crate::model::header_footer::{HfSpec, HfWrite, PlacedRun};
+use crate::model::header_footer::{HfSpec, HfWrite, PlacedRun, ASCENT, BACKGROUND_PAD, DESCENT};
 
 /// The resource name of the font on a page.
 pub const FONT_NAME: &str = "SHR_HF0";
@@ -35,8 +35,45 @@ fn hex_winansi(text: &str) -> String {
 
 /// The content of the layer of one page. `geom` is the page as the file has it: the runs are in page space (top left of the unrotated
 /// crop box, y down) and turn with the page's rotation, so that they read upright on the displayed page.
-pub fn layer_stream(geom: &PageGeom, runs: &[PlacedRun], color: Rgb) -> Vec<u8> {
+///
+/// With `background`, a white box (the page colour) is filled behind every run first: the text box (descender to ascender, the run's
+/// width) plus [`BACKGROUND_PAD`] on every side, turned with the page. Only this layer carries it; the page content is not changed.
+pub fn layer_stream(geom: &PageGeom, runs: &[PlacedRun], color: Rgb, background: bool) -> Vec<u8> {
     let mut out = String::from_utf8_lossy(HF_HEAD).into_owned();
+    if background {
+        let (x, up) = geom.axes();
+        for run in runs {
+            if !run.origin.x.is_finite()
+                || !run.origin.y.is_finite()
+                || !run.width.is_finite()
+                || run.text.is_empty()
+            {
+                continue;
+            }
+            let (e, f) = (geom.crop[0] + run.origin.x, geom.crop[3] - run.origin.y);
+            let (a0, a1) = (-BACKGROUND_PAD, run.width + BACKGROUND_PAD);
+            let b0 = -(DESCENT * run.size + BACKGROUND_PAD);
+            let b1 = ASCENT * run.size + BACKGROUND_PAD;
+            let corner = |a: f32, b: f32| {
+                format!(
+                    "{} {}",
+                    num(e + a * x[0] + b * up[0]),
+                    num(f + a * x[1] + b * up[1])
+                )
+            };
+            // The page colour sampled for this box; white when none was.
+            let [fr, fg, fb] = run.fill.map_or([255, 255, 255], |c| c.0);
+            let ch = |v: u8| num(f32::from(v) / 255.0);
+            out.push_str(&format!("{} {} {} rg\n", ch(fr), ch(fg), ch(fb)));
+            out.push_str(&format!(
+                "{} m {} l {} l {} l h f\n",
+                corner(a0, b0),
+                corner(a1, b0),
+                corner(a1, b1),
+                corner(a0, b1)
+            ));
+        }
+    }
     out.push_str("BT\n0 Tr\n");
     let channel = |v: u8| num(f32::from(v) / 255.0);
     out.push_str(&format!(
@@ -113,7 +150,7 @@ pub fn write(
         let geom = page_geom(prev, *page);
         let old = page_layer::split(prev, &dict);
         let resources = page_layer::resources_with_font(prev, *page, FONT_NAME, font);
-        let stream = layer_stream(&geom, runs, color);
+        let stream = layer_stream(&geom, runs, color, spec.is_some_and(|s| s.background));
         let stream = inc
             .new_document
             .add_object(Stream::new(Dictionary::new(), stream));
@@ -561,6 +598,54 @@ mod tests {
     }
 
     #[test]
+    fn the_background_box_is_written_before_the_text_and_round_trips() {
+        let original = letter();
+        let mut s = spec("Kopf", HfPages::All);
+        s.background = true;
+        let saved = apply(original.clone(), &write_of(&s, geom0(), 3)).unwrap();
+        assert_eq!(&saved[..original.len()], &original[..], "prefix intact");
+        let (text, parts) = page_content(&saved, 0);
+        assert_eq!(parts, 4, "[q, original, Q, hf]");
+        let fill = text.find("1 1 1 RG").expect("white fill");
+        assert!(fill < text.find("BT").unwrap() && text.contains(" H F\n"));
+        // one box per run (the header and the page number), none without the option
+        assert_eq!(text.matches(" H F\n").count(), 2, "{text}");
+        let doc = crate::pdfwrite::prescan::load_untrusted(&saved).unwrap();
+        assert_eq!(read(&doc).spec.as_ref(), Some(&s));
+        let mut plain = s.clone();
+        plain.background = false;
+        let again = apply(saved, &write_of(&plain, geom0(), 3)).unwrap();
+        let (text, _) = page_content(&again, 0);
+        assert!(!text.contains(" H F\n") && text.contains(&hex("Kopf")));
+        // a spec of an older file has no such key
+        let mut json = serde_json::to_value(&plain).unwrap();
+        json.as_object_mut().unwrap().remove("background");
+        assert!(!serde_json::from_value::<HfSpec>(json).unwrap().background);
+    }
+
+    #[test]
+    fn the_box_is_the_padded_text_box_and_turns_with_the_page() {
+        let geom = PageGeom {
+            crop: [0.0, 0.0, 200.0, 300.0],
+            rotate: 0,
+        };
+        let run = PlacedRun {
+            text: "ab".into(),
+            origin: crate::model::geometry::Point { x: 20.0, y: 40.0 },
+            angle: 0,
+            size: 10.0,
+            width: 30.0,
+            fill: None,
+        };
+        let text = String::from_utf8(layer_stream(&geom, &[run], Rgb([0, 0, 0]), true)).unwrap();
+        // baseline at pdf y 260; box from x 17 to 53, y from 260 - 2.1 - 3 = 254.9 to 260 + 7.2 + 3
+        assert!(
+            text.contains("17 254.9 m 53 254.9 l 53 270.2 l 17 270.2 l h f"),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn rotation_and_crop_set_the_text_matrix() {
         for (rotate, matrix) in [
             (0, "1 0 0 1"),
@@ -573,8 +658,13 @@ mod tests {
                 rotate,
             };
             let runs = header_footer::resolve(&spec("H", HfPages::All), geom, 0, 1, "f");
-            let text = String::from_utf8(layer_stream(&geom, &runs, Rgb([0, 0, 0]))).unwrap();
+            let text =
+                String::from_utf8(layer_stream(&geom, &runs, Rgb([0, 0, 0]), false)).unwrap();
             assert!(text.contains(&format!(" {matrix} ")), "{rotate}: {text}");
+            assert!(
+                !text.contains(" re ") && !text.contains(" f\n"),
+                "no box: {text}"
+            );
         }
     }
 }
@@ -744,4 +834,35 @@ mod render_tests {
     // no public API for content marks (`FPDFPageObj_GetMark` is reachable only through the crate-private bindings accessor, and the
     // page object handle is private too), so the documented fallback applies: the engine shows the old layer until save, and the
     // overlay skips pages that have one.
+}
+#[cfg(test)]
+mod fill_tests {
+    use super::*;
+
+    #[test]
+    fn a_sampled_page_colour_fills_the_box_and_white_is_the_default() {
+        let geom = PageGeom {
+            crop: [0.0, 0.0, 200.0, 300.0],
+            rotate: 0,
+        };
+        let run = |fill| PlacedRun {
+            text: "ab".into(),
+            origin: crate::model::geometry::Point { x: 20.0, y: 40.0 },
+            angle: 0,
+            size: 10.0,
+            width: 30.0,
+            fill,
+        };
+        let tinted = String::from_utf8(layer_stream(
+            &geom,
+            &[run(Some(Rgb([255, 0, 51])))],
+            Rgb([0, 0, 0]),
+            true,
+        ))
+        .unwrap();
+        assert!(tinted.contains("1 0 0.2 rg\n17 254.9 m"), "{tinted}");
+        let plain =
+            String::from_utf8(layer_stream(&geom, &[run(None)], Rgb([0, 0, 0]), true)).unwrap();
+        assert!(plain.contains("1 1 1 rg\n17 254.9 m"), "{plain}");
+    }
 }

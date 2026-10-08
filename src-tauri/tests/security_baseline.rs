@@ -416,6 +416,8 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         // v1.9 (ADR-139): headers/footers and comment export.
         "allow-get-header-footer",
         "allow-resolve-header-footer",
+        // v2.0.0-rc.2 (F19.12): detect existing headers and footers.
+        "allow-detect-header-footer",
         "allow-export-comments",
         "allow-get-outline",
         "allow-get-text-layer",

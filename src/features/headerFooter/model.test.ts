@@ -92,6 +92,15 @@ describe('page range', () => {
     expect(draftFromSpec(messy, 5).allPages).toBe(true);
   });
 
+  it('carries the background option both ways and starts without it', () => {
+    expect(defaultDraft().background).toBe(false);
+    expect(buildSpec(defaultDraft(), CTX)?.background).toBe(false);
+    const spec = buildSpec({ ...defaultDraft(), background: true }, CTX);
+    expect(spec?.background).toBe(true);
+    if (spec === null) throw new Error('no spec');
+    expect(draftFromSpec(spec, 5).background).toBe(true);
+  });
+
   it('preselects the selected pages', () => {
     expect(withRange(defaultDraft(), 2, 4)).toMatchObject({ allPages: false, from: '2', to: '4' });
   });
