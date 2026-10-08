@@ -456,7 +456,12 @@ async function sweepTriggers(label) {
     }
     await probe(
       `popover:${label}:${t.name}`,
-      () => ev(`${el}')?.click()`),
+      async () => {
+        await ev(`${el}')?.click()`);
+        // A tool whose options open only while it is on (optionsWhenOn): the first click turns it on, the second opens the options.
+        await sleep(350);
+        if (!(await ev(`${el}[aria-expanded="true"]')`))) await ev(`${el}')?.click()`);
+      },
       () => ev(`${el}[aria-expanded="true"]')?.click()`),
     );
   }
