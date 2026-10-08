@@ -333,15 +333,43 @@ function Card({ anchor }: CardProps) {
     };
   }, [anchorEl, textId]);
 
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    // Esc with focus inside hides the card and restores the focus the region had before; elsewhere Esc is not ours.
-    if (event.key !== 'Escape') return;
-    event.preventDefault();
-    event.stopPropagation();
+  const dismissCard = () => {
     hide();
     const back = lastFocus.current;
     if (back !== null && back.isConnected) back.focus({ preventScroll: true });
-    else if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    else if (document.activeElement instanceof HTMLElement && card.current?.contains(document.activeElement) === true) {
+      document.activeElement.blur();
+    }
+  };
+  const dismissRef = useRef(dismissCard);
+  useEffect(() => {
+    dismissRef.current = dismissCard;
+  });
+
+  // Esc anywhere hides the card too (it never takes focus on its own), unless something else used the key: a popover, menu or
+  // dialog closes first, and a text field keeps its Esc.
+  useEffect(() => {
+    if (!present) return;
+    const onWindowKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const target = event.target;
+      // Esc inside a popover, menu or dialog is theirs, and a text field keeps its own.
+      const theirs =
+        'input, textarea, select, [contenteditable="true"], [role="menu"], [role="dialog"], [aria-modal="true"]';
+      if (target instanceof HTMLElement && target.closest(theirs) !== null) return;
+      dismissRef.current();
+    };
+    // Capture phase: the menu bar's own Esc (focus on a title) would otherwise mark the event handled first.
+    window.addEventListener('keydown', onWindowKey, true);
+    return () => window.removeEventListener('keydown', onWindowKey, true);
+  }, [present]);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    // Esc with focus inside hides the card and restores the focus the region had before.
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    dismissCard();
   };
 
   return (

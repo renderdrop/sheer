@@ -145,6 +145,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
     ) : (
       <Popover
         label={picker.label}
+        modal
         disabled={off}
         open={picker.open}
         onOpenChange={picker.setOpen}

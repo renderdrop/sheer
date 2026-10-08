@@ -114,7 +114,7 @@ export const LeftPanelSplitter = memo(function LeftPanelSplitter({
   const t = useT();
   const width = useUi((state) => clampPanelWidth(state.leftPanelWidth));
   return (
-    <div style={style} className="flex min-h-0">
+    <div role="region" aria-label={t('leftPanel.dividerRegion')} style={style} className="flex min-h-0">
       <Splitter
         label={t('leftPanel.resize')}
         controls={controls}

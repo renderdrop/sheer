@@ -116,6 +116,15 @@ describe('axe rules on the main surfaces (DESIGN 3.52)', () => {
     expect(await violations(container)).toEqual([]);
   });
 
+  it('has one level-one heading naming the app and the document, and the menu row is a banner', async () => {
+    const { user } = setup(<Shell />);
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
+    await screen.findByRole('img', { name: /^Page 1 of/ });
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('sheer.: Report.pdf');
+  });
+
   it('a dialog has no violations', async () => {
     setup(<PasswordDialog />);
     act(() => requestPassword(4, 'Secret.pdf'));

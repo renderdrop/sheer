@@ -158,7 +158,8 @@ export function Splitter({
       role="separator"
       aria-orientation="vertical"
       aria-label={label}
-      aria-controls={controls}
+      // A collapsed pane is not in the DOM, and `aria-controls` must name an element that is.
+      aria-controls={collapsed ? undefined : controls}
       aria-valuemin={0}
       aria-valuemax={max}
       aria-valuenow={collapsed ? 0 : value}

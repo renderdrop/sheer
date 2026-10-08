@@ -33,6 +33,16 @@ const attr = (name: string) => separator().getAttribute(name);
 const now = () => attr('aria-valuenow');
 
 describe('Splitter semantics', () => {
+  it('names the pane with aria-controls only while it is there, and keeps valid numeric values', () => {
+    const { getByRole } = setup(<Demo />);
+    const element = getByRole('separator', { name: 'Resize left panel' });
+    expect(element.getAttribute('aria-controls')).toBe('pane');
+    fireEvent.keyDown(element, { key: 'Enter' });
+    expect(element.hasAttribute('aria-controls')).toBe(false);
+    expect(element.getAttribute('aria-valuenow')).toBe('0');
+    expect(Number(element.getAttribute('aria-valuemax'))).toBeGreaterThanOrEqual(0);
+  });
+
   it('is a focusable vertical separator that reports its value, range and the pane it controls', () => {
     const { getByRole } = setup(<Demo />);
     const element = getByRole('separator', { name: 'Resize left panel' });

@@ -82,6 +82,21 @@ describe('the coach mark', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Next' }));
   });
 
+  it('hides on Esc pressed anywhere, and leaves a text field its own Esc', async () => {
+    const { user } = setup(<Fixture />);
+    act(() => useTour.getState().start(1));
+    await screen.findByRole('region');
+    const field = document.createElement('input');
+    document.body.append(field);
+    field.focus();
+    await user.keyboard('{Escape}');
+    expect(useTour.getState().hidden).toBe(false);
+    field.remove();
+    screen.getByRole('button', { name: 'elsewhere' }).focus();
+    await user.keyboard('{Escape}');
+    expect(useTour.getState().hidden).toBe(true);
+  });
+
   it('hides with the x button and ends with Skip, leaving nothing behind', async () => {
     const { user } = setup(<Fixture />);
     act(() => useTour.getState().start(1));

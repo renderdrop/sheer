@@ -63,6 +63,8 @@ export interface PopoverProps {
   align?: Align;
   /** A fixed outer width in px (it overrides the 200 to 320 range), for a popover that must fit a region such as the left panel. */
   width?: number;
+  /** A `dialog` popover that traps Tab and owns the keyboard while open: marked `aria-modal` (the stamp picker). */
+  modal?: boolean;
   children: ReactNode | ((api: PopoverApi) => ReactNode);
 }
 
@@ -98,6 +100,7 @@ export function Popover({
   side = 'bottom',
   align = 'start',
   width,
+  modal = false,
   children,
 }: PopoverProps) {
   const id = useId();
@@ -185,6 +188,7 @@ export function Popover({
               side={side}
               align={align}
               width={width}
+              modal={modal && role === 'dialog'}
               focusRequest={focusRequest}
               parent={parent}
               onClose={close}
@@ -207,6 +211,7 @@ interface SurfaceProps {
   side: Side;
   align: Align;
   width: number | undefined;
+  modal: boolean;
   focusRequest: FocusRequest;
   /** The popover this one is rendered in: a click in this one is a click in that one. */
   parent: string | null;
@@ -268,6 +273,7 @@ function FloatingSurface({
   side,
   align,
   width,
+  modal,
   focusRequest,
   parent,
   onClose,
@@ -348,7 +354,9 @@ function FloatingSurface({
         id={id}
         role={role}
         aria-label={label}
-        tabIndex={-1}
+        aria-modal={modal && present ? 'true' : undefined}
+        // A menu scrolls when long, so it must be reachable by keyboard (axe: scrollable-region-focusable); Tab in it closes it.
+        tabIndex={role === 'menu' ? 0 : -1}
         onKeyDown={onKeyDown}
         style={{
           transformOrigin: originOf(side, align),

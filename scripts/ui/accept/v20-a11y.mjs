@@ -201,6 +201,9 @@ const session = async (ctx) => {
 
   /** Esc closes the open surface and focus returns to the opener: the (c) part for dialogs and popovers. */
   async function escapeCheck(name, theme, bag, opener, { menubarOk = false } = {}) {
+    // The tour's finished step advances by itself 600 ms after it was done and shows the next card (by design): let it settle first.
+    const touring = (await ev("!!document.querySelector('[data-tour-card]')")) === true;
+    if (touring) await sleep(1500);
     await input.press('Escape');
     const closed = await gone();
     // A surface Esc does not close would pollute every later screen: reload to a clean window (the finding is recorded below).
@@ -216,7 +219,8 @@ const session = async (ctx) => {
         name: `surface still open after Esc (${await ev('window.__a11y.freshDesc()')})`,
       });
     else if (!back) bad.push({ rule: 'focus-return', role: '', name: `focus is on ${f.active} instead of the opener` });
-    if (stuck) await prepare().catch(() => {});
+    // A tour that is still running (hidden by Esc, the pill stays) would change every later screen: start from a clean window.
+    if (stuck || touring) await prepare().catch(() => {});
     else if (bad.length) await input.press('Escape').catch(() => {});
     bag.push({ screen: `${name} (Esc)`, theme, ok: bad.length === 0, violations: bad });
     C(`a11y ${theme} ${name}: Esc closes, focus returns`, bad.length === 0, bad[0]?.name ?? '');

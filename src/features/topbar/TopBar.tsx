@@ -1,4 +1,6 @@
 import { cx } from '../../components/cx';
+import { useT } from '../../i18n';
+import { WindowHeading } from './WindowHeading';
 import { CenterCluster } from './CenterCluster';
 import { LeftCluster } from './LeftCluster';
 import { LiveRegions } from './LiveRegions';
@@ -15,8 +17,11 @@ export interface TopBarProps {
  * Empty space is the drag region (Tauri's `data-tauri-drag-region`; buttons and fields are not).
  */
 export function TopBar({ trafficLightInset }: TopBarProps) {
+  const t = useT();
   return (
     <div
+      role="region"
+      aria-label={t('topbar.region')}
       data-slot="topbar"
       data-tauri-drag-region="deep"
       className={cx(
@@ -24,6 +29,7 @@ export function TopBar({ trafficLightInset }: TopBarProps) {
         trafficLightInset ? 'ps-chrome-inset' : 'ps-2',
       )}
     >
+      <WindowHeading />
       <LeftCluster />
       <CenterCluster />
       <RightCluster />

@@ -14,8 +14,22 @@ export const useSettingsPopover = create<SettingsPopoverState>()((set) => ({
   setOpen: (open) => set((state) => (state.open === open ? state : { open })),
 }));
 
+/** What had focus when the popover opened (the menu title, the canvas): it has no trigger, so this is where focus returns on Esc. */
+let opener: HTMLElement | null = null;
+
+/** Hands out the remembered opener once. */
+export function takeSettingsOpener(): HTMLElement | null {
+  const back = opener;
+  opener = null;
+  return back;
+}
+
 /** Opens the popover. One that is open stays open (the shortcut pressed again is not a toggle; Esc closes). */
 export function openSettings(): void {
+  if (!useSettingsPopover.getState().open) {
+    const active = document.activeElement;
+    opener = active instanceof HTMLElement && active !== document.body ? active : null;
+  }
   useSettingsPopover.getState().setOpen(true);
 }
 

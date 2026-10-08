@@ -22,6 +22,7 @@ export function HomeSlot({ platform, trafficLightInset, captionControls }: HomeS
   return (
     <BrandSurface data-slot="home" className="flex min-h-0 flex-auto flex-col">
       <div
+        role="banner"
         data-slot="home-strip"
         data-tauri-drag-region="deep"
         className={cx('flex h-topbar shrink-0 items-stretch', trafficLightInset && 'ps-chrome-inset')}

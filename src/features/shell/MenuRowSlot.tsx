@@ -15,7 +15,12 @@ export function MenuRowSlot() {
   const windowState = useWindowState(chrome);
   if (!chrome.caption) return null;
   return (
-    <div data-slot="menu-row" data-tauri-drag-region="deep" className="flex h-menubar shrink-0 items-stretch ps-2">
+    <div
+      role="banner"
+      data-slot="menu-row"
+      data-tauri-drag-region="deep"
+      className="flex h-menubar shrink-0 items-stretch ps-2"
+    >
       <div className="flex items-center">
         <MenuBar />
       </div>

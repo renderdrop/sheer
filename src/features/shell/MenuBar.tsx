@@ -105,8 +105,11 @@ export function MenuBar() {
   const origin = useRef<HTMLElement | null>(null);
   const altAlone = useRef(false);
   const openRef = useRef<string | null>(null);
+  /** The title of the menu a command was last chosen from: a dialog that command opens gives focus back to it. */
+  const openerId = useRef<string | null>(null);
   useEffect(() => {
     openRef.current = openId;
+    if (openId !== null) openerId.current = openId;
   }, [openId]);
 
   const ids = specs.map((spec) => spec.id);
@@ -120,21 +123,29 @@ export function MenuBar() {
   /** Remembers where focus was, unless it is in the bar already. */
   const remember = useCallback(() => {
     const active = document.activeElement;
-    if (active instanceof HTMLElement && active !== document.body && rootRef.current?.contains(active) !== true) {
+    // Not an item of a menu that is open (it goes away with the menu): that is no place to give focus back to.
+    if (
+      active instanceof HTMLElement &&
+      active !== document.body &&
+      rootRef.current?.contains(active) !== true &&
+      active.closest('[role="menu"]') === null
+    ) {
       origin.current = active;
     }
   }, []);
 
-  const restore = useCallback(() => {
+  const restore = useCallback((toOpener = false) => {
     const target = origin.current;
     origin.current = null;
+    const opener = toOpener && openerId.current !== null ? elements.current.get(openerId.current) : undefined;
     if (target?.isConnected === true) target.focus({ preventScroll: true });
+    else if (opener?.isConnected === true) opener.focus({ preventScroll: true });
     else if (rootRef.current?.contains(document.activeElement) === true) {
       (document.activeElement as HTMLElement).blur();
     }
   }, []);
 
-  const afterRun = useCallback(() => restore(), [restore]);
+  const afterRun = useCallback(() => restore(true), [restore]);
 
   const focusIndex = useCallback(
     (index: number) => {

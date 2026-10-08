@@ -15,7 +15,7 @@ import { resetTips } from '../tips/runtime';
 import { restartTour } from '../tour/runtime';
 import { useTour } from '../tour/store';
 import { UpdateRow } from '../update/UpdateRow';
-import { useSettingsPopover } from './state';
+import { takeSettingsOpener, useSettingsPopover } from './state';
 
 /** The values of each setting with the catalog key of their text, in the order the segments show them. */
 const LANGUAGE_CHOICES: readonly { value: Language; labelKey: PlainKey }[] = [
@@ -284,10 +284,18 @@ export function SettingsPopover() {
   const t = useT();
   const open = useSettingsPopover((state) => state.open);
   const setOpen = useSettingsPopover((state) => state.setOpen);
+  // Esc or an outside click closes it; with no trigger of its own, focus goes back to what had it when the command ran.
+  const onOpenChange = (next: boolean) => {
+    if (!next) {
+      const back = takeSettingsOpener();
+      if (back?.isConnected === true) window.setTimeout(() => back.focus({ preventScroll: true }), 0);
+    }
+    setOpen(next);
+  };
   return (
     <Popover
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={onOpenChange}
       label={t('settings.title')}
       side="bottom"
       align="start"

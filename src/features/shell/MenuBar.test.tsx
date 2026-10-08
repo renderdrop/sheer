@@ -110,6 +110,14 @@ describe('the Windows menu bar (DESIGN 3.56)', () => {
     expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'View' }));
   });
 
+  it('gives focus to the title of the menu a command was chosen from, not to the page body', async () => {
+    const { user } = setup(<MenuBar />);
+    await user.click(screen.getByRole('menuitem', { name: 'File' }));
+    const menu = await screen.findByRole('menu', { name: 'File' });
+    await user.click(within(menu).getByRole('menuitem', { name: /^Settings/ }));
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'File' }));
+  });
+
   it('Alt pressed and released alone, and F10, focus File without opening a menu', () => {
     setup(<MenuBar />);
     fireEvent.keyDown(window, { key: 'Alt', altKey: true });

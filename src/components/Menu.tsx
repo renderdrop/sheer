@@ -452,7 +452,8 @@ function SubmenuSurface({
         id={id}
         role="menu"
         aria-label={label}
-        tabIndex={-1}
+        // The list scrolls, so it is a tab stop for the keyboard (a scrollable region must be reachable); Tab inside closes the menu.
+        tabIndex={0}
         onKeyDown={onKeyDown}
         style={{ transformOrigin: side === 'left' ? 'right top' : 'left top' }}
         className={`bg-panel border border-border-subtle shadow-floating min-h-0 overflow-y-auto overflow-x-hidden rounded-button p-1 text-md text-text outline-none ${MENU_WIDTHS}`}

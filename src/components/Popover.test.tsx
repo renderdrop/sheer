@@ -26,6 +26,16 @@ function Demo(props: Partial<PopoverProps>) {
 const closed = (query: () => unknown) => waitFor(() => expect(query()).toBeNull());
 
 describe('Popover (dialog)', () => {
+  it('is aria-modal only when asked to be', async () => {
+    const first = setup(<Demo />);
+    await first.user.click(first.getByRole('button', { name: 'Open' }));
+    expect(first.getByRole('dialog', { name: 'Zoom' }).hasAttribute('aria-modal')).toBe(false);
+    first.unmount();
+    const second = setup(<Demo modal />);
+    await second.user.click(second.getByRole('button', { name: 'Open' }));
+    expect(second.getByRole('dialog', { name: 'Zoom' }).getAttribute('aria-modal')).toBe('true');
+  });
+
   it('opens from the trigger, names itself and moves focus to its first control', async () => {
     const { user, getByRole, queryByRole } = setup(<Demo />);
     const trigger = getByRole('button', { name: 'Open' });

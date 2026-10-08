@@ -1,6 +1,7 @@
 import { useMemo, type CSSProperties, type ReactNode } from 'react';
 
 import type { Platform } from '../../api/app';
+import { useT } from '../../i18n';
 import { WorkSurface } from '../../components';
 import { PANEL } from '../../components/tokens';
 import { shellTracks, type ShellStructure } from '../../lib/layout';
@@ -29,6 +30,7 @@ export interface EditorLayoutProps {
  * later packages replace one file each. The rows come from `shellTracks` (src/lib/layout.ts), one child per track, in order.
  */
 export function EditorLayout({ structure, platform, trafficLightInset }: EditorLayoutProps) {
+  const t = useT();
   const leftPanelId = LEFT_PANEL_ID;
   // Where each slot sits depends on the structure alone, not on the panel's width. Each placement is its own memo on its column, so the
   // memoized panels get the same style object and skip a render when the structure changes around them.
@@ -46,8 +48,11 @@ export function EditorLayout({ structure, platform, trafficLightInset }: EditorL
         leftPanelVisible={!structure.leftCollapsed}
         trafficLightInset={trafficLightInset}
       />
-      <ModeRow />
-      <ToolRow />
+      {/* `contents`: the two rows stay grid items of the editor, and the landmark names them for screen readers. */}
+      <div role="region" aria-label={t('modes.region')} className="contents">
+        <ModeRow />
+        <ToolRow />
+      </div>
       <MainGrid structure={structure}>
         <LeftPanelSlot present={!structure.leftCollapsed} id={leftPanelId} style={left} />
         <LeftPanelSplitter controls={leftPanelId} collapsed={structure.leftCollapsed} style={splitter} />

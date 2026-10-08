@@ -73,7 +73,7 @@ function SidebarToggle() {
       shortcut={shortcut?.label}
       keyShortcuts={shortcut?.aria}
       pressed={open}
-      aria-controls={LEFT_PANEL_ID}
+      aria-controls={open ? LEFT_PANEL_ID : undefined}
       data-sidebar-toggle=""
       onClick={() => void runAction('toggle-left-panel')}
     >

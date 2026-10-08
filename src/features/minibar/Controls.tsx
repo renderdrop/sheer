@@ -280,6 +280,7 @@ export function StampChangeControl({ id, tone, disabled }: DisabledProps & { id:
   return (
     <Popover
       label={t('stamp.change')}
+      modal
       open={open}
       disabled={disabled === true}
       onOpenChange={(next) => {

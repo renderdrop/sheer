@@ -214,8 +214,14 @@ export function unreachable(controls) {
 
 /** axe-core result -> compact violations (`violations` only; `incomplete` is counted, never failed). */
 export function summariseAxe(result) {
+  // The positioner of an open popup (menu, popover) is a transient layer, not page content: axe's page-level `region` rule does not apply to it.
+  const targetOf = (n) => (Array.isArray(n.target) ? n.target.join(' ') : String(n.target));
+  const isPopupLayer = (n) => targetOf(n) === '.z-popover' || targetOf(n).startsWith('div[data-side=');
+  const real = (result.violations ?? [])
+    .map((v) => (v.id === 'region' ? { ...v, nodes: v.nodes.filter((n) => !isPopupLayer(n)) } : v))
+    .filter((v) => v.nodes.length > 0);
   return {
-    violations: (result.violations ?? []).map((v) => ({
+    violations: real.map((v) => ({
       id: v.id,
       impact: v.impact ?? null,
       help: v.help,
