@@ -14,7 +14,8 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Never run the dev window while agents run cargo/vitest; stop it by killing only target\debug\sheer.exe processes.
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
-  - f5c05f0..1c03543 ADR-141/142, F19 part 1 (A–H) → run #144 (37811172571) pending
+  - f5c05f0..1c03543 ADR-141/142, F19 part 1 (A–H) → run #144 (37811172571) red: macOS crash, header_footer_detect bound PDFium per test in parallel → fixed d6df5b6
+  - d6df5b6 shared engine in header_footer_detect → run #145 (37813850885) GREEN
   - f162738..273b81d ADR-140, v2.0 polish backend/ui, v20 scripts → run #139 (37709850350) red: ocr_layer line test CI-loud, bind() failed while the engine held PDFium → fixed 3186d17
   - 3186d17..7a2a611 PDFium test bind reuse, v20 script fixes → run #140 (37713489154) GREEN
   - 2789536 a11y fixes (81 → 0) → run #141 (37718283927) GREEN
