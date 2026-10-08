@@ -142,6 +142,8 @@ describe('keyboard helpers', () => {
       { name: 'b', seen: false, composite: 'bar' },
       { name: 'c', seen: false, composite: null },
       { name: 'd', seen: false, composite: 'other' },
+      { name: 'e', seen: true, composite: 0 },
+      { name: 'f', seen: false, composite: 0 },
     ];
     expect(v.unreachable(controls)).toEqual(['c', 'd']);
   });
