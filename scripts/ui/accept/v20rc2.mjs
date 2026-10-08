@@ -132,11 +132,14 @@ const session = async (ctx) => {
     if (r !== 'ok') throw new Error(`update_settings failed: ${r}`);
     await ev('location.reload()').catch(() => {});
     await sleep(2000);
-    await input.waitFor(`document.documentElement.lang === 'en'`, { timeoutMs: 20000, what: 'UI language' });
+    await input.waitFor(`document.documentElement.lang === '${extra.language ?? 'en'}'`, {
+      timeoutMs: 20000,
+      what: 'UI language',
+    });
     await sleep(500);
     // The acceptance app is killed at the end of every run: the next start offers recovery. Dismiss that banner (it only shifts the layout).
     await sleep(1500);
-    if (await exists('[data-region="banner"] button[aria-label="Dismiss"]')) {
+    if (!process.env.V20_KEEP_BANNER && (await exists('[data-region="banner"] button[aria-label="Dismiss"]'))) {
       await input.click({ selector: '[data-region="banner"] button[aria-label="Dismiss"]' });
       await sleep(600);
     }
@@ -359,6 +362,19 @@ const session = async (ctx) => {
         await ev(`(() => { const t = document.querySelector('[data-home-tools]')?.getBoundingClientRect(); const m = document.querySelector('[data-home-body] main');
         return { top: t?.top ?? null, bottom: t?.bottom ?? null, vh: window.innerHeight, scrolls: m.scrollHeight > m.clientHeight + 1 }; })()`);
       await shot('f19-06-home-no-open-1280x800');
+      const banner = await exists(
+        '[data-region="banner"] [role="alert"], [data-region="banner"] button[aria-label="Dismiss"]',
+      );
+      console.log(`INFO  F19.6 recovery banner present: ${banner}`);
+      // German tool descriptions in the tools grid.
+      await fresh({ language: 'de' }).catch(() => {});
+      await ev('document.documentElement.lang').then((l) => console.log('INFO lang', l));
+      const de = await ev(`(() => { const g = document.querySelector('[data-home-tools]'); if (!g) return null;
+        const cols = getComputedStyle(g).gridTemplateColumns; const cut = [...g.querySelectorAll('*')].filter((e) => e.children.length === 0 && e.textContent.trim() && (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)).map((e) => e.textContent.trim().slice(0, 40));
+        return { cols: cols.split(' ').length, cut, bottom: g.getBoundingClientRect().bottom, vh: window.innerHeight }; })()`);
+      await shot('f19-06-home-de-1280x800');
+      C('F19.6 (de, 1280x800): tool descriptions not cut off', de !== null && de.cut.length === 0, JSON.stringify(de));
+      await fresh({ language: 'en' });
       console.log(
         `INFO  F19.6 (1280x800, no open tab): tools top ${bare.top}, bottom ${bare.bottom}/${bare.vh}, scrolls ${bare.scrolls}`,
       );
