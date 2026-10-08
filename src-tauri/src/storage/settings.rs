@@ -2,7 +2,7 @@
 //!
 //! Wire shape (camelCase, enum values lowercase):
 //! `{ "language": "system" | "en" | "de",
-//! "leftPanelWidth": 200..=320, "welcomeTour": "pending" | "shown", "authorName": 0..=128 chars, sanitized (ADR-034), no control
+//! "leftPanelWidth": 200..=480, "welcomeTour": "pending" | "shown", "authorName": 0..=128 chars, sanitized (ADR-034), no control
 //! characters, "authorPrompt": "pending" | "done", "updates": "off" | "on", "skippedVersion": null | version string (ADR-053) }`.
 //!
 //! - **Reading** never fails: a missing, oversized, damaged or hand-edited file falls back to the defaults, field by
@@ -938,7 +938,7 @@ mod tests {
 
     #[test]
     fn a_panel_width_patch_accepts_exactly_the_design_range() {
-        for pixels in [200, 201, 248, 319, 320] {
+        for pixels in [200, 201, 248, 320, 479, 480] {
             assert_eq!(
                 patch(json!({ "leftPanelWidth": pixels })).unwrap(),
                 SettingsPatch {
@@ -951,7 +951,7 @@ mod tests {
         for bad in [
             json!(0),
             json!(199),
-            json!(321),
+            json!(481),
             json!(65_535),
             json!(65_536),
             json!(-248),
@@ -1294,9 +1294,10 @@ mod tests {
         for (contents, expected) in [
             (r#"{"leftPanelWidth":200}"#, 200),
             (r#"{"leftPanelWidth":320}"#, 320),
+            (r#"{"leftPanelWidth":480}"#, 480),
             // Out of range, wrong type or missing: the default, never a clamped guess.
             (r#"{"leftPanelWidth":199}"#, 200),
-            (r#"{"leftPanelWidth":321}"#, 200),
+            (r#"{"leftPanelWidth":481}"#, 200),
             (r#"{"leftPanelWidth":-1}"#, 200),
             (r#"{"leftPanelWidth":300.5}"#, 200),
             (r#"{"leftPanelWidth":"300"}"#, 200),
