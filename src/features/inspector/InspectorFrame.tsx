@@ -115,7 +115,7 @@ export function InspectorFrame({ icon, title, onDismiss, footer, surface, childr
       data-region="inspector"
       data-surface={surface}
       onKeyDown={onKeyDown}
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden border-s border-border bg-surface"
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden border-s border-border bg-chrome"
     >
       <motion.div
         initial={enter}

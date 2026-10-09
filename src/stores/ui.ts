@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import type { AppError } from '../api/errors';
-import { clampPanelWidth } from '../lib/layout';
+import { clampInspectorWidth, clampPanelWidth } from '../lib/layout';
 import { useDocuments } from './documents';
 import { useSettings } from './settings';
 
@@ -100,6 +100,8 @@ export interface UiState {
   /** Live width while the splitter is dragged; `bindPanelWidthToSettings` persists it a moment after it settles. */
   leftPanelWidth: number;
   leftPanelCollapsed: boolean;
+  /** Width of the right tool inspector (240 to 480, F20.8). Kept app-wide in the settings (`bindInspectorWidthToSettings`). */
+  inspectorWidth: number;
   /** The active mode of the editor; Lesen on every open. */
   mode: Mode;
   activeTool: ToolId;
@@ -128,6 +130,7 @@ export interface UiState {
   setLeftPanelTab: (tab: LeftPanelTab) => void;
   setLeftPanelWidth: (width: number) => void;
   setLeftPanelCollapsed: (collapsed: boolean) => void;
+  setInspectorWidth: (width: number) => void;
   /** A click on a tool: activates it, and a click on the active tool, locked or not, goes back to Select. */
   selectTool: (tool: ToolId) => void;
   /** A double click or Shift+Enter on a tool: activates it and keeps it. */
@@ -159,6 +162,7 @@ export const useUi = create<UiState>()((set) => ({
   leftPanelTab: 'thumbnails',
   leftPanelWidth: clampPanelWidth(Number.NaN),
   leftPanelCollapsed: false,
+  inspectorWidth: clampInspectorWidth(Number.NaN),
   mode: 'read',
   activeTool: 'select',
   toolLocked: false,
@@ -178,6 +182,7 @@ export const useUi = create<UiState>()((set) => ({
   setLeftPanelTab: (leftPanelTab) => set({ leftPanelTab }),
   setLeftPanelWidth: (width) => set({ leftPanelWidth: clampPanelWidth(width) }),
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
+  setInspectorWidth: (width) => set({ inspectorWidth: clampInspectorWidth(width) }),
   // A tool of another mode switches the mode with it (a v1.1 single-letter key, a hub intent); the tool stays.
   selectTool: (tool) =>
     set((state) =>
@@ -269,6 +274,27 @@ export function bindPanelWidthToSettings(
   settings: SettingsLike = useSettings,
   delayMs: number = PANEL_WIDTH_PERSIST_DELAY_MS,
 ): () => void {
+  return bindWidthToSettings('leftPanelWidth', clampPanelWidth, ui, settings, delayMs);
+}
+
+/** The same for the right inspector's width (F20.8, ADR-144): `update({ inspectorWidth })` once it has been still. */
+export function bindInspectorWidthToSettings(
+  ui: UiLike = useUi,
+  settings: SettingsLike = useSettings,
+  delayMs: number = PANEL_WIDTH_PERSIST_DELAY_MS,
+): () => void {
+  return bindWidthToSettings('inspectorWidth', clampInspectorWidth, ui, settings, delayMs);
+}
+
+type WidthKey = 'leftPanelWidth' | 'inspectorWidth';
+
+function bindWidthToSettings(
+  key: WidthKey,
+  clamp: (width: number) => number,
+  ui: UiLike,
+  settings: SettingsLike,
+  delayMs: number,
+): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let userMoved = false;
   let applying = false;
@@ -278,8 +304,8 @@ export function bindPanelWidthToSettings(
   const schedule = () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const width = ui.getState().leftPanelWidth;
-      if (width !== settings.getState().leftPanelWidth) void settings.getState().update({ leftPanelWidth: width });
+      const width = ui.getState()[key];
+      if (width !== settings.getState()[key]) void settings.getState().update({ [key]: width });
     }, delayMs);
   };
 
@@ -294,15 +320,15 @@ export function bindPanelWidthToSettings(
       }
       return;
     }
-    const width = clampPanelWidth(state.leftPanelWidth);
-    if (width === ui.getState().leftPanelWidth) return;
+    const width = clamp(state[key] ?? Number.NaN);
+    if (width === ui.getState()[key]) return;
     applying = true;
-    ui.setState({ leftPanelWidth: width });
+    ui.setState({ [key]: width });
     applying = false;
   };
 
   const stopUi = ui.subscribe((state, previous) => {
-    if (applying || state.leftPanelWidth === previous.leftPanelWidth) return;
+    if (applying || state[key] === previous[key]) return;
     userMoved = true;
     if (settings.getState().loaded) {
       savedAfterLoad = true;

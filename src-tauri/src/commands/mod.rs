@@ -25,7 +25,7 @@
 //! | `save_document`, `save_document_as` | `docId`, `ack?` (and `opts?`) | the `SaveResult` (`null` if the Save As dialog was cancelled), see [`save`] |
 //! | `unlock_document` | `docId`, `password: string` (1 to 1024 bytes) | the `DocumentInfo` once the encrypted file is open; a wrong password is `password_required` (retry waits 1 s after the third, in Rust) |
 //! | `list_recents`, `remove_recent`, `open_recent` | none; `recentId`; `recentId` | `{ id, displayName, folder, lastOpened, missing }[]` (at most 50, no paths; `folder` is the parent folder's name); nothing; the open event of the file (`opened`, `needsPassword` or `openFailed`) |
-//! | `get_recent_thumbnail` | `recentId` | an `SHR1` frame (PNG, at most 64 x 80 px) of the first page; `not_found` when there is none, see [`thumbnails`] |
+//! | `get_recent_thumbnail` | `recentId` | an `SHR1` frame (PNG, at most 384 x 480 px) of the first page; `not_found` when there is none, see [`thumbnails`] |
 //! | `set_menu_state` | `hasDocument: boolean` | nothing; the macOS menu bar greys the commands that need a document |
 //! | `app_ready`, `get_settings`, `update_settings`, `subscribe_menu`, `subscribe_app` | see [`app`] | see [`app`] |
 //!

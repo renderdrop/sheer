@@ -4,6 +4,7 @@ import { LANGUAGES, type Language } from '../i18n/locale';
 import { call } from './call';
 import { parseTagDefs, type TagDef } from './cite';
 import { parseOpenOutcome, type OpenOutcome } from './documents';
+import { clampInspectorWidth } from '../lib/layout';
 import { toAppError } from './errors';
 import { parseOcrEvent, type OcrEvent } from './ocr';
 import { parseUpdateInfo, type UpdateInfo } from './update';
@@ -35,6 +36,8 @@ export interface Settings {
   language: Language;
   /** Width of the left panel in px, an integer from `LEFT_PANEL_WIDTH.min` to `.max`. */
   leftPanelWidth: number;
+  /** Width of the right inspector in px, 240 to 480 (F20.8, ADR-144). Absent until the backend knows the field; absent means the default. */
+  inspectorWidth?: number;
   /** "pending" until the welcome tour has been started once; the UI writes "shown" before it opens the welcome document. */
   welcomeTour: WelcomeTour;
   /** The name put on annotations the user creates: empty (the default, no author is written, ADR-034) or up to `AUTHOR_NAME_MAX` characters, no control characters. */
@@ -131,6 +134,7 @@ export function parseSettings(value: unknown): Settings | null {
   const {
     language,
     leftPanelWidth,
+    inspectorWidth,
     welcomeTour,
     authorName,
     authorPrompt,
@@ -143,6 +147,7 @@ export function parseSettings(value: unknown): Settings | null {
   } = value as {
     language?: unknown;
     leftPanelWidth?: unknown;
+    inspectorWidth?: unknown;
     welcomeTour?: unknown;
     authorName?: unknown;
     authorPrompt?: unknown;
@@ -177,6 +182,9 @@ export function parseSettings(value: unknown): Settings | null {
   return {
     language: parsedLanguage,
     leftPanelWidth,
+    ...(typeof inspectorWidth === 'number' && Number.isInteger(inspectorWidth)
+      ? { inspectorWidth: clampInspectorWidth(inspectorWidth) }
+      : {}),
     welcomeTour: parsedTour,
     authorName,
     authorPrompt: parsedPrompt,

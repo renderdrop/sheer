@@ -68,6 +68,9 @@ pub struct AnnotationSummary {
     pub tags: Vec<String>,
     /// The annotation is a citation (ADR-119).
     pub cite: bool,
+    /// The group the annotation belongs to (F20.7); absent on one on its own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 fn kind_of(body: &AnnotationBody) -> &'static str {
@@ -171,6 +174,7 @@ impl AnnotationSummary {
             detail: detail_of(&annotation.body),
             tags: annotation.tags.clone(),
             cite: annotation.cite.is_some(),
+            group: annotation.group.clone(),
         }
     }
 }

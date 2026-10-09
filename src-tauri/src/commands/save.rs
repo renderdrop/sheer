@@ -12,6 +12,7 @@
 //! again under the same id; if that fails the original bytes are put back. Afterwards the model holds the annotations as `clean`
 //! with their new positions in the file, and its history is empty (ADR-033).
 
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
@@ -141,6 +142,9 @@ pub struct SaveResult {
     pub changes: ChangeSet,
 }
 
+/// Where a member of a group comes in the file being written: page, position in the page (`u32::MAX` for a new one), id.
+type GroupOrder = (u32, u32, AnnotId);
+
 /// What a save has to write, from the model: `page_index` is the page's position in the file being written, and `origin_of` says where the
 /// annotation that is in the file now will be (`None`: its page is not in the file any more, so there is nothing to write or delete).
 pub(super) fn plan_with_origins(
@@ -153,6 +157,46 @@ pub(super) fn plan_with_origins(
         assets: state.assets().snapshot(),
         ..Plan::default()
     };
+    // The groups (F20.7): when one member changed, every member the model holds is written again, each linked to the group's first
+    // (the earliest page of the file being written, then the earliest position), so the links in the file always agree.
+    let mut members: HashMap<&str, Vec<(GroupOrder, bool)>> = HashMap::new();
+    for entry in state.entries() {
+        let annotation = &entry.annotation;
+        let Some(key) = annotation.group.as_deref() else {
+            continue;
+        };
+        if entry.tombstone || annotation.is_opaque() || !annotation.body.is_written_as_annotation()
+        {
+            continue;
+        }
+        let Some(page) = page_index(annotation) else {
+            continue;
+        };
+        let position = entry
+            .persisted
+            .as_ref()
+            .and_then(&origin_of)
+            .map_or(u32::MAX, |origin| origin.annot_index);
+        members.entry(key).or_default().push((
+            (page, position, annotation.id),
+            annotation.sync != Sync::Clean,
+        ));
+    }
+    let mut regroup: HashSet<AnnotId> = HashSet::new();
+    for list in members.values() {
+        if list.len() < 2 || !list.iter().any(|(_, changed)| *changed) {
+            continue;
+        }
+        let Some(first) = list.iter().map(|(order, _)| *order).min() else {
+            continue;
+        };
+        for ((_, _, id), _) in list {
+            regroup.insert(*id);
+            if *id != first.2 {
+                plan.group_firsts.insert(*id, first.2);
+            }
+        }
+    }
     for entry in state.entries() {
         let annotation = &entry.annotation;
         let origin = entry.persisted.as_ref().and_then(&origin_of);
@@ -174,7 +218,7 @@ pub(super) fn plan_with_origins(
         // Text boxes and images are burned in, redaction marks are never written (ADR-047): neither is an annotation of the file.
         let to_write = !annotation.is_opaque()
             && annotation.body.is_written_as_annotation()
-            && annotation.sync != Sync::Clean;
+            && (annotation.sync != Sync::Clean || regroup.contains(&annotation.id));
         if let (true, Some(page_index)) = (to_write, page_index(annotation)) {
             plan.changes.push(Change::Write {
                 page_index,

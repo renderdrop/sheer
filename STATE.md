@@ -1,9 +1,13 @@
 # STATE
 phase: session "v2.0.0 final — owner test rc.3 (F20)" (ADR-144, tempo level 4, model policy ADR-142) in progress
 version: 2.0.0-rc.3 (tag v2.0.0-rc.3, pre-release; latest stable v1.9.0)
-current_item: F20 wave 1 — A home F20.1–3 (Sonnet, cargo) · B chrome/tabs/zoom/inspector F20.8–11 (Sonnet) · C ink/colour/thumbs F20.4–6 (Sonnet) · D multi-select comments F20.7 (Opus, cargo)
-  queued: E author detection (Rust, after a cargo slot frees) · F F19.28 (Opus, 3rd attempt) · G acceptance script v20final · designer round · security audit · release v2.0.0
+current_item: F20 — A, B, B2, C, D, F, G done in tree (uncommitted); running: D2 group perf/security lows, review E; E done
+  queued: commit wave · acceptance v20final + all scripts · designer round · security audit · release v2.0.0
 packages:
+  review A PASS; minors (polish): gate home sweep only one state (with/without open row), 784px literal in container query, FIT_NEEDS hand-synced, long de tile title could overflow
+  review D PASS; minors: foreign.rs:507 Groups::of per page read (O(pages×annots), full parse — check perf on 500 pages), group text edit skips locked members silently, multi-range drag untested end-to-end
+  security D/A PASS; lows 1–4 → package D2 (memoise Groups::of + HashSet, cache per doc for read_page, /NM identity + object number, cap imported groups at MAX_GROUP_MEMBERS) + SECURITY.md MAX_THUMB_BYTES 512 KiB
+  E author detection: authors 15/8/8/0 → 15/14/14/0 (truth/found/correct/wrong), year 19/17/14/3 → 19/19/15/4 (corpus-03 deck no year in truth), kind 15/12/11/1 unchanged, others unchanged; corpus-21 letter-spaced not found
 last_completed: v2.0.0-rc.3 — F19.16–F19.27; report docs/reports/2026-10-09-v2.0.0-rc.3-f19-teil2.md
 loop_count_this_session: 0
 open_blockers: 3 (B-002, B-005, B-008, human-only)

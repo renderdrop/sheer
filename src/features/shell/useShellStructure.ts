@@ -22,6 +22,7 @@ export function readShellStructure(): ShellStructure {
     // Windows draws its own menu row; macOS has the native bar (DESIGN v2 3.2).
     menuRow: chromeFor(useSettings.getState().platform ?? detectPlatform()).caption,
     // The inspector column (300) is there while a tool inspector or the history list is open (DESIGN 3.18 E1, E5).
+    inspectorWidth: ui.inspectorWidth,
     inspectorOpen: useToolInspector.getState().open !== null,
   });
 }

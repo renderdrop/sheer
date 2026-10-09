@@ -22,7 +22,7 @@ export interface ColourEntry {
 }
 
 export interface ColourPopoverProps {
-  /** The palette of the swatch row this belongs to (strokes or highlights). */
+  /** The palette of the swatch row this belongs to; the popover no longer shows it (F20.5), callers still pass it. */
   palette: readonly ColourEntry[];
   /** Recently used custom colours, newest first, at most 8 (the caller keeps the list). */
   recent: readonly Rgb3[];
@@ -44,13 +44,13 @@ const COLUMNS = 6;
 const css = (rgb: Rgb3): string => `color(srgb ${rgb[0] / 255} ${rgb[1] / 255} ${rgb[2] / 255})`;
 
 /**
- * "More colours" (DESIGN 3.5 B5): a 24 swatch with a plus that opens a 240 wide popover: the palette grid (6 per row), "Recently used"
- * (up to 8, newest first), and a hex field with preview and Apply. The field takes 3 or 6 digits with or without "#", shows a live
+ * "More colours" (DESIGN 3.5 B5, F20.5): a 24 swatch with a plus that opens a 240 wide popover with "Recently used" (up to 6, newest
+ * first, hidden when empty) and a hex field with preview and Apply; no second palette (the row already has it).
+ * The field takes 3 or 6 digits with or without "#", shows a live
  * preview while valid and an error state otherwise; Apply is off until it is valid. Arrow keys move over the swatches (one tab stop),
  * Enter chooses, Tab goes on to the field, Esc closes and gives focus back.
  */
 export function ColourPopover({
-  palette,
   recent,
   value,
   onPick,
@@ -86,7 +86,6 @@ export function ColourPopover({
     >
       {(api) => (
         <ColourPanel
-          palette={palette}
           recent={recent}
           value={value}
           stroke={stroke}
@@ -104,17 +103,16 @@ export function ColourPopover({
   );
 }
 
-/** At most this many recent custom colours follow the palette (DESIGN 3.9 Q4): one more row of six at most. */
+/** At most this many recent custom colours are listed (DESIGN 3.9 Q4, F20.5): one row of six. */
 export const RECENT_IN_POPOVER = 6;
 
 function ColourPanel({
-  palette,
   recent,
   value,
   stroke,
   onPick,
   onApply,
-}: Pick<ColourPopoverProps, 'palette' | 'recent' | 'value' | 'onPick' | 'onApply'> & { stroke: boolean }) {
+}: Pick<ColourPopoverProps, 'recent' | 'value' | 'onPick' | 'onApply'> & { stroke: boolean }) {
   const t = useT();
   const hexId = useId();
   const noteId = useId();
@@ -127,8 +125,7 @@ function ColourPanel({
   const shown = recent.slice(0, RECENT_IN_POPOVER);
 
   // One tab stop over the swatches: the checked one, else the first; the arrows move.
-  const all = [...palette.map((entry) => entry.rgb), ...shown];
-  const checked = value === null ? -1 : all.findIndex((rgb) => sameColour(rgb, value));
+  const checked = value === null ? -1 : shown.findIndex((rgb) => sameColour(rgb, value));
   const [stop, setStop] = useState(Math.max(0, checked));
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -148,7 +145,7 @@ function ColourPanel({
     if (parsed !== null) onApply(parsed);
   };
 
-  const swatch = (rgb: Rgb3, index: number, label: string, fillClass?: string, checkClass?: string) => (
+  const swatch = (rgb: Rgb3, index: number, label: string) => (
     <div key={`${index}-${toHex(rgb)}`} className="flex size-8 items-center justify-center">
       <Tooltip label={label}>
         <Swatch
@@ -156,9 +153,7 @@ function ColourPanel({
           tabIndex={index === stop ? 0 : -1}
           label={label}
           checked={value !== null && sameColour(value, rgb)}
-          fillClass={fillClass}
-          checkClass={checkClass}
-          style={fillClass === undefined ? { backgroundColor: css(rgb) } : undefined}
+          style={{ backgroundColor: css(rgb) }}
           onFocus={() => setStop(index)}
           onClick={() => onPick(rgb)}
         />
@@ -168,10 +163,14 @@ function ColourPanel({
 
   return (
     <div className="flex w-(--colour-popover-inner) flex-col gap-3" onKeyDown={onKeyDown}>
-      <div role="radiogroup" aria-label={t('minibar.colour')} className="grid grid-cols-6 justify-items-center">
-        {palette.map((entry, index) => swatch(entry.rgb, index, entry.label, entry.fillClass, entry.checkClass))}
-        {shown.map((rgb, index) => swatch(rgb, palette.length + index, `#${toHex(rgb)}`))}
-      </div>
+      {shown.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="t-caption text-text-muted">{t('color.recent')}</span>
+          <div role="radiogroup" aria-label={t('color.recent')} className="grid grid-cols-6 justify-items-center">
+            {shown.map((rgb, index) => swatch(rgb, index, `#${toHex(rgb)}`))}
+          </div>
+        </div>
+      )}
       <div className="flex flex-col gap-1">
         <div className="relative flex h-control-md w-full items-center">
           <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 start-2 flex items-center gap-1">

@@ -19,7 +19,7 @@ export function MenuRowSlot() {
       role="banner"
       data-slot="menu-row"
       data-tauri-drag-region="deep"
-      className="flex h-menubar shrink-0 items-stretch ps-2"
+      className="bg-chrome flex h-menubar shrink-0 items-stretch ps-2"
     >
       <div className="flex items-center">
         <MenuBar />

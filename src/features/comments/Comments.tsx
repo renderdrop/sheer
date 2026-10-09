@@ -29,6 +29,7 @@ import {
   offsetsOf,
   pruneHeights,
   sortThreads,
+  threadIds,
   windowOf,
   type Row,
   type Thread,
@@ -319,11 +320,11 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
     } else if (event.key === 'Enter' || event.key === ' ') {
       activate(row.thread);
     } else if (event.key === 'Delete' || event.key === 'Backspace') {
-      const { root, replies, states } = row.thread;
+      const { root } = row.thread;
       if (root.kind !== 'opaque') {
         const next = step(index, 1);
         const fallback = next >= 0 ? next : step(index, -1);
-        void deleteThread(docId, [root.id, ...replies.map((r) => r.id), ...states.map((s) => s.id)]).then((done) =>
+        void deleteThread(docId, threadIds(row.thread)).then((done) =>
           done && fallback >= 0 ? focusRow(fallback) : undefined,
         );
       }

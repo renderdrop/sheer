@@ -47,6 +47,12 @@ export const MIN_CONTENT_BOX_PT = 4;
 export const MAX_ANNOT_CONTENTS_CHARS = 32_768;
 /** Entries of the undo stack (`MAX_HISTORY_ENTRIES`). */
 export const MAX_HISTORY_ENTRIES = 500;
+/** Most members of a group made at once (`MAX_GROUP_MEMBERS`, F20.7): one annotation per page. */
+export const MAX_GROUP_MEMBERS = 64;
+
+/** Whether a value is a group key (F20.7): 16 lower-case hex characters, set by the backend. */
+export const isGroupKey = (value: unknown): value is string =>
+  typeof value === 'string' && /^[0-9a-f]{16}$/.test(value);
 
 export type Rgb = readonly [number, number, number];
 export type LineEnd = 'none' | 'openArrow' | 'closedArrow';
@@ -110,6 +116,8 @@ export interface AnnotationCommon {
   sync: SyncState;
   /** Set on a citation (a highlight with a quote, ADR-119); absent on every other annotation. */
   cite?: Cite;
+  /** The group the annotation belongs to (F20.7, `/IRT` + `/RT /Group`): every member has the same key; absent on one on its own. */
+  group?: string;
   /** The tag names of the annotation (at most 8); absent when none. */
   tags?: readonly string[];
 }
@@ -261,6 +269,8 @@ export interface AnnotationPatch {
  */
 export type DocCommand =
   | { type: 'createAnnotation'; draft: AnnotationDraft | ContentDraft }
+  /** Markup annotations (2 to 64, one per page) made as one group in one step (F20.7); the backend gives them a fresh `group` key. */
+  | { type: 'createAnnotationGroup'; drafts: readonly AnnotationDraft[] }
   | { type: 'updateAnnotation'; id: number; patch: AnnotationPatch; coalesce?: string }
   | { type: 'deleteAnnotations'; ids: readonly number[] }
   | { type: 'moveAnnotations'; ids: readonly number[]; dx: number; dy: number }
@@ -588,6 +598,7 @@ function parseWith<Body>(
     ...(state === undefined ? {} : { state: state as ReviewState }),
     ...(cite === null ? {} : { cite }),
     ...(tags.length === 0 ? {} : { tags }),
+    ...(isGroupKey(value.group) ? { group: value.group } : {}),
     ...body,
   };
 }
@@ -848,6 +859,8 @@ export interface AnnotationSummary {
   detail?: string;
   /** The tag names (ADR-119); absent when none. */
   tags?: readonly string[];
+  /** The group the annotation belongs to (F20.7); absent on one on its own. */
+  group?: string;
   /** A citation (ADR-119); absent otherwise. */
   cite?: true;
 }
@@ -901,6 +914,7 @@ function parseSummary(value: unknown): AnnotationSummary | null {
     ...(state === undefined ? {} : { state: state as ReviewState }),
     ...(detail === undefined ? {} : { detail }),
     ...(tags.length === 0 ? {} : { tags }),
+    ...(isGroupKey(value.group) ? { group: value.group } : {}),
     ...(value.cite === true ? { cite: true as const } : {}),
   };
 }

@@ -52,7 +52,7 @@ export const ModeRow = memo(function ModeRow() {
       aria-orientation="horizontal"
       data-slot="mode-row"
       onKeyDown={onKeyDown}
-      className="flex h-mode-tab shrink-0 min-w-0 items-end border-b border-border-subtle bg-panel px-1"
+      className="flex h-mode-tab shrink-0 min-w-0 items-end border-b border-border-subtle bg-chrome px-1"
     >
       {MODES.map((id: Mode) => {
         const selected = id === mode;

@@ -11,6 +11,7 @@ import type { Rect } from '../../api/wire';
 import { positionOf } from '../../stores/pages';
 import { LAYER_ATTRIBUTE, resolveBoundary, type TextPoint } from './selection';
 import { selectionBars } from './selectionBars';
+import { useMultiSelection, type TextSpan } from './multiSelection';
 
 export interface PageOverlayProps {
   docId: number;
@@ -102,12 +103,16 @@ export function coveredRange(
   return [here === loPos ? lo.index : 0, here === hiPos ? hi.index : length];
 }
 
-/** The selected part of this page's text as bars, one per line (F19.9); follows the browser's selection. */
+/**
+ * The selected part of this page's text as bars, one per line (F19.9); follows the browser's selection and the pinned ranges of a
+ * multi-selection (F20.7).
+ */
 function useSelectionBars(docId: number, page: number, layer: TextLayer | null): Rect[] {
-  const [bars, setBars] = useState<Rect[]>([]);
+  const [live, setLive] = useState<Rect[]>([]);
+  const pinned = useMultiSelection((state) => (state.docId === docId ? state.spans : NO_SPANS));
   useEffect(() => {
     if (layer === null) return;
-    const clear = () => setBars((old) => (old.length === 0 ? old : []));
+    const clear = () => setLive((old) => (old.length === 0 ? old : []));
     const update = () => {
       const selection = window.getSelection();
       if (selection === null || selection.rangeCount === 0 || selection.isCollapsed) return clear();
@@ -117,14 +122,24 @@ function useSelectionBars(docId: number, page: number, layer: TextLayer | null):
       if (a === null || b === null) return clear();
       const covered = coveredRange(a, b, page, layer.text.length, (id) => positionOf(docId, id));
       if (covered === null) return clear();
-      setBars(selectionBars(layer, covered[0], covered[1]));
+      setLive(selectionBars(layer, covered[0], covered[1]));
     };
     update();
     document.addEventListener('selectionchange', update);
     return () => document.removeEventListener('selectionchange', update);
   }, [docId, page, layer]);
-  return bars;
+  const held = useMemo(() => {
+    if (layer === null || pinned.length === 0) return NO_BARS;
+    return pinned.flatMap(({ start, end }) => {
+      const covered = coveredRange(start, end, page, layer.text.length, (id) => positionOf(docId, id));
+      return covered === null ? [] : selectionBars(layer, covered[0], covered[1]);
+    });
+  }, [docId, page, layer, pinned]);
+  return useMemo(() => (held.length === 0 ? live : [...held, ...live]), [held, live]);
 }
+
+const NO_SPANS: readonly TextSpan[] = [];
+const NO_BARS: Rect[] = [];
 
 function SelectionBars({ docId, page, layer }: { docId: number; page: number; layer: TextLayer }) {
   const bars = useSelectionBars(docId, page, layer);

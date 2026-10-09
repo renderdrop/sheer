@@ -124,3 +124,36 @@ export function endJump(): void {
   jumpWaiter = null;
   waiter?.();
 }
+
+/**
+ * The continuous scroll position of the canvas as page progress (F20.6): the page index plus how far the middle of the viewport is
+ * through that page (below 0 or above 1 when it is in the gap), published on every scroll step. The thumbnail list follows it
+ * proportionally. Not React state: a scroll must not render anything.
+ */
+export interface PageProgress {
+  docId: number;
+  progress: number;
+}
+
+let pageProgress: PageProgress | null = null;
+const progressListeners = new Set<() => void>();
+
+export function publishPageProgress(next: PageProgress): void {
+  if (pageProgress !== null && pageProgress.docId === next.docId && pageProgress.progress === next.progress) return;
+  pageProgress = next;
+  for (const listener of [...progressListeners]) listener();
+}
+
+export function readPageProgress(): PageProgress | null {
+  return pageProgress;
+}
+
+export function subscribePageProgress(listener: () => void): () => void {
+  progressListeners.add(listener);
+  return () => progressListeners.delete(listener);
+}
+
+/** The canvas shows no continuous scroll (paged mode, or no canvas): the list then follows the page that is reported. */
+export function clearPageProgress(): void {
+  pageProgress = null;
+}

@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppError } from '../api/errors';
 import { PANEL } from '../components/tokens';
-import { PANEL_WIDTH_PERSIST_DELAY_MS, bindPanelWidthToSettings, bindSidebarCollapseToSettings, useUi } from './ui';
+import {
+  PANEL_WIDTH_PERSIST_DELAY_MS,
+  bindInspectorWidthToSettings,
+  bindPanelWidthToSettings,
+  bindSidebarCollapseToSettings,
+  useUi,
+} from './ui';
 import { useSettings } from './settings';
 
 const initial = useUi.getState();
@@ -323,5 +329,59 @@ describe('bindSidebarCollapseToSettings', () => {
     expect(useUi.getState().leftPanelCollapsed).toBe(true);
     expect(update).toHaveBeenCalledWith({ pageSidebarCollapsed: true });
     stop();
+  });
+});
+
+describe('the inspector width (F20.8)', () => {
+  it('starts at 300 and stays inside 240 to 480', () => {
+    expect(useUi.getState().inspectorWidth).toBe(300);
+    const { setInspectorWidth } = useUi.getState();
+    setInspectorWidth(100);
+    expect(useUi.getState().inspectorWidth).toBe(240);
+    setInspectorWidth(9000);
+    expect(useUi.getState().inspectorWidth).toBe(480);
+    setInspectorWidth(Number.NaN);
+    expect(useUi.getState().inspectorWidth).toBe(300);
+  });
+
+  describe('persistence in the settings', () => {
+    const settingsInitial = useSettings.getState();
+    const update = vi.fn<(patch: { inspectorWidth?: number }) => Promise<void>>();
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      update.mockReset().mockResolvedValue(undefined);
+      useSettings.setState({ ...settingsInitial, loaded: false, update }, true);
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      useSettings.setState(settingsInitial, true);
+    });
+
+    it('takes the saved (clamped) width once the settings have loaded', () => {
+      const stop = bindInspectorWidthToSettings();
+      expect(useUi.getState().inspectorWidth).toBe(300);
+      useSettings.setState({ loaded: true, inspectorWidth: 380 });
+      expect(useUi.getState().inspectorWidth).toBe(380);
+      useSettings.setState({ inspectorWidth: 9000 });
+      expect(useUi.getState().inspectorWidth).toBe(480);
+      expect(update).not.toHaveBeenCalled();
+      stop();
+    });
+
+    it('saves a changed width once it has been still, and not a width the settings hold', () => {
+      const stop = bindInspectorWidthToSettings();
+      useSettings.setState({ loaded: true, inspectorWidth: 300 });
+      useUi.getState().setInspectorWidth(340);
+      useUi.getState().setInspectorWidth(360);
+      vi.advanceTimersByTime(PANEL_WIDTH_PERSIST_DELAY_MS);
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update).toHaveBeenCalledWith({ inspectorWidth: 360 });
+      useSettings.setState({ inspectorWidth: 360 });
+      useUi.getState().setInspectorWidth(360);
+      vi.advanceTimersByTime(PANEL_WIDTH_PERSIST_DELAY_MS);
+      expect(update).toHaveBeenCalledTimes(1);
+      stop();
+    });
   });
 });

@@ -1,3 +1,4 @@
+import { useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import { rovingTarget } from '../../components/roving';
@@ -7,10 +8,12 @@ import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { DEFAULT_PAGE_SIZE, sizesFor, usePages, useSlots } from '../../stores/pages';
 import { useDocViewValue, useView } from '../../stores/view';
+import { readPageProgress, subscribePageProgress } from '../viewer/scrollBridge';
 import { useDevicePixelRatio } from '../viewer/useDevicePixelRatio';
 import { useViewer } from '../viewer/useViewer';
 import {
   ThumbnailLayout,
+  progressAnchor,
   thumbnailMetricsFor,
   type IndexRange,
   type ListAnchor,
@@ -118,6 +121,7 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
   const rangeSet = useRef<IndexRange | null>(null);
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
   const measured = box.width > 0 && box.height > 0;
+  const reduceMotion = useReducedMotion();
 
   const layout = useMemo(
     () => new ThumbnailLayout(thumbnailMetricsFor(sizes), box.width - 2 * spacing.pad - 2 * inset, spacing),
@@ -202,11 +206,40 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
         const page = state.byDoc[docId]?.pageIndex;
         if (page === undefined || page === previous.byDoc[docId]?.pageIndex) return;
         if (performance.now() - userScrolledAt.current < USER_SCROLL_GRACE_MS) return;
+        // With the continuous follow running (a canvas that publishes progress, not reduced motion) it already moves the list.
+        if (reduceMotion !== true && readPageProgress()?.docId === docId) return;
         reveal(page);
         track();
       }),
-    [docId, reveal, track],
+    [docId, reveal, track, reduceMotion],
   );
+
+  // The list follows the canvas's continuous scroll position (F20.6): the middle of the canvas's viewport, as page progress, is
+  // kept at the middle of the list's viewport. Throttled to one step per animation frame; the user's own scrolling in the list
+  // pauses it for the grace period; reduced motion keeps the step-wise reveal above.
+  useEffect(() => {
+    if (reduceMotion === true) return;
+    let frame: number | null = null;
+    const step = () => {
+      frame = null;
+      const region = scrollerRef.current;
+      const published = readPageProgress();
+      if (region === null || published === null || published.docId !== docId || layout.count === 0) return;
+      if (performance.now() - userScrolledAt.current < USER_SCROLL_GRACE_MS) return;
+      const progress = Math.min(Math.max(0, published.progress), layout.count - 1);
+      const top = layout.positionOf(progressAnchor(progress));
+      const target = top + inset - region.clientHeight / 2;
+      if (Math.abs(target - region.scrollTop) >= 0.5) scrollTo(Math.max(0, target));
+      track();
+    };
+    const unsubscribe = subscribePageProgress(() => {
+      frame ??= requestAnimationFrame(step);
+    });
+    return () => {
+      unsubscribe();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [reduceMotion, docId, layout, inset, scrollTo, track]);
 
   // A deleted page leaves as a ghost at its old place (MOTION spell 9); its neighbours slide into place.
   const { ghosts, moving } = useDeleteGhosts(slots, (slot, index) =>

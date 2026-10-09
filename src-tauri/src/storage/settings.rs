@@ -91,6 +91,55 @@ impl<'de> Deserialize<'de> for PanelWidth {
     }
 }
 
+/// Width of the right inspector in px (F20.8, ADR-144). Within [`INSPECTOR_MIN_WIDTH`]..=[`INSPECTOR_MAX_WIDTH`]; a patch outside
+/// the range is rejected, a stored value outside it is clamped on load. Mirrors `INSPECTOR` in `src/lib/layout.ts`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct InspectorWidth(u16);
+
+pub const INSPECTOR_MIN_WIDTH: u16 = 240;
+pub const INSPECTOR_MAX_WIDTH: u16 = 480;
+pub const INSPECTOR_DEFAULT_WIDTH: u16 = 300;
+
+impl InspectorWidth {
+    /// `None` outside the allowed range.
+    pub const fn new(pixels: u16) -> Option<Self> {
+        if pixels >= INSPECTOR_MIN_WIDTH && pixels <= INSPECTOR_MAX_WIDTH {
+            Some(Self(pixels))
+        } else {
+            None
+        }
+    }
+
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+
+    /// A stored number, clamped into the range; anything that is not a non-negative integer gives the default.
+    fn from_stored(value: &Value) -> Self {
+        value.as_u64().map_or_else(Self::default, |pixels| {
+            let clamped = pixels.clamp(
+                u64::from(INSPECTOR_MIN_WIDTH),
+                u64::from(INSPECTOR_MAX_WIDTH),
+            );
+            Self(u16::try_from(clamped).unwrap_or(INSPECTOR_DEFAULT_WIDTH))
+        })
+    }
+}
+
+impl Default for InspectorWidth {
+    fn default() -> Self {
+        Self(INSPECTOR_DEFAULT_WIDTH)
+    }
+}
+
+impl<'de> Deserialize<'de> for InspectorWidth {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let pixels = u16::deserialize(deserializer)?;
+        Self::new(pixels).ok_or_else(|| serde::de::Error::custom("inspector width out of range"))
+    }
+}
+
 /// Whether `c` is an invisible format character (Unicode category Cf: bidi controls U+202A-U+202E and U+2066-U+2069, zero-width
 /// U+200B-U+200F, U+FEFF and the rest of the category). Written out so no dependency is needed.
 fn is_invisible(c: char) -> bool {
@@ -331,6 +380,8 @@ fn tags_present<'de, D: Deserializer<'de>>(
 pub struct Settings {
     pub language: Language,
     pub left_panel_width: PanelWidth,
+    /// Width of the right inspector (F20.8); default 300, 240..=480.
+    pub inspector_width: InspectorWidth,
     pub welcome_tour: WelcomeTour,
     pub author_name: AuthorName,
     pub author_prompt: AuthorPrompt,
@@ -350,6 +401,7 @@ impl Default for Settings {
         Self {
             language: Language::default(),
             left_panel_width: PanelWidth::default(),
+            inspector_width: InspectorWidth::default(),
             welcome_tour: WelcomeTour::default(),
             author_name: AuthorName::default(),
             author_prompt: AuthorPrompt::default(),
@@ -378,6 +430,10 @@ impl Settings {
             left_panel_width: map
                 .get("leftPanelWidth")
                 .and_then(|value| PanelWidth::deserialize(value).ok())
+                .unwrap_or_default(),
+            inspector_width: map
+                .get("inspectorWidth")
+                .map(InspectorWidth::from_stored)
                 .unwrap_or_default(),
             welcome_tour: map
                 .get("welcomeTour")
@@ -420,6 +476,7 @@ impl Settings {
         Self {
             language: patch.language.unwrap_or(self.language),
             left_panel_width: patch.left_panel_width.unwrap_or(self.left_panel_width),
+            inspector_width: patch.inspector_width.unwrap_or(self.inspector_width),
             welcome_tour: patch.welcome_tour.unwrap_or(self.welcome_tour),
             author_name: patch.author_name.unwrap_or(self.author_name),
             author_prompt: patch.author_prompt.unwrap_or(self.author_prompt),
@@ -444,6 +501,8 @@ pub struct SettingsPatch {
     pub language: Option<Language>,
     #[serde(default, deserialize_with = "present")]
     pub left_panel_width: Option<PanelWidth>,
+    #[serde(default, deserialize_with = "present")]
+    pub inspector_width: Option<InspectorWidth>,
     #[serde(default, deserialize_with = "present")]
     pub welcome_tour: Option<WelcomeTour>,
     #[serde(default, deserialize_with = "present")]
@@ -655,11 +714,12 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "language": "system", "leftPanelWidth": 220, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
+            json!({ "language": "system", "leftPanelWidth": 220, "inspectorWidth": 300, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
         );
         let settings = Settings {
             language: Language::De,
             left_panel_width: PanelWidth::new(320).unwrap(),
+            inspector_width: InspectorWidth::new(360).unwrap(),
             welcome_tour: WelcomeTour::Shown,
             author_name: AuthorName::new("Ada Lovelace").unwrap(),
             author_prompt: AuthorPrompt::Done,
@@ -672,7 +732,7 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"], "pageSidebarCollapsed": true, "tipsEnabled": false, "tags": [] })
+            json!({ "language": "de", "leftPanelWidth": 320, "inspectorWidth": 360, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"], "pageSidebarCollapsed": true, "tipsEnabled": false, "tags": [] })
         );
     }
 
@@ -836,6 +896,7 @@ mod tests {
             SettingsPatch {
                 language: Some(Language::En),
                 left_panel_width: PanelWidth::new(296),
+                inspector_width: None,
                 welcome_tour: None,
                 author_name: None,
                 author_prompt: None,
@@ -859,6 +920,40 @@ mod tests {
         assert!(patch(json!({ "tipsEnabled": 0 })).is_err());
         let off = Settings::default().apply(patch(json!({ "tipsEnabled": false })).unwrap());
         assert!(!off.tips_enabled);
+    }
+
+    #[test]
+    fn the_inspector_width_defaults_clamps_on_load_and_rejects_bad_patches() {
+        assert_eq!(Settings::default().inspector_width.get(), 300);
+        for (stored, expected) in [
+            (r#"{"language":"de"}"#, 300),
+            (r#"{"inspectorWidth":240}"#, 240),
+            (r#"{"inspectorWidth":400}"#, 400),
+            (r#"{"inspectorWidth":100}"#, 240),
+            (r#"{"inspectorWidth":9999}"#, 480),
+            (r#"{"inspectorWidth":"400"}"#, 300),
+            (r#"{"inspectorWidth":-5}"#, 300),
+            (r#"{"inspectorWidth":null}"#, 300),
+        ] {
+            assert_eq!(
+                Settings::from_stored(stored.as_bytes())
+                    .inspector_width
+                    .get(),
+                expected,
+                "{stored}"
+            );
+        }
+        let set = Settings::default().apply(patch(json!({ "inspectorWidth": 420 })).unwrap());
+        assert_eq!(set.inspector_width.get(), 420);
+        for bad in [
+            json!(239),
+            json!(481),
+            json!(300.5),
+            json!("300"),
+            json!(null),
+        ] {
+            assert!(patch(json!({ "inspectorWidth": bad })).is_err());
+        }
     }
 
     #[test]
@@ -1349,6 +1444,7 @@ mod tests {
             Settings {
                 language: Language::De,
                 left_panel_width: PanelWidth::new(280).unwrap(),
+                inspector_width: InspectorWidth::default(),
                 welcome_tour: WelcomeTour::Pending,
                 author_name: AuthorName::default(),
                 author_prompt: AuthorPrompt::Pending,
@@ -1367,7 +1463,7 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
+            json!({ "language": "de", "leftPanelWidth": 280, "inspectorWidth": 300, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
         );
     }
 
@@ -1557,7 +1653,7 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "system", "leftPanelWidth": 220, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
+            json!({ "language": "system", "leftPanelWidth": 220, "inspectorWidth": 300, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
         );
     }
 

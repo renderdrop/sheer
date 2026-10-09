@@ -12,8 +12,11 @@ export interface MarkOutlineProps {
   origin: RefObject<HTMLElement | null>;
   /** The annotation whose mark is outlined. */
   annotId: number;
-  /** `frame`: stays (the comment being written or focused). `pulse`: once, then `onDone`. */
-  mode: 'frame' | 'pulse';
+  /**
+   * `frame`: stays (the comment being written or focused). `pulse`: once, then `onDone`. `hover`: stays while the pointer is on the
+   * comment's bubble or card (F20.7), with the pulse on top.
+   */
+  mode: 'frame' | 'pulse' | 'hover';
   reduced?: boolean;
   onDone?: () => void;
 }

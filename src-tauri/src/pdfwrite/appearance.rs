@@ -706,6 +706,7 @@ mod tests {
             sync: Sync::New,
             cite: None,
             tags: Vec::new(),
+            group: None,
             body,
         }
     }

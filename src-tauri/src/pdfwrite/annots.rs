@@ -168,6 +168,8 @@ pub struct Links {
     pub page: ObjectId,
     /// `/IRT`: the annotation it replies to.
     pub reply_to: Option<ObjectId>,
+    /// `/IRT` with `/RT /Group`: the first annotation of the group it belongs to (F20.7); `None` for the first and for one on its own.
+    pub group_first: Option<ObjectId>,
 }
 
 /// The keys of `annotation` on top of `base` (the dictionary it had in the file, if it had one: keys the model does not know stay).
@@ -424,6 +426,10 @@ pub fn annotation_dict(
             dict.set("StateModel", text_string("Review"));
             dict.set("State", text_string(state.pdf_name()));
         }
+    } else if let Some(first) = links.group_first {
+        // A member of a group (F20.7, ISO 32000-1 12.5.6.2): linked to the group's first annotation, which carries the comment.
+        dict.set("IRT", Object::Reference(first));
+        dict.set("RT", name("Group"));
     }
     Some(dict)
 }
@@ -779,6 +785,7 @@ mod tests {
             sync: Sync::Clean,
             cite: None,
             tags: Vec::new(),
+            group: None,
             body: AnnotationBody::Signature {
                 bounds: Rect {
                     x: 0.0,

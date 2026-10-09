@@ -380,8 +380,45 @@ pub struct Annotation {
     /// Tag names (`/SHR_Tags`, at most `limits::TAGS_PER_ANNOT`), see `model::tags`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// The group the annotation belongs to (F20.7, ISO 32000-1 12.5.6.2 `/IRT` + `/RT /Group`): a key of [`GROUP_KEY_LEN`] lower-case
+    /// hex characters that every member shares; `None` for an annotation on its own. Set by Rust only (`createAnnotationGroup`, the
+    /// import); a save links each member to the group's first one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     #[serde(flatten)]
     pub body: AnnotationBody,
+}
+
+/// Length of a group key (F20.7): 16 lower-case hex characters.
+pub const GROUP_KEY_LEN: usize = 16;
+
+/// Whether `key` is a group key: [`GROUP_KEY_LEN`] lower-case hex characters.
+pub fn is_group_key(key: &str) -> bool {
+    key.len() == GROUP_KEY_LEN && key.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// A fresh group key (the random bits of `pdfwrite::annots::random_name`).
+pub fn new_group_key() -> String {
+    crate::pdfwrite::annots::random_name()
+        .chars()
+        .take(GROUP_KEY_LEN)
+        .collect()
+}
+
+/// The identity of a group read from a file: a stable 64-bit FNV-1a hash of what identifies the group's first annotation (its `/NM`,
+/// else its object number), so that every member read from the same file gets the same key ([`group_key`]).
+pub fn group_hash(identity: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in identity {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+/// The group key of a group identity ([`group_hash`]).
+pub fn group_key(hash: u64) -> String {
+    format!("{hash:016x}")
 }
 
 /// An annotation to create: an [`Annotation`] without the fields Rust assigns (`id`, `rect`, `sync`, `modified`).
@@ -870,6 +907,9 @@ impl Annotation {
         if self.in_reply_to == Some(self.id) {
             return Err(AppError::invalid("inReplyTo"));
         }
+        if self.group.as_deref().is_some_and(|key| !is_group_key(key)) {
+            return Err(AppError::invalid("group"));
+        }
         self.check_citation()?;
         // A stamp: clean text, a box with its natural size when the draft has none; the colour is the tone's, the contents the text.
         if let AnnotationBody::Stamp {
@@ -942,6 +982,7 @@ impl Annotation {
             sync: Sync::New,
             cite: draft.cite.clone(),
             tags: super::tags::clean_names(&draft.tags)?,
+            group: None,
             body: draft.body.clone(),
         };
         if draft.state.is_some()
@@ -1291,6 +1332,7 @@ impl Annotation {
             sync: Sync::Clean,
             cite: None,
             tags: Vec::new(),
+            group: None,
             body: imported.body.clone(),
         };
         if annotation.normalize().is_ok() {

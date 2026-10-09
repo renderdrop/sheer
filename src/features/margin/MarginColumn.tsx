@@ -289,6 +289,13 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
   const endPulse = useCallback(() => setPulse(null), []);
   const frameId = writingId ?? focusId;
   const outline = frameId !== null && liveIds.has(frameId) ? frameId : null;
+  // While the pointer is on a bubble its marks stay outlined (F20.7): the root's and those of its group's members on other pages.
+  const holdIds = useMemo(() => {
+    if (hovered === null) return [];
+    const thread = threads.find((th) => th.root.id === hovered);
+    if (thread === undefined) return [];
+    return [thread.root.id, ...thread.members.map((m) => m.id)].filter((id) => id !== outline);
+  }, [hovered, threads, outline]);
 
   return (
     <div
@@ -305,6 +312,9 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
       style={{ left: 0, width: slotWidth, height: layout.height }}
     >
       {outline !== null && <MarkOutline origin={rootRef} annotId={outline} mode="frame" />}
+      {holdIds.map((id) => (
+        <MarkOutline key={`hover-${id}`} origin={rootRef} annotId={id} mode="hover" />
+      ))}
       {pulse !== null && (
         <MarkOutline
           key={pulse.key}

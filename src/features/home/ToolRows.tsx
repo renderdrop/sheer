@@ -52,7 +52,8 @@ export interface ToolRowsProps {
 }
 
 /**
- * The tool tiles (DESIGN 3.18 H4): four columns (two below 1100 wide), gap 16, 88 high (72 compact); icon 24, title 15/20 500 over the
+ * The tool tiles (DESIGN 3.18 H4): four columns when the tool area fits four tiles of the minimum width (container query, F20.2), else two
+ * columns of four rows with the subtitles hidden; titles never break inside a word. Gap 16, 88 high (72 compact); icon 24, title 15/20 500 over the
  * subtitle 14/20 Text-secondary. A tile runs the hub card: the file dialog, then the editor in the matching mode. While one runs (or a
  * document is being opened) the others are `aria-disabled`; arrows move through the grid.
  */
@@ -64,37 +65,39 @@ export function ToolRows({ all = false, onMore }: ToolRowsProps) {
   const roving = useRovingGroup(tiles.map((tile) => tile.id));
   const locked = busy !== null || opening;
   return (
-    <ul
-      {...roving.groupProps}
-      aria-label={t('home.tools.title')}
-      data-home-tools=""
-      className="home-tool-rows m-0 list-none p-0"
-    >
-      {tiles.map((tile) => (
-        <li key={tile.id}>
-          <button
-            type="button"
-            {...{ [ROVING_ATTR]: tile.id }}
-            tabIndex={roving.tabIndexOf(tile.id)}
-            aria-disabled={(tile.id !== 'more' && locked) || undefined}
-            aria-busy={busy === tile.id || undefined}
-            aria-describedby={`home-tile-${tile.id}-sub`}
-            onClick={() => {
-              if (tile.id === 'more') onMore?.();
-              else if (!locked) void runHubCard(tile.id);
-            }}
-            className="home-tile group/tool flex size-full cursor-pointer items-center rounded-md border border-border-subtle bg-surface text-start transition-colors [transition-duration:var(--motion-fast)] not-aria-disabled:hover:bg-subtle not-aria-disabled:active:scale-(--scale-press) aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled)"
-          >
-            <Icon icon={tile.icon} size={24} className="shrink-0" />
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="home-tile-title">{t(tile.titleKey)}</span>
-              <span id={`home-tile-${tile.id}-sub`} className="home-tile-sub text-text-muted">
-                {t(tile.hintKey)}
+    <div className="home-tools-box">
+      <ul
+        {...roving.groupProps}
+        aria-label={t('home.tools.title')}
+        data-home-tools=""
+        className="home-tool-rows m-0 list-none p-0"
+      >
+        {tiles.map((tile) => (
+          <li key={tile.id}>
+            <button
+              type="button"
+              {...{ [ROVING_ATTR]: tile.id }}
+              tabIndex={roving.tabIndexOf(tile.id)}
+              aria-disabled={(tile.id !== 'more' && locked) || undefined}
+              aria-busy={busy === tile.id || undefined}
+              aria-describedby={`home-tile-${tile.id}-sub`}
+              onClick={() => {
+                if (tile.id === 'more') onMore?.();
+                else if (!locked) void runHubCard(tile.id);
+              }}
+              className="home-tile group/tool flex size-full cursor-pointer items-center rounded-md border border-border-subtle bg-surface text-start transition-colors [transition-duration:var(--motion-fast)] not-aria-disabled:hover:bg-subtle not-aria-disabled:active:scale-(--scale-press) aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled)"
+            >
+              <Icon icon={tile.icon} size={24} className="shrink-0" />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="home-tile-title">{t(tile.titleKey)}</span>
+                <span id={`home-tile-${tile.id}-sub`} className="home-tile-sub text-text-muted">
+                  {t(tile.hintKey)}
+                </span>
               </span>
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

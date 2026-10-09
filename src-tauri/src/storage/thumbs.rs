@@ -2,8 +2,9 @@
 //!
 //! - **Key.** One file per recent file, named by a hash of its canonical path (`<16 hex>.shr`). The recents id of the UI is only good
 //!   for one run (`storage::recents`), so it cannot name a file that outlives the run; the backend maps the id to the path.
-//! - **Content.** The first page at most [`THUMB_WIDTH`] x [`THUMB_HEIGHT`] pixels (the 2x size of the 32 x 40 slot), made by
-//!   [`make_frame`] from a frame of the engine. A document with a password is never cached (the caller's rule: a decrypted page
+//! - **Content.** The first page fitted into [`THUMB_WIDTH`] x [`THUMB_HEIGHT`] pixels (384 x 480: the largest home card, 192 x 240 css px,
+//!   at device pixel ratio 2; F20.3), made by [`make_frame`] from a frame of the engine. Entries of older versions (at most 64 x 80) are
+//!   still valid frames but too small: [`ThumbCache::load`] skips them until the file is closed or saved again. A document with a password is never cached (the caller's rule: a decrypted page
 //!   must not land on disk).
 //! - **Bounds.** A file is at most [`MAX_THUMB_BYTES`] and a read never takes more; [`ThumbCache::retain`] removes every file that is
 //!   not for a listed recent file, so there are at most `MAX_RECENTS` files. Nothing in the directory is trusted when read.
@@ -20,13 +21,13 @@ use crate::error::{AppError, ErrorCode};
 use crate::storage::atomic::write_atomic;
 use crate::storage::open_without_blocking;
 
-/// Largest thumbnail, in pixels (the 32 x 40 slot at device pixel ratio 2).
-pub const THUMB_WIDTH: u32 = 64;
-pub const THUMB_HEIGHT: u32 = 80;
+/// Largest thumbnail, in pixels (the largest home card tier, 192 x 240 css px, at device pixel ratio 2).
+pub const THUMB_WIDTH: u32 = 384;
+pub const THUMB_HEIGHT: u32 = 480;
 /// Largest cached file; a bigger one is neither written nor read.
-pub const MAX_THUMB_BYTES: u64 = 128 * 1024;
-/// Zoom bucket the first page is drawn at before it is fitted (about 0.105 pixels per point: a letter page is 64 x 83).
-pub const RENDER_BUCKET: i16 = -13;
+pub const MAX_THUMB_BYTES: u64 = 512 * 1024;
+/// Zoom bucket the first page is drawn at before it is fitted (about 0.71 pixels per point: a letter page is 433 x 560).
+pub const RENDER_BUCKET: i16 = -2;
 
 const EXTENSION: &str = "shr";
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
@@ -75,7 +76,8 @@ impl ThumbCache {
         file.take(MAX_THUMB_BYTES + 1)
             .read_to_end(&mut bytes)
             .ok()?;
-        (bytes.len() as u64 <= MAX_THUMB_BYTES && is_thumb_frame(&bytes)).then_some(bytes)
+        (bytes.len() as u64 <= MAX_THUMB_BYTES && is_thumb_frame(&bytes) && is_current_size(&bytes))
+            .then_some(bytes)
     }
 
     /// Whether a thumbnail file exists for `path`.
@@ -124,6 +126,13 @@ fn is_thumb_frame(bytes: &[u8]) -> bool {
         && bytes[FRAME_HEADER_BYTES..].starts_with(PNG_SIGNATURE)
 }
 
+/// Whether the frame has the size [`make_frame`] makes now: a fitted page touches the box in width or height. Older, smaller entries do not.
+fn is_current_size(bytes: &[u8]) -> bool {
+    let word =
+        |at: usize| u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
+    word(8) == THUMB_WIDTH || word(12) == THUMB_HEIGHT
+}
+
 /// The thumbnail frame made from a frame of the engine (`SHR1`, PNG): fitted into [`THUMB_WIDTH`] x [`THUMB_HEIGHT`], aspect kept.
 pub fn make_frame(engine_frame: &[u8]) -> Result<Vec<u8>, AppError> {
     if engine_frame.len() <= FRAME_HEADER_BYTES || engine_frame[..4] != FRAME_MAGIC {
@@ -167,10 +176,10 @@ mod tests {
     fn a_page_is_fitted_into_the_thumbnail_box_with_its_aspect() {
         let portrait = make_frame(&engine_frame(300, 400)).unwrap();
         let (w, h, _) = split_frame(&portrait);
-        assert_eq!((w, h), (60, 80));
+        assert_eq!((w, h), (360, 480));
         let landscape = make_frame(&engine_frame(400, 300)).unwrap();
         let (w, h, _) = split_frame(&landscape);
-        assert_eq!((w, h), (64, 48));
+        assert_eq!((w, h), (384, 288));
         assert!(make_frame(b"nope").is_err());
         assert!(make_frame(&[0u8; 40]).is_err());
     }
@@ -195,7 +204,9 @@ mod tests {
         let dir = TempDir::new();
         let cache = ThumbCache::new(dir.path().to_path_buf());
         // A frame bigger than a thumbnail, junk, and an oversized file are all refused.
-        assert!(cache.store(&abs("a.pdf"), &engine_frame(65, 10)).is_err());
+        assert!(cache
+            .store(&abs("a.pdf"), &engine_frame(THUMB_WIDTH + 1, 10))
+            .is_err());
         assert!(cache.store(&abs("a.pdf"), b"junk").is_err());
         let mut big = make_frame(&engine_frame(300, 400)).unwrap();
         big.resize(MAX_THUMB_BYTES as usize + 1, 0);
@@ -206,6 +217,23 @@ mod tests {
         fs::remove_file(cache.file_of(&abs("a.pdf"))).unwrap();
         fs::create_dir(cache.file_of(&abs("a.pdf"))).unwrap();
         assert!(cache.load(&abs("a.pdf")).is_none());
+    }
+
+    #[test]
+    fn an_old_small_entry_is_not_served() {
+        let dir = TempDir::new();
+        let cache = ThumbCache::new(dir.path().to_path_buf());
+        let png = crate::signatures::raster::encode_png(&image::RgbaImage::new(60, 80)).unwrap();
+        cache
+            .store(
+                &abs("a.pdf"),
+                &crate::signatures::preview_frame(60, 80, &png),
+            )
+            .unwrap();
+        assert!(cache.load(&abs("a.pdf")).is_none());
+        let fresh = make_frame(&engine_frame(300, 400)).unwrap();
+        cache.store(&abs("a.pdf"), &fresh).unwrap();
+        assert!(cache.load(&abs("a.pdf")).is_some());
     }
 
     #[test]

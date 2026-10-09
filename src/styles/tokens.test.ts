@@ -752,7 +752,7 @@ describe('Tailwind theme', () => {
       ...['title-weight', 'title-tracking', 'search-gap', 'head-gap', 'section-gap', 'card-h', 'card-pad'].map(
         (n) => `--${n}`,
       ),
-      ...['name-gap', 'thumb-h', 'tile-h'].map((n) => `--${n}`),
+      ...['name-gap', 'thumb-h', 'tile-h', 'tile-h-mini', 'tile-h-eff'].map((n) => `--${n}`),
     ]);
     const unknown = [...used].filter(
       (name) => !defined.has(name) && !local.has(name) && !/^--(tw|logo-ground)-/.test(name),

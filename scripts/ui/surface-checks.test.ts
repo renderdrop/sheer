@@ -44,6 +44,13 @@ describe('surface gate checks', () => {
     expect(c.checkScroll(items)).toEqual(['div.body scrolls inside (500 > 300)']);
   });
 
+  it('flags a home that scrolls in either direction', () => {
+    const fits = { name: 'home scroller', scrollWidth: 600, clientWidth: 600, scrollHeight: 500, clientHeight: 500 };
+    expect(c.checkNoScroll([fits, { ...fits, scrollHeight: 501 }])).toEqual([]);
+    expect(c.checkNoScroll([{ ...fits, scrollHeight: 520 }])).toEqual(['home scroller scrolls vertically (520 > 500)']);
+    expect(c.checkNoScroll([{ ...fits, scrollWidth: 640 }])).toEqual(['home scroller scrolls sideways (640 > 600)']);
+  });
+
   it('flags sideways overflow of non-lists and descendants leaving the surface', () => {
     const els = [
       { name: 'div.row', scrollWidth: 400, clientWidth: 300, isList: false },

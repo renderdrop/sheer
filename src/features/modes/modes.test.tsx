@@ -914,9 +914,23 @@ describe('the mode card (DESIGN 3.18 E4)', () => {
     expect(tab('Read').className).toContain('-mb-px');
     expect(tab('Read').getAttribute('aria-selected')).toBe('true');
     expect(tab('Edit').getAttribute('aria-selected')).toBe('false');
-    expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('bg-panel');
+    expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('bg-chrome');
     expect(container.querySelector('[data-slot="tool-row"]')?.className).toContain('bg-subtle');
     expect(tab('Read').getAttribute('aria-controls')).toBe('mode-tool-row');
+  });
+
+  it('all five tabs share the contour classes: border on top and sides only, merged into the tool area, with and without chip (F20.11)', () => {
+    setup(<Rows />);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(5);
+    for (const entry of tabs) {
+      expect(entry.className).toContain('border-b-0');
+      expect(entry.className).toContain('border-transparent');
+      expect(entry.className).toContain('-mb-px');
+      expect(entry.className).toContain('aria-selected:border-border-subtle');
+      expect(entry.className).toContain('hover:text-text');
+      expect(entry.querySelector('[data-key-chip]')).not.toBeNull();
+    }
   });
 
   it('every tab has a key chip 1 to 5 (shown on the active one, at hover and focus on the others)', () => {
@@ -932,7 +946,13 @@ describe('the mode card (DESIGN 3.18 E4)', () => {
     const { container } = setup(<ModeCard />);
     const card = container.querySelector('[data-slot="mode-card"]');
     expect(card?.className).toContain('h-mode-card');
-    expect(card?.className).toContain('border-border-subtle');
+    expect(card?.className).toContain('bg-chrome');
+    // One contour (F20.11): the card has no border, the tool frame none on top; the active tab draws the top and the sides.
+    expect(card?.className).not.toMatch(/(^|\s)border/);
+    const frame = container.querySelector('[data-slot="mode-tool-frame"]');
+    expect(frame?.className).toContain('border-t-0');
+    expect(frame?.className).toContain('border-border-subtle');
+    expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('border-b');
     expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('h-mode-tab');
     expect(container.querySelector('[data-slot="tool-row"]')?.className).toContain('h-tool-area');
     expect(item('Select').className).toContain('h-tool-item');

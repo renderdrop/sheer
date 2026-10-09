@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Comments on several separate text passages: hold Ctrl (⌘ on macOS) to add ranges, then comment or highlight once; across pages the comment is created per page and linked as one group (PDF standard grouping, read back from other apps too).
+- The tool inspector on the right can be resized (240–480 px); the width is remembered.
+
+### Changed
+- Freehand pen, freehand arrow and freehand shape are smoothed much more strongly.
+- "+" in the colour picker opens a hex field and recently used colours instead of a second palette.
+- Page thumbnails follow document scrolling smoothly.
+- One chrome colour for menu bar, tab strip, card surround and sidebars; mode tabs and card share one contour.
+- Better author detection on slide decks and official texts.
+
+### Fixed
+- Home no longer scrolls or shows a grey strip at the edge of the glow; tool tiles never break words and switch to two columns in narrow windows.
+- Sharp thumbnails in "Recently opened" on high-density displays.
+- The status-bar zoom field fits four digits.
+- While the pointer is on a comment bubble its marked text stays highlighted.
+
 ## [2.0.0-rc.3] - 2026-10-09
 
 Release candidate 3: beta feedback F19 part 2 — new editor and home layout, switchable palettes, smarter links and source detection, text PDF after OCR, history panel.

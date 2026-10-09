@@ -46,7 +46,14 @@ import { useFindKeys } from '../search/commands';
 import { SelectionBar } from '../textlayer/SelectionBar';
 import { useTextCopy, useTextKeys } from '../textlayer/useTextSelection';
 import { BUCKET_SETTLE_MS, PageView } from './PageView';
-import { consumeJump, endJump, publishViewRect, registerScrollSource } from './scrollBridge';
+import {
+  clearPageProgress,
+  consumeJump,
+  endJump,
+  publishPageProgress,
+  publishViewRect,
+  registerScrollSource,
+} from './scrollBridge';
 import { useDevicePixelRatio } from './useDevicePixelRatio';
 import { cancelZoomMotion, settleZoomMotion, useViewer } from './useViewer';
 import { animationsOff, registerZoomSurface } from './zoomMotion';
@@ -261,6 +268,16 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
         // The scheduler hears of it now, before the new pages mount and ask for their images: those renders then carry this
         // generation, and a hint that was made for the old window can never cancel them. Nothing on screen is nothing to tell.
         if (next.visible.length > 0) tellScheduler(docId, next.visible, [...next.near, ...ahead]);
+      }
+      // The thumbnail list follows the continuous position (F20.6): the page in the middle of the viewport plus how far through it.
+      if (paged) clearPageProgress();
+      else {
+        const middle = top + (height + 2 * pad) / 2;
+        const around = layout.currentPageAt(top, height + 2 * pad);
+        const box = layout.box(around);
+        if (box !== null && box.height > 0) {
+          publishPageProgress({ docId, progress: around + (middle - box.top) / box.height });
+        }
       }
       // Passing pages during an animated jump are not the page the user went to.
       if (paged || scrollAnim.current !== null) return;

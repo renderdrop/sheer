@@ -403,6 +403,7 @@ mod tests {
                 group: Some("0a1b2c3d".into()),
             }),
             tags: vec!["Ünï".into(), "b".into()],
+            group: None,
             body: AnnotationBody::Highlight { quads: vec![] },
         };
         let mut dict = dictionary! {"Subtype" => "Highlight"};

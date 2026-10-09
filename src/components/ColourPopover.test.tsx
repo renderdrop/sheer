@@ -23,11 +23,16 @@ async function open(recent: [number, number, number][] = []) {
 describe('ColourPopover (DESIGN 3.9 Q4)', () => {
   const check = () => screen.getByRole('button', { name: 'Apply' });
 
-  it('shows the palette and a full-width hex field; the check is off until the hex is valid', async () => {
+  it('shows no second palette, only a full-width hex field; the check is off until the hex is valid', async () => {
     await open();
-    expect(screen.getByRole('radio', { name: 'Mint' })).not.toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Mint' })).toBeNull();
     expect(check().getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByRole('textbox', { name: 'Hex colour' }).className).toContain('w-full');
+  });
+
+  it('has no recent list when none was used', async () => {
+    await open();
+    expect(screen.queryByText('Recently used')).toBeNull();
   });
 
   it('marks an invalid hex only after Enter, explains it, and applies a valid one', async () => {
@@ -70,17 +75,20 @@ describe('ColourPopover (DESIGN 3.9 Q4)', () => {
     expect(onApply).toHaveBeenCalled();
   });
 
-  it('puts the recent colours in the palette grid and picks one', async () => {
+  it('lists the recent colours and picks one', async () => {
     const { user, onPick } = await open([[1, 2, 3]]);
-    expect(screen.queryByText('Recently used')).toBeNull();
+    expect(screen.getByText('Recently used')).not.toBeNull();
     await user.click(screen.getByRole('radio', { name: '#010203' }));
     expect(onPick).toHaveBeenCalledWith([1, 2, 3]);
   });
 
-  it('arrow keys move over the swatches', async () => {
-    const { user } = await open();
-    screen.getByRole('radio', { name: 'Ink' }).focus();
+  it('hides "Recently used" when empty; arrow keys move over the recent swatches', async () => {
+    const { user } = await open([
+      [1, 2, 3],
+      [4, 5, 6],
+    ]);
+    screen.getByRole('radio', { name: '#010203' }).focus();
     await user.keyboard('{ArrowRight}');
-    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Mint' }));
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: '#040506' }));
   });
 });

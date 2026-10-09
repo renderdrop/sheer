@@ -37,6 +37,20 @@ beforeEach(() => {
 });
 
 describe('parseSettings', () => {
+  it('reads the inspector width, clamped, and leaves it out when absent', () => {
+    const base = {
+      language: 'system',
+      leftPanelWidth: 248,
+      welcomeTour: 'pending',
+      authorName: '',
+      authorPrompt: 'pending',
+    };
+    expect(parseSettings(base)).not.toHaveProperty('inspectorWidth');
+    expect(parseSettings({ ...base, inspectorWidth: 360 })).toMatchObject({ inspectorWidth: 360 });
+    expect(parseSettings({ ...base, inspectorWidth: 9000 })).toMatchObject({ inspectorWidth: 480 });
+    expect(parseSettings({ ...base, inspectorWidth: '360' })).not.toHaveProperty('inspectorWidth');
+  });
+
   it('accepts every combination of known values', () => {
     for (const language of LANGUAGES) {
       const settings = {

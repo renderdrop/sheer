@@ -10,6 +10,7 @@ import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { textPointer } from '../viewer/lesen';
 import { peekLayer } from './cache';
+import { useMultiSelectGesture, useMultiSelection } from './multiSelection';
 import { hasTextSelection, selectPageText, selectionText } from './selection';
 
 /**
@@ -45,9 +46,11 @@ export function useTextCopy(): void {
 
 /**
  * The canvas's keys for the text: primary+A selects the text of the current page, never the whole document, and Esc clears a
- * selection (last in the Esc order: a popover, a dialog or an active tool has it first). Copy is the `copy` event above.
+ * selection (last in the Esc order: a popover, a dialog or an active tool has it first), the pinned ranges of a multi-selection
+ * included (F20.7). Copy is the `copy` event above. Primary+drag adds a range (`useMultiSelectGesture`).
  */
 export function useTextKeys(region: RefObject<HTMLElement | null>, docId: number | null): void {
+  useMultiSelectGesture(region, docId);
   useEffect(() => {
     const element = region.current;
     if (element === null || docId === null) return;
@@ -62,10 +65,12 @@ export function useTextKeys(region: RefObject<HTMLElement | null>, docId: number
       }
       if (event.key === 'Escape' && textPointer(useUi.getState().activeTool)) {
         const selection = window.getSelection();
+        const pinned = useMultiSelection.getState().spans.length > 0;
+        if (pinned) useMultiSelection.getState().clear();
         if (hasTextSelection(selection)) {
           selection?.removeAllRanges();
           event.preventDefault();
-        }
+        } else if (pinned) event.preventDefault();
       }
     };
     element.addEventListener('keydown', onKeyDown);

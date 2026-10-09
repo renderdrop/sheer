@@ -68,6 +68,11 @@ export interface Thread {
   replies: readonly AnnotationSummary[];
   /** The review-state replies, oldest first. */
   states: readonly AnnotationSummary[];
+  /**
+   * The other members of the root's group (F20.7: one comment over text on several pages, one markup annotation per page), in list
+   * order; empty for a comment on its own. The root is the group's first in the list (the earliest page).
+   */
+  members: readonly AnnotationSummary[];
   status: Status;
   /** The newest time in the thread (ms), 0 if none of it has a date. */
   latest: number;
@@ -138,10 +143,31 @@ export function parseDate(text: string | null): number | null {
   return Number.isNaN(time) ? null : time;
 }
 
+/**
+ * The first of each group (F20.7) in list order, by group key: only groups with more than one member in the list (a group of one is a
+ * comment on its own), and only members that are not replies.
+ */
+export function groupFirsts(summaries: readonly AnnotationSummary[]): Map<string, AnnotationSummary> {
+  const firsts = new Map<string, AnnotationSummary>();
+  const counts = new Map<string, number>();
+  for (const summary of summaries) {
+    const key = summary.group;
+    if (key === undefined || summary.inReplyTo !== null || summary.state !== undefined) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    if (!firsts.has(key)) firsts.set(key, summary);
+  }
+  for (const [key, count] of counts) if (count < 2) firsts.delete(key);
+  return firsts;
+}
+
 /** Groups the summaries into threads in the order of the roots as they come. A reply whose target is missing is a root. */
 export function buildThreads(summaries: readonly AnnotationSummary[]): Thread[] {
   const byId = new Map<number, AnnotationSummary>();
   for (const summary of summaries) byId.set(summary.id, summary);
+  const firsts = groupFirsts(summaries);
+  /** The group's first for a member of a group (itself for the first); `null` for an annotation on its own. */
+  const firstOf = (summary: AnnotationSummary): AnnotationSummary | null =>
+    summary.group === undefined || summary.inReplyTo !== null ? null : (firsts.get(summary.group) ?? null);
   /** The root of a summary; a cycle (a hostile file) is rooted at its smallest id. */
   const rootOf = (summary: AnnotationSummary): AnnotationSummary => {
     const seen = new Set<number>([summary.id]);
@@ -157,11 +183,12 @@ export function buildThreads(summaries: readonly AnnotationSummary[]): Thread[] 
       seen.add(parent.id);
       current = parent;
     }
-    return current;
+    // A member of a group is part of the group's first comment (F20.7), and so are the replies to it.
+    return firstOf(current) ?? current;
   };
   const threads = new Map<
     number,
-    { root: AnnotationSummary; replies: AnnotationSummary[]; states: AnnotationSummary[] }
+    { root: AnnotationSummary; replies: AnnotationSummary[]; states: AnnotationSummary[]; members: AnnotationSummary[] }
   >();
   for (const summary of summaries) {
     const root = rootOf(summary);
@@ -169,12 +196,14 @@ export function buildThreads(summaries: readonly AnnotationSummary[]): Thread[] 
     if (root.state !== undefined) continue;
     let thread = threads.get(root.id);
     if (thread === undefined) {
-      thread = { root, replies: [], states: [] };
+      thread = { root, replies: [], states: [], members: [] };
       threads.set(root.id, thread);
     }
-    if (root.id !== summary.id) (summary.state === undefined ? thread.replies : thread.states).push(summary);
+    if (root.id === summary.id) continue;
+    if (firstOf(summary) === root) thread.members.push(summary);
+    else (summary.state === undefined ? thread.replies : thread.states).push(summary);
   }
-  return [...threads.values()].map(({ root, replies, states }) => {
+  return [...threads.values()].map(({ root, replies, states, members }) => {
     const dated = (s: AnnotationSummary) => parseDate(s.modified) ?? 0;
     const older = (a: AnnotationSummary, b: AnnotationSummary) => dated(a) - dated(b) || a.id - b.id;
     replies.sort(older);
@@ -183,10 +212,26 @@ export function buildThreads(summaries: readonly AnnotationSummary[]): Thread[] 
       root,
       replies,
       states,
+      members,
       status: statusOf(states[states.length - 1]?.state),
       latest: Math.max(dated(root), ...replies.map(dated), ...states.map(dated)),
     };
   });
+}
+
+/** Every annotation of a thread (root, group members, replies, states): what deleting the comment takes, as one step. */
+export function threadIds(thread: Thread): number[] {
+  return [
+    thread.root.id,
+    ...thread.members.map((m) => m.id),
+    ...thread.replies.map((r) => r.id),
+    ...thread.states.map((s) => s.id),
+  ];
+}
+
+/** The pages a comment is on: its root's, then those of its group's members (F20.7), each once, in list order. */
+export function threadPages(thread: Thread): number[] {
+  return [...new Set([thread.root.pageId, ...thread.members.map((m) => m.pageId)])];
 }
 
 /** Any of the wanted tags (ignoring case), or no tag at all when `NO_TAG` is wanted. */
@@ -276,8 +321,11 @@ export function sortThreads(
 export function tagCounts(summaries: readonly AnnotationSummary[]): { byName: Map<string, number>; none: number } {
   const byName = new Map<string, number>();
   let none = 0;
+  const firsts = groupFirsts(summaries);
   for (const s of summaries) {
     if (s.state !== undefined || s.inReplyTo !== null) continue;
+    // A group is one comment (F20.7): its first counts for it.
+    if (s.group !== undefined && firsts.has(s.group) && firsts.get(s.group) !== s) continue;
     const own = s.tags ?? [];
     if (own.length === 0) none += 1;
     for (const name of own) byName.set(name.toLowerCase(), (byName.get(name.toLowerCase()) ?? 0) + 1);

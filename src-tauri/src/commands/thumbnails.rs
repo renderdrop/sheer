@@ -3,7 +3,7 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `get_recent_thumbnail` | `recentId: number` | an `SHR1` frame (PNG, at most 64 x 80 px); `not_found` for an id that is not listed or has no preview |
+//! | `get_recent_thumbnail` | `recentId: number` | an `SHR1` frame (PNG, at most 384 x 480 px; 64 x 80 entries of older versions are skipped until the file is closed or saved again); `not_found` for an id that is not listed or has no preview |
 //!
 //! A document with a password gets none (a decrypted page must not land on disk) and loses an older one; neither does the welcome
 //! document, a recovered snapshot, or a document with unsaved changes. Every failure is logged and otherwise ignored: a preview is a
@@ -170,7 +170,7 @@ mod tests {
         assert!(fixture.thumbs.has(&path));
         let frame = fixture.state.recent_thumbnail(recent).unwrap();
         let (width, height, _) = split_frame(&frame);
-        assert_eq!((width, height), (60, 80));
+        assert_eq!((width, height), (360, 480));
     }
 
     #[test]

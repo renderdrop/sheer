@@ -46,6 +46,9 @@ pub struct Plan {
     pub keys_unread: HashSet<AnnotId>,
     /// The art the signatures of the changes refer to (`DocState.assets`).
     pub assets: HashMap<AssetId, Arc<Art>>,
+    /// The members of groups (F20.7) and the first annotation of the group each is linked to (`/IRT` + `/RT /Group`); the first is a
+    /// write of the plan too (`commands::save::plan_with_origins` writes every member of a group that changed).
+    pub group_firsts: HashMap<AnnotId, AnnotId>,
 }
 
 /// What a save has to write besides the annotations, the form values and the page list (ADR-047, ARCHITECTURE §5 "Edit and protect"). It
@@ -335,6 +338,31 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
             .or_default()
             .push((*id, origin));
     }
+    // The object each group's first annotation is written to, known before any page is written: its members may be on earlier pages.
+    let firsts: HashSet<AnnotId> = plan.group_firsts.values().copied().collect();
+    let mut preset: HashMap<AnnotId, ObjectId> = HashMap::new();
+    for change in &plan.changes {
+        let Change::Write {
+            page_index,
+            annotation,
+            origin,
+        } = change
+        else {
+            continue;
+        };
+        if !firsts.contains(&annotation.id) {
+            continue;
+        }
+        let existing = origin.as_ref().and_then(|origin| {
+            let prev = inc.get_prev_documents();
+            let page = prev.get_dictionary(*pages.get(&(page_index + 1))?).ok()?;
+            let slots = Slots::read(prev, page).ok()?;
+            let index = slots.find(prev, origin)?;
+            slots.reference_at(index)
+        });
+        let id = existing.unwrap_or_else(|| inc.new_document.new_object_id());
+        preset.insert(annotation.id, id);
+    }
 
     for (page_index, changes) in group(plan) {
         let page_id = *pages
@@ -391,7 +419,10 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
                         Some(id) => id,
                         // A dictionary written in the array itself cannot be pointed to: it becomes an object.
                         None => {
-                            let id = inc.new_document.new_object_id();
+                            let id = preset
+                                .get(&annotation.id)
+                                .copied()
+                                .unwrap_or_else(|| inc.new_document.new_object_id());
                             slots.entries[index] = Some(Object::Reference(id));
                             id
                         }
@@ -405,7 +436,10 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
                 None => {
                     appended.push(annotation.id);
                     Target {
-                        id: inc.new_document.new_object_id(),
+                        id: preset
+                            .get(&annotation.id)
+                            .copied()
+                            .unwrap_or_else(|| inc.new_document.new_object_id()),
                         entry: None,
                         base: None,
                     }
@@ -450,6 +484,11 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
             let links = Links {
                 page: page_id,
                 reply_to,
+                group_first: plan
+                    .group_firsts
+                    .get(&annotation.id)
+                    .and_then(|first| preset.get(first))
+                    .copied(),
             };
             let Some(mut dict) = annots::annotation_dict(
                 annotation,

@@ -17,7 +17,7 @@ use lopdf::{Dictionary, Document, Object, ObjectId};
 
 use super::forms::{color_of, decode_text, dict_of, entry, int, number, parse_da};
 use super::lines::{read_line, LineRead};
-use super::reviews::{break_cycles, link_of, ReviewLink};
+use super::reviews::{break_cycles, link_of, Groups, ReviewLink};
 use crate::engine::import::clean;
 use crate::error::AppError;
 use crate::limits;
@@ -504,13 +504,37 @@ fn read_one(
 /// What the file says about the annotations of page `page_index` of `bytes`, by position (every annotation but a popup has an entry).
 pub fn read_page(bytes: &[u8], page_index: u32) -> Result<HashMap<u32, ForeignRead>, AppError> {
     let doc = super::prescan::load_untrusted(bytes)?;
-    Ok(read_doc_page(&doc, page_index))
+    let groups = cached_groups(bytes, &doc);
+    Ok(read_doc_page(&doc, page_index, &groups))
+}
+
+/// The groups of the last document read by [`read_page`], keyed by a hash of its bytes: reading page after page (scrolling) scans the
+/// whole document's annotations once, not once per page. Any save or change of the file changes the bytes and so the key.
+fn cached_groups(bytes: &[u8], doc: &Document) -> std::sync::Arc<Groups> {
+    use std::hash::{Hash, Hasher};
+    type Cache = Option<(u64, usize, std::sync::Arc<Groups>)>;
+    static CACHE: std::sync::Mutex<Cache> = std::sync::Mutex::new(None);
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    let key = hasher.finish();
+    let Ok(mut cache) = CACHE.lock() else {
+        return std::sync::Arc::new(Groups::of(doc));
+    };
+    if let Some((cached_key, len, groups)) = cache.as_ref() {
+        if *cached_key == key && *len == bytes.len() {
+            return groups.clone();
+        }
+    }
+    let groups = std::sync::Arc::new(Groups::of(doc));
+    *cache = Some((key, bytes.len(), groups.clone()));
+    groups
 }
 
 /// What the file says about the annotations of every page, by page index, then by position: one parse for the whole document. The
 /// annotations read are capped at `limits::MAX_ANNOTATIONS_PER_DOC`; pages beyond it have no entry.
 pub fn read_all(bytes: &[u8]) -> Result<HashMap<u32, HashMap<u32, ForeignRead>>, AppError> {
     let doc = super::prescan::load_untrusted(bytes)?;
+    let groups = Groups::of(&doc);
     let mut all = HashMap::new();
     let mut total = 0usize;
     for number in doc.get_pages().keys() {
@@ -518,7 +542,7 @@ pub fn read_all(bytes: &[u8]) -> Result<HashMap<u32, HashMap<u32, ForeignRead>>,
             break;
         }
         let page_index = number.saturating_sub(1);
-        let page = read_doc_page(&doc, page_index);
+        let page = read_doc_page(&doc, page_index, &groups);
         total += page.len();
         if !page.is_empty() {
             all.insert(page_index, page);
@@ -534,7 +558,7 @@ fn takes_a_position(entry: Option<&Dictionary>) -> bool {
     !entry.is_some_and(is_popup)
 }
 
-fn read_doc_page(doc: &Document, page_index: u32) -> HashMap<u32, ForeignRead> {
+fn read_doc_page(doc: &Document, page_index: u32, groups: &Groups) -> HashMap<u32, ForeignRead> {
     let pages = doc.get_pages();
     let Some(page_id) = pages.get(&page_index.saturating_add(1)) else {
         return HashMap::new();
@@ -573,8 +597,11 @@ fn read_doc_page(doc: &Document, page_index: u32) -> HashMap<u32, ForeignRead> {
     let mut read: HashMap<u32, ForeignRead> = counted
         .iter()
         .zip(0u32..)
-        .filter_map(|((_, dict), position)| {
-            Some((position, read_one(doc, (*dict)?, position, &positions)))
+        .filter_map(|((own, dict), position)| {
+            let dict = (*dict)?;
+            let mut one = read_one(doc, dict, position, &positions);
+            one.link.group = groups.group_of(doc, dict, *own);
+            Some((position, one))
         })
         .collect();
     let mut links: HashMap<u32, ReviewLink> = read.iter().map(|(p, r)| (*p, r.link)).collect();

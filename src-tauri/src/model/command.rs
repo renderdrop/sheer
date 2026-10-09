@@ -41,6 +41,10 @@ use crate::security::secret::Ticket;
 pub enum DocCommand {
     /// Adds an annotation; the answer has the id.
     CreateAnnotation { draft: AnnotationDraft },
+    /// Adds markup annotations (highlight, underline, strikeout; one per page, 2 to [`MAX_GROUP_MEMBERS`]) linked as one group (F20.7,
+    /// ISO 32000-1 12.5.6.2): Rust gives them a fresh group key. One undo step; deleting a member or changing its contents acts on
+    /// the whole group.
+    CreateAnnotationGroup { drafts: Vec<AnnotationDraft> },
     /// Changes some fields of an annotation. Updates of one annotation with the same `coalesce` key within 1.5 s of each other
     /// (a slider, a colour being dragged) are one undo step.
     UpdateAnnotation {
@@ -213,7 +217,9 @@ impl DocCommand {
     /// The label of the undo step this command becomes.
     pub fn label(&self) -> String {
         match self {
-            Self::CreateAnnotation { .. } => LABEL_CREATE.to_owned(),
+            Self::CreateAnnotation { .. } | Self::CreateAnnotationGroup { .. } => {
+                LABEL_CREATE.to_owned()
+            }
             Self::UpdateAnnotation { .. } => LABEL_UPDATE.to_owned(),
             Self::DeleteAnnotations { .. } => LABEL_DELETE.to_owned(),
             Self::MoveAnnotations { .. } => LABEL_MOVE.to_owned(),
@@ -317,6 +323,15 @@ impl DocCommand {
         match self {
             Self::CreateAnnotation { .. } | Self::Restore { .. } | Self::RestoreFields { .. } => {
                 Ok(())
+            }
+            Self::CreateAnnotationGroup { drafts } => {
+                if drafts.len() < 2 {
+                    Err(AppError::invalid("drafts"))
+                } else if drafts.len() > MAX_GROUP_MEMBERS {
+                    Err(AppError::limit("drafts", MAX_GROUP_MEMBERS as u64))
+                } else {
+                    Ok(())
+                }
             }
             Self::SetFieldValue { coalesce, .. } => match coalesce {
                 Some(key) if !is_key(&key.replace(':', ".")) => Err(AppError::invalid("coalesce")),
@@ -438,18 +453,48 @@ impl DocCommand {
         let mut delta = Delta::default();
         let mut field_inverse: FieldUndo = Vec::new();
         let inverse = match self {
-            Self::CreateAnnotation { draft } => create(state, draft, stamp, &mut delta)?,
+            Self::CreateAnnotation { draft } => create(state, draft, stamp, None, &mut delta)?,
+            Self::CreateAnnotationGroup { drafts } => {
+                create_group(state, drafts, stamp, &mut delta)?
+            }
             Self::UpdateAnnotation { id, patch, .. } => {
                 let entry = editable(state, *id)?;
                 if entry.annotation.locked && !only_unlocks(patch) {
                     return Err(AppError::invalid("locked"));
                 }
                 let annotation = entry.annotation.patched(patch, &stamp.modified)?;
+                let group = annotation.group.clone();
                 let next = Entry {
                     annotation,
                     ..entry.clone()
                 };
-                state.set_slots(vec![(*id, Some(next))], &mut delta)
+                let mut slots = vec![(*id, Some(next))];
+                // The text of a group's comment is the group's (F20.7): it goes to every member the user may change.
+                if let (Some(contents), Some(key)) = (&patch.contents, group) {
+                    let only_text = AnnotationPatch {
+                        contents: Some(contents.clone()),
+                        ..AnnotationPatch::default()
+                    };
+                    for member in state.group_members(&key) {
+                        // A member the user may not change (not editable, or locked) is skipped silently, on purpose: the rest of the
+                        // group still takes the text, and the one named has already been checked above.
+                        let Ok(entry) = editable(state, member) else {
+                            continue;
+                        };
+                        if member == *id || entry.annotation.locked {
+                            continue;
+                        }
+                        let annotation = entry.annotation.patched(&only_text, &stamp.modified)?;
+                        slots.push((
+                            member,
+                            Some(Entry {
+                                annotation,
+                                ..entry.clone()
+                            }),
+                        ));
+                    }
+                }
+                state.set_slots(slots, &mut delta)
             }
             Self::DeleteAnnotations { ids } => delete(state, ids, &mut delta)?,
             Self::MoveAnnotations { ids, dx, dy } => {
@@ -611,10 +656,54 @@ fn editable(state: &DocState, id: AnnotId) -> Result<&Entry, AppError> {
     Ok(entry)
 }
 
+/// Most members of a group made at once (`CreateAnnotationGroup`): one per page of a selection.
+pub const MAX_GROUP_MEMBERS: usize = 64;
+
+/// Creates the members of a new group (F20.7): every draft a markup annotation on a page of its own, all or none.
+fn create_group(
+    state: &mut DocState,
+    drafts: &[AnnotationDraft],
+    stamp: &Stamp,
+    delta: &mut Delta,
+) -> Result<Vec<Slot>, AppError> {
+    let mut pages = BTreeSet::new();
+    for draft in drafts {
+        let markup = matches!(
+            draft.body,
+            AnnotationBody::Highlight { .. }
+                | AnnotationBody::Underline { .. }
+                | AnnotationBody::Strikeout { .. }
+        );
+        if !markup || draft.in_reply_to.is_some() || draft.state.is_some() {
+            return Err(AppError::invalid("kind"));
+        }
+        if !pages.insert(draft.page_id.get()) {
+            return Err(AppError::invalid("pageId"));
+        }
+    }
+    let key = super::annotation::new_group_key();
+    let mut inverses: Vec<Vec<Slot>> = Vec::with_capacity(drafts.len());
+    let mut made = Delta::default();
+    for draft in drafts {
+        match create(state, draft, stamp, Some(&key), &mut made) {
+            Ok(inverse) => inverses.push(inverse),
+            Err(error) => {
+                for slots in inverses.into_iter().rev() {
+                    state.set_slots(slots, &mut Delta::default());
+                }
+                return Err(error);
+            }
+        }
+    }
+    delta.merge(made);
+    Ok(inverses.into_iter().rev().flatten().collect())
+}
+
 fn create(
     state: &mut DocState,
     draft: &AnnotationDraft,
     stamp: &Stamp,
+    group: Option<&str>,
     delta: &mut Delta,
 ) -> Result<Vec<Slot>, AppError> {
     if state.slot(draft.page_id).is_none() {
@@ -648,7 +737,8 @@ fn create(
         }
     }
     let id = state.alloc_id()?;
-    let annotation = Annotation::from_draft(id, draft, &stamp.modified)?;
+    let mut annotation = Annotation::from_draft(id, draft, &stamp.modified)?;
+    annotation.group = group.map(str::to_owned);
     Ok(state.set_slots(
         vec![(
             id,
@@ -670,6 +760,18 @@ fn delete(state: &mut DocState, ids: &[AnnotId], delta: &mut Delta) -> Result<Ve
             return Err(AppError::invalid("locked"));
         }
         doomed.insert(*id);
+    }
+    // A group goes as a whole (F20.7): its other members the user may change go with the one named.
+    let keys: BTreeSet<String> = doomed
+        .iter()
+        .filter_map(|id| state.annotation(*id)?.group.clone())
+        .collect();
+    for key in keys {
+        for member in state.group_members(&key) {
+            if editable(state, member).is_ok_and(|entry| !entry.annotation.locked) {
+                doomed.insert(member);
+            }
+        }
     }
     // The replies go with what they reply to, and the replies to those.
     let mut frontier = doomed.clone();
@@ -1027,6 +1129,100 @@ mod tests {
         assert_eq!(state.list(PageId::new(0)).len(), 4);
     }
 
+    fn group_cmd(pages: &[u32]) -> DocCommand {
+        let drafts: Vec<serde_json::Value> =
+            pages.iter().map(|page| draft_json(*page, 10.0)).collect();
+        cmd(json!({"type": "createAnnotationGroup", "drafts": drafts}))
+    }
+
+    #[test]
+    fn a_group_is_made_in_one_step_with_one_fresh_key() {
+        let mut state = state();
+        let made = state.execute(group_cmd(&[0, 2]), &stamp(0)).unwrap();
+        assert_eq!(made.upserted.len(), 2);
+        let key = made.upserted[0].group.clone().unwrap();
+        assert!(super::super::annotation::is_group_key(&key));
+        assert!(made.upserted.iter().all(|a| a.group.as_ref() == Some(&key)));
+        assert_eq!(made.history.undo_label.as_deref(), Some(LABEL_CREATE));
+        let other = state.execute(group_cmd(&[0, 1]), &stamp(1)).unwrap();
+        assert_ne!(
+            other.upserted[0].group,
+            Some(key),
+            "every group has its own key"
+        );
+        assert_eq!(state.undo(&stamp(2)).unwrap().removed.len(), 2);
+        assert_eq!(state.redo(&stamp(3)).unwrap().upserted.len(), 2);
+    }
+
+    #[test]
+    fn a_group_needs_two_to_sixty_four_markup_drafts_on_different_pages() {
+        let mut state = state();
+        assert_eq!(
+            code(state.execute(group_cmd(&[0]), &stamp(0))),
+            ErrorCode::InvalidArgument
+        );
+        assert_eq!(
+            code(state.execute(group_cmd(&[0, 0]), &stamp(0))),
+            ErrorCode::InvalidArgument
+        );
+        let many: Vec<u32> = (0..65).collect();
+        assert_eq!(
+            code(state.execute(group_cmd(&many), &stamp(0))),
+            ErrorCode::LimitExceeded
+        );
+        let note = json!({"pageId": 1, "kind": "note", "color": [255, 235, 0], "at": {"x": 1.0, "y": 1.0}, "icon": "comment"});
+        let mixed =
+            cmd(json!({"type": "createAnnotationGroup", "drafts": [draft_json(0, 10.0), note]}));
+        assert_eq!(
+            code(state.execute(mixed, &stamp(0))),
+            ErrorCode::InvalidArgument
+        );
+        // A page the document does not have: nothing of the group stays.
+        assert!(state.execute(group_cmd(&[0, 9]), &stamp(0)).is_err());
+        assert!(state.list(PageId::new(0)).is_empty());
+        assert!(!state.history_state().can_undo);
+    }
+
+    #[test]
+    fn the_text_and_the_deletion_of_a_member_act_on_the_whole_group_as_one_step() {
+        let mut state = state();
+        let lone = created(&mut state, 1, 200.0, 0);
+        let made = state.execute(group_cmd(&[0, 1, 2]), &stamp(1)).unwrap();
+        let ids: Vec<AnnotId> = made.upserted.iter().map(|a| a.id).collect();
+        let edited = state
+            .execute(
+                cmd(json!({"type": "updateAnnotation", "id": ids[1], "patch": {"contents": "why"}, "coalesce": "contents"})),
+                &stamp(2),
+            )
+            .unwrap();
+        assert_eq!(edited.upserted.len(), 3);
+        assert!(ids
+            .iter()
+            .all(|id| state.annotation(*id).unwrap().contents == "why"));
+        // A colour stays the member's own.
+        let coloured = state
+            .execute(
+                cmd(json!({"type": "updateAnnotation", "id": ids[0], "patch": {"color": [1, 2, 3]}})),
+                &stamp(3),
+            )
+            .unwrap();
+        assert_eq!(coloured.upserted.len(), 1);
+        let deleted = state
+            .execute(
+                cmd(json!({"type": "deleteAnnotations", "ids": [ids[2]]})),
+                &stamp(4),
+            )
+            .unwrap();
+        assert_eq!(deleted.removed.len(), 3);
+        assert!(state.annotation(lone).is_some());
+        assert_eq!(state.undo(&stamp(5)).unwrap().upserted.len(), 3);
+        state.undo(&stamp(6)).unwrap();
+        state.undo(&stamp(7)).unwrap();
+        assert!(ids
+            .iter()
+            .all(|id| state.annotation(*id).unwrap().contents.is_empty()));
+    }
+
     #[test]
     fn a_reply_needs_a_live_parent_on_the_same_page() {
         let mut state = state();
@@ -1293,6 +1489,7 @@ mod tests {
                 ReviewLink {
                     reply_to: Some(1),
                     state: Some(ReviewState::Completed),
+                    group: None,
                 },
             ),
             (
@@ -1300,6 +1497,7 @@ mod tests {
                 ReviewLink {
                     reply_to: Some(0),
                     state: None,
+                    group: None,
                 },
             ),
             (
@@ -1307,6 +1505,7 @@ mod tests {
                 ReviewLink {
                     reply_to: Some(2),
                     state: None,
+                    group: None,
                 },
             ),
         ]);
@@ -1323,6 +1522,81 @@ mod tests {
         assert!(removed.removed.len() <= 3);
         state.undo(&stamp(1)).unwrap();
         assert_eq!(state.list(PageId::new(0)).len(), 3);
+    }
+
+    #[test]
+    fn an_imported_group_over_the_member_cap_is_read_as_ungrouped() {
+        use crate::pdfwrite::reviews::ReviewLink;
+        use std::collections::HashMap;
+        let mut state = state();
+        let link = |hash| ReviewLink {
+            reply_to: None,
+            state: None,
+            group: Some(hash),
+        };
+        let build = |count: usize, hash: u64| {
+            let mut items = Vec::new();
+            let mut links = HashMap::new();
+            for index in 0..count {
+                let mut item = imported("m", false);
+                item.origin.annot_index = index as u32;
+                items.push(item);
+                links.insert(index as u32, link(hash));
+            }
+            (items, links)
+        };
+        let (items, links) = build(MAX_GROUP_MEMBERS, 7);
+        state.import_page_linked(PageId::new(0), &items, &links);
+        let grouped = |state: &DocState, page: u32| {
+            state
+                .list(PageId::new(page))
+                .iter()
+                .filter(|a| a.group.is_some())
+                .count()
+        };
+        assert_eq!(
+            grouped(&state, 0),
+            MAX_GROUP_MEMBERS,
+            "at the cap it is a group"
+        );
+        let (items, links) = build(1, 7);
+        state.import_page_linked(PageId::new(1), &items, &links);
+        assert_eq!(grouped(&state, 0) + grouped(&state, 1), 0, "over it, none");
+    }
+
+    #[test]
+    fn reading_a_page_again_does_not_double_count_its_group() {
+        use crate::pdfwrite::reviews::ReviewLink;
+        use std::collections::HashMap;
+        let mut state = state();
+        let mut items = Vec::new();
+        let mut links = HashMap::new();
+        for index in 0..MAX_GROUP_MEMBERS {
+            let mut item = imported("m", false);
+            item.origin.annot_index = index as u32;
+            items.push(item);
+            links.insert(
+                index as u32,
+                ReviewLink {
+                    reply_to: None,
+                    state: None,
+                    group: Some(5),
+                },
+            );
+        }
+        let grouped = |state: &DocState| {
+            state
+                .list(PageId::new(0))
+                .iter()
+                .filter(|a| a.group.is_some())
+                .count()
+        };
+        state.import_page_linked(PageId::new(0), &items, &links);
+        // The page is read again: its annotations are replaced by a new read of the file.
+        state.imported.remove(&0);
+        state.entries.clear();
+        state.import_page_linked(PageId::new(0), &items, &links);
+        assert_eq!(grouped(&state), MAX_GROUP_MEMBERS, "the group is kept");
     }
 
     #[test]

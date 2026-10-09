@@ -18,6 +18,9 @@ export function tokenPx(name: string, fallback: number): number {
  */
 export const PANEL = { min: 200, default: 220, max: 480, collapseBelow: 144, step: 8, largeStep: 40 } as const;
 
+/** The right tool inspector: range and default of its resizable width, and the arrow-key steps (F20.8). `default` mirrors `--inspector-width`. */
+export const INSPECTOR = { min: 240, default: 300, max: 480, step: 8, largeStep: 40 } as const;
+
 /** Gap between an anchor and a tooltip or popover, and margin kept to the window edge (DESIGN 3.4, 3.5: 8 px). */
 export function overlayOffset(): number {
   return tokenPx('--space-2', 8);

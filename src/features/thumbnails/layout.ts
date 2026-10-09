@@ -98,6 +98,13 @@ export interface ThumbnailSize {
  * The layout of the list at one width. `width` is the width a thumbnail may have; a cell is `2 * pad` wider. Immutable: a change of
  * width or of the page sizes makes a new one, which costs nothing (the metrics are shared).
  */
+/** The list anchor of page progress `progress` (page index plus the share of that page), the fraction clamped to the cell. */
+export function progressAnchor(progress: number): ListAnchor {
+  const safe = Number.isFinite(progress) ? Math.max(0, progress) : 0;
+  const index = Math.floor(safe);
+  return { index, fraction: safe - index };
+}
+
 export class ThumbnailLayout {
   readonly count: number;
   readonly width: number;

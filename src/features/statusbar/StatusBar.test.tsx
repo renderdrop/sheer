@@ -98,6 +98,13 @@ describe('the status bar (DESIGN 3.18 E7)', () => {
     expect(field.value).toMatch(/^100\s%$/);
   });
 
+  it('the zoom field has room for four digits and the percent sign, in tabular figures (F20.10)', () => {
+    setup(<StatusBar />);
+    const field = bar().getByRole('textbox', { name: 'Zoom' });
+    expect(field.className).toContain('tabular-nums');
+    expect(field.className).toContain('w-[calc(var(--space-16)+var(--space-2))]!');
+  });
+
   it('the fit buttons call the fits and the active fit is pressed', async () => {
     const { user } = setup(<StatusBar />);
     const width = bar().getByRole('button', { name: 'Page width' });

@@ -16,7 +16,7 @@ import { closeTab } from '../tabs/nav';
 import { useViewer } from '../viewer/useViewer';
 import { DropOverlay, useHomeDrop } from './DropOverlay';
 import { Hero, useSearchShortcut } from './Hero';
-import { homeFit } from './homeLayout';
+import { fitLevel, homeFit, tileColumns } from './homeLayout';
 import { HomeNav, type HomeSection } from './HomeNav';
 import { OpenCard } from './OpenCard';
 import { RecentCard } from './RecentCard';
@@ -62,6 +62,26 @@ function useBannerHeight(): number {
     return () => observer.disconnect();
   }, []);
   return height;
+}
+
+/** The measured height of Home's body and width of its tool area (0 without layout), kept current (F20.1, F20.2). */
+function useHomeBox(ref: RefObject<HTMLElement | null>): { height: number; toolsWidth: number } {
+  const [box, setBox] = useState({ height: 0, toolsWidth: 0 });
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null) return;
+    const measure = () => {
+      const tools = element.querySelector<HTMLElement>('[data-home-tools]');
+      const next = { height: Math.round(element.clientHeight), toolsWidth: Math.round(tools?.clientWidth ?? 0) };
+      setBox((old) => (old.height === next.height && old.toolsWidth === next.toolsWidth ? old : next));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  });
+  return box;
 }
 
 function useColumns(ref: RefObject<HTMLElement | null>, fallback: number, active: boolean): number {
@@ -217,7 +237,16 @@ export function Home({ platform }: HomeProps) {
   const height = useWindowHeight();
   const openRow = section === 'home' && openShown.length > 0;
   const bannerHeight = useBannerHeight();
-  const { tier, hideTitle, card, squeeze } = homeFit(height, openTabs.length > 0, bannerHeight);
+  const mainRef = useRef<HTMLElement>(null);
+  const box = useHomeBox(mainRef);
+  const plain = homeFit(height, openTabs.length > 0, bannerHeight);
+  const { tier } = plain;
+  // Measured fit (F20.1): a short body drops the title and the tall cards, then the thumbnails and the tall tiles.
+  const columns4 = box.toolsWidth === 0 ? 4 : tileColumns(box.toolsWidth);
+  const fit = fitLevel(box.height, tier, openRow, columns4);
+  const hideTitle = plain.hideTitle || fit >= 1;
+  const card = fit >= 1 ? 'short' : plain.card;
+  const squeeze = plain.squeeze || fit >= 1;
   useEffect(() => watchAmbient(), []);
 
   let body;
@@ -307,23 +336,27 @@ export function Home({ platform }: HomeProps) {
     <div data-home-body="" className="relative flex min-h-0 flex-auto">
       <HomeNav section={section} onSection={setSection} />
       <main
+        ref={mainRef}
         data-home-main=""
+        data-fit={fit === 0 ? undefined : fit}
         data-tier={tier}
         data-card={card}
         data-squeeze={squeeze || undefined}
         data-open-row={openRow || undefined}
-        className="home-main relative min-w-0 flex-auto overflow-x-hidden overflow-y-auto bg-app"
+        className="home-main relative min-w-0 flex-auto overflow-hidden bg-app"
       >
         {!showEmpty && <div aria-hidden="true" data-glow="home" data-home-glow="" className="home-glow" />}
-        <div
-          className={cx(
-            'relative mx-auto flex min-h-full flex-col transition-opacity [transition-duration:var(--motion-base)]',
-            showEmpty ? 'w-full' : 'home-content',
-            drop.shown ? 'opacity-0' : 'opacity-100',
-          )}
-          inert={drop.shown || undefined}
-        >
-          {body}
+        <div data-home-scroller="" className="home-scroller">
+          <div
+            className={cx(
+              'relative mx-auto flex min-h-full flex-col transition-opacity [transition-duration:var(--motion-base)]',
+              showEmpty ? 'w-full' : 'home-content',
+              drop.shown ? 'opacity-0' : 'opacity-100',
+            )}
+            inert={drop.shown || undefined}
+          >
+            {body}
+          </div>
         </div>
         <AnimatePresence>{drop.shown && <DropOverlay falling={drop.falling} />}</AnimatePresence>
       </main>

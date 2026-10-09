@@ -27,7 +27,7 @@ export interface EditorLayoutProps {
 
 /** A 12 px band of chrome between the tab strip, the mode card and the body (`--surface-panel`). */
 function Gutter() {
-  return <div aria-hidden="true" data-slot="gutter" className="bg-panel" />;
+  return <div aria-hidden="true" data-slot="gutter" className="bg-chrome" />;
 }
 
 /**
@@ -57,7 +57,7 @@ export function EditorLayout({ structure, platform, trafficLightInset }: EditorL
         trafficLightInset={trafficLightInset}
       />
       <Gutter />
-      <div data-slot="mode-card-row" className="bg-panel flex min-h-0 min-w-0 flex-col">
+      <div data-slot="mode-card-row" className="bg-chrome flex min-h-0 min-w-0 flex-col">
         <ModeCard />
       </div>
       <Gutter />

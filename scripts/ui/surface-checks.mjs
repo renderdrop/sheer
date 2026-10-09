@@ -308,3 +308,19 @@ export function checkSplitContour(items) {
 export function checkPanelOverlap(panel, neighbours) {
   return neighbours.filter((n) => overlap(panel, n.rect)).map((n) => `inspector overlaps ${n.name}`);
 }
+
+/**
+ * F20.1 "home does not scroll": the home scroller and the document must not scroll in either direction (scrollHeight <= clientHeight
+ * and scrollWidth <= clientWidth, 1 px tolerance for rounding).
+ * @param {{name:string,scrollWidth:number,clientWidth:number,scrollHeight:number,clientHeight:number}[]} elements
+ */
+export function checkNoScroll(elements) {
+  return elements.flatMap((e) => {
+    const out = [];
+    if (e.scrollHeight > e.clientHeight + TOL)
+      out.push(`${e.name} scrolls vertically (${e.scrollHeight} > ${e.clientHeight})`);
+    if (e.scrollWidth > e.clientWidth + TOL)
+      out.push(`${e.name} scrolls sideways (${e.scrollWidth} > ${e.clientWidth})`);
+    return out;
+  });
+}

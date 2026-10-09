@@ -278,6 +278,7 @@ mod tests {
             sync: crate::model::annotation::Sync::Clean,
             cite: None,
             tags: Vec::new(),
+            group: None,
             body: AnnotationBody::Highlight { quads: Vec::new() },
         };
         let value = serde_json::to_value(&annotation).unwrap();

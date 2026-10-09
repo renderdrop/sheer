@@ -108,6 +108,7 @@ pub(crate) fn mark(
             sync: AnnotSync::New,
             cite: None,
             tags: Vec::new(),
+            group: None,
             body: AnnotationBody::RedactMark {
                 quads: spec.quads.clone(),
                 source: spec.source,

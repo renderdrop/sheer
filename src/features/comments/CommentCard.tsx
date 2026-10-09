@@ -25,9 +25,9 @@ import { isConfirmKey } from '../annotations/note/confirmKey';
 import { isOwnReply, useOwnReplies } from '../annotations/note/ownReplies';
 import { useAutosize } from '../annotations/note/useAutosize';
 import { deleteThread, discardNew, postReply, run, setReviewState } from './actions';
-import { firstLine, type Status, type Thread } from './model';
+import { firstLine, threadIds, threadPages, type Status, type Thread } from './model';
 import { useComments } from './store';
-import { pageLabelOf } from './pageLabel';
+import { pageLabelOf, pageListOf } from './pageLabel';
 import { relativeTime } from './time';
 import { marginShowsEdits } from '../margin/store';
 import { useCommentHover } from './useCommentsData';
@@ -270,7 +270,12 @@ export const CommentCard = memo(function CommentCard({
 
   const statusPill = status === 'open' ? null : STATUS_PILL[status];
   const time = relativeTime(root.modified, t.locale, now);
-  const page = pageLabelOf(docId, root.pageId);
+  // A group (F20.7) is one comment on several pages: all of them are listed.
+  const pages = threadPages(thread);
+  const pageText =
+    pages.length > 1
+      ? t('comments.pages', { list: pageListOf(docId, pages) })
+      : t('comments.page', { n: pageLabelOf(docId, root.pageId) });
   const review = (next: 'completed' | 'accepted' | 'rejected' | 'none') => () =>
     void setReviewState(docId, root.id, root.pageId, next);
   const copy = () => void navigator.clipboard?.writeText(text).catch(() => undefined);
@@ -287,7 +292,7 @@ export const CommentCard = memo(function CommentCard({
     [quoteBelow ? `${ids}-q` : null, text !== '' && longText ? `${ids}-b` : null]
       .filter((id) => id !== null)
       .join(' ') || undefined;
-  const footerTime = [author === '' ? t('comments.noAuthor') : author, time, t('comments.page', { n: page })]
+  const footerTime = [author === '' ? t('comments.noAuthor') : author, time, pageText]
     .filter((part) => part !== '')
     .join(' · ');
 
@@ -377,8 +382,7 @@ export const CommentCard = memo(function CommentCard({
               id: 'delete',
               label: t('comments.delete'),
               disabled: !canDelete,
-              onSelect: () =>
-                void deleteThread(docId, [root.id, ...replies.map((r) => r.id), ...thread.states.map((s) => s.id)]),
+              onSelect: () => void deleteThread(docId, threadIds(thread)),
             },
           ]}
           trigger={(trigger) => (

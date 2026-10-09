@@ -5,7 +5,7 @@
 //! A file is hostile input: the page's array is capped, a link that does not point into the array is dropped, and anything that is not
 //! a state of the Review model is ignored.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use lopdf::{Dictionary, Document, Object, ObjectId};
 
@@ -20,6 +20,217 @@ pub struct ReviewLink {
     pub reply_to: Option<u32>,
     /// The review state it gives that annotation.
     pub state: Option<ReviewState>,
+    /// The identity of the group it belongs to (F20.7, `/IRT` + `/RT /Group`, see [`Groups`]): the same for every member and for the
+    /// group's first annotation, whatever page they are on.
+    pub group: Option<u64>,
+}
+
+/// Longest chain of `/RT /Group` links that is followed to the group's first annotation; a longer one is no group.
+const MAX_GROUP_DEPTH: usize = 64;
+
+fn is_group_member(doc: &Document, dict: &Dictionary) -> bool {
+    matches!(
+        dict.get(b"RT").ok().and_then(|rt| doc.dereference(rt).ok()),
+        Some((_, Object::Name(name))) if name == b"Group"
+    )
+}
+
+/// The groups of a document (ISO 32000-1 12.5.6.2): an annotation with `/RT /Group` belongs to the group of the annotation its `/IRT`
+/// names. The file is hostile input: a chain is followed at most [`MAX_GROUP_DEPTH`] links; an `/IRT` that is not a reference to an
+/// annotation listed on a page of the document, a popup or a ring of links makes no group (the annotation reads as one on its own).
+pub struct Groups {
+    /// The annotations listed on the pages (by object id), and whether each is a popup.
+    listed: HashMap<ObjectId, bool>,
+    /// The first annotation of the group of each listed annotation and the links to it (memoised, see `resolve`).
+    resolved: HashMap<ObjectId, Option<(ObjectId, usize)>>,
+    /// The identity of each group by its first annotation (only firsts that have a member).
+    firsts: HashMap<ObjectId, u64>,
+}
+
+impl Groups {
+    /// Scans the `/Annots` of every page (at most `limits::MAX_ANNOTS_ARRAY` entries a page, `limits::MAX_ANNOTATIONS_PER_DOC` * 4 in all).
+    pub fn of(doc: &Document) -> Self {
+        let mut listed: HashMap<ObjectId, bool> = HashMap::new();
+        let budget = limits::MAX_ANNOTATIONS_PER_DOC.saturating_mul(4);
+        'pages: for page_id in doc.get_pages().values() {
+            let Ok(page) = doc.get_dictionary(*page_id) else {
+                continue;
+            };
+            let Some(Object::Array(array)) = page
+                .get(b"Annots")
+                .ok()
+                .and_then(|annots| doc.dereference(annots).ok())
+                .map(|(_, object)| object)
+            else {
+                continue;
+            };
+            for entry in array.iter().take(limits::MAX_ANNOTS_ARRAY) {
+                if listed.len() >= budget {
+                    break 'pages;
+                }
+                if let Ok(id) = entry.as_reference() {
+                    if let Ok(Object::Dictionary(dict)) = doc.get_object(id) {
+                        listed.insert(id, is_popup(dict));
+                    }
+                }
+            }
+        }
+        let mut groups = Self {
+            listed,
+            resolved: HashMap::new(),
+            firsts: HashMap::new(),
+        };
+        let mut ids: Vec<ObjectId> = groups.listed.keys().copied().collect();
+        ids.sort_unstable();
+        let mut firsts: BTreeSet<ObjectId> = BTreeSet::new();
+        for id in ids {
+            if let Some((first, _)) = groups.resolve(doc, id) {
+                firsts.insert(first);
+            }
+        }
+        // Sorted, so the key of a duplicate `/NM` is the same on every read; a later first with a taken key gets its object number mixed in.
+        let mut taken: HashSet<u64> = HashSet::new();
+        for first in firsts {
+            let mut salt = false;
+            let hash = loop {
+                let hash = identity(doc, first, salt);
+                if taken.insert(hash) {
+                    break hash;
+                }
+                salt = true;
+            };
+            groups.firsts.insert(first, hash);
+        }
+        groups
+    }
+
+    /// The first annotation of the group of the listed annotation `id` and the number of links to it, memoised in `resolved` (each
+    /// annotation is walked once; a walk stops at an already resolved one). `None` when `id` is no member of a valid group.
+    fn resolve(&mut self, doc: &Document, id: ObjectId) -> Option<(ObjectId, usize)> {
+        if let Some(done) = self.resolved.get(&id) {
+            return *done;
+        }
+        let mut path = vec![id];
+        let mut seen: HashSet<ObjectId> = HashSet::from([id]);
+        // `Some((first, links from the last node of the path))`; `last_is_first` when the walk ended at a non-member.
+        let mut base: Option<(ObjectId, usize)> = None;
+        let mut last_is_first = false;
+        loop {
+            let cur = *path.last()?;
+            let Ok(Object::Dictionary(at)) = doc.get_object(cur) else {
+                break;
+            };
+            if !is_group_member(doc, at) {
+                last_is_first = true;
+                base = Some((cur, 0));
+                break;
+            }
+            let Some(next) = at.get(b"IRT").ok().and_then(|o| o.as_reference().ok()) else {
+                break;
+            };
+            // Only an annotation of the document, never a popup or a ring; a chain stays within MAX_GROUP_DEPTH links.
+            if self.listed.get(&next) != Some(&false)
+                || seen.contains(&next)
+                || path.len() >= MAX_GROUP_DEPTH
+            {
+                break;
+            }
+            if let Some(Some((first, links))) = self.resolved.get(&next) {
+                base = Some((*first, *links));
+                break;
+            }
+            seen.insert(next);
+            path.push(next);
+        }
+        let Some((first, base_links)) = base else {
+            self.resolved.insert(id, None);
+            return None;
+        };
+        let count = path.len();
+        let mut mine = None;
+        for (at, node) in path.iter().enumerate() {
+            if last_is_first && at + 1 == count {
+                self.resolved.insert(*node, None);
+                continue;
+            }
+            let links = base_links + (count - 1 - at) + usize::from(!last_is_first);
+            let entry = (links < MAX_GROUP_DEPTH).then_some((first, links));
+            self.resolved.insert(*node, entry);
+            if at == 0 {
+                mine = entry;
+            }
+        }
+        mine
+    }
+
+    /// The group's first annotation for a member `dict` (object `own`, `None` for one written in the array itself); `None` when `dict`
+    /// is not a member of a valid group.
+    fn first_of(
+        &self,
+        doc: &Document,
+        dict: &Dictionary,
+        own: Option<ObjectId>,
+    ) -> Option<ObjectId> {
+        let mut seen: Vec<ObjectId> = own.into_iter().collect();
+        let mut at = dict;
+        for _ in 0..MAX_GROUP_DEPTH {
+            if !is_group_member(doc, at) {
+                // `dict` itself is no member; anything later is the first.
+                return seen.last().copied().filter(|_| !std::ptr::eq(at, dict));
+            }
+            let next = at.get(b"IRT").ok()?.as_reference().ok()?;
+            // Only an annotation of the document, never a popup or a ring.
+            if self.listed.get(&next) != Some(&false) || seen.contains(&next) {
+                return None;
+            }
+            seen.push(next);
+            let Ok(Object::Dictionary(target)) = doc.get_object(next) else {
+                return None;
+            };
+            at = target;
+        }
+        None
+    }
+
+    /// The group identity of the annotation `dict` (object `own`): as a member, the identity of its group's first; as a first, its own.
+    pub fn group_of(
+        &self,
+        doc: &Document,
+        dict: &Dictionary,
+        own: Option<ObjectId>,
+    ) -> Option<u64> {
+        if let Some(done) = own.and_then(|id| self.resolved.get(&id)) {
+            let first = done.map(|(first, _)| first).or(own);
+            return first.and_then(|first| self.firsts.get(&first).copied());
+        }
+        if let Some(first) = self.first_of(doc, dict, own) {
+            return self.firsts.get(&first).copied();
+        }
+        own.and_then(|id| self.firsts.get(&id).copied())
+    }
+}
+
+/// Longest `/NM` that identifies a group's first annotation; a longer one is not looked at (the object number is used).
+const MAX_NAME_BYTES: usize = 256;
+
+/// What identifies the group whose first annotation is `first`: its `/NM`, else its object number.
+///
+/// With `salt` the object number is mixed in as well, to tell apart two firsts of a hostile file that carry the same `/NM`.
+fn identity(doc: &Document, first: ObjectId, salt: bool) -> u64 {
+    let name = match doc.get_object(first) {
+        Ok(Object::Dictionary(dict)) => match dict.get(b"NM") {
+            Ok(Object::String(bytes, _)) if !bytes.is_empty() && bytes.len() <= MAX_NAME_BYTES => {
+                Some(bytes.clone())
+            }
+            _ => None,
+        },
+        _ => None,
+    };
+    let mut identity = name.unwrap_or_else(|| format!("obj {} {}", first.0, first.1).into_bytes());
+    if salt {
+        identity.extend_from_slice(format!("\0obj {} {}", first.0, first.1).as_bytes());
+    }
+    crate::model::annotation::group_hash(&identity)
 }
 
 fn is_popup(dict: &Dictionary) -> bool {
@@ -76,9 +287,11 @@ pub fn read_page(bytes: &[u8], page_index: u32) -> Result<HashMap<u32, ReviewLin
         .zip(0u32..)
         .filter_map(|((id, _), position)| id.map(|id| (id, position)))
         .collect();
+    let groups = Groups::of(&doc);
     let mut links = HashMap::new();
-    for ((_, dict), position) in counted.iter().zip(0u32..) {
-        let link = link_of(&doc, dict, position, &positions);
+    for ((own, dict), position) in counted.iter().zip(0u32..) {
+        let mut link = link_of(&doc, dict, position, &positions);
+        link.group = groups.group_of(&doc, dict, *own);
         if link != ReviewLink::default() {
             links.insert(position, link);
         }
@@ -121,6 +334,8 @@ pub(super) fn link_of(
     position: u32,
     positions: &HashMap<ObjectId, u32>,
 ) -> ReviewLink {
+    // A note in a group (`/RT /Group`) with its first on the same page reads as a reply (F19.1); any other member of a group is linked
+    // by `group` (F20.7, `DocState::link_replies` decides).
     let reply_to = dict
         .get(b"IRT")
         .ok()
@@ -138,7 +353,11 @@ pub(super) fn link_of(
     } else {
         state
     };
-    ReviewLink { reply_to, state }
+    ReviewLink {
+        reply_to,
+        state,
+        group: None,
+    }
 }
 
 #[cfg(test)]
@@ -186,14 +405,16 @@ mod tests {
             links.get(&1),
             Some(&ReviewLink {
                 reply_to: Some(0),
-                state: Some(ReviewState::Completed)
+                state: Some(ReviewState::Completed),
+                group: None
             })
         );
         assert_eq!(
             links.get(&2),
             Some(&ReviewLink {
                 reply_to: Some(0),
-                state: None
+                state: None,
+                group: None
             }),
             "a state of another model is not a review state"
         );
@@ -215,14 +436,16 @@ mod tests {
             links.get(&1),
             Some(&ReviewLink {
                 reply_to: Some(0),
-                state: None
+                state: None,
+                group: None
             })
         );
         assert_eq!(
             links.get(&2),
             Some(&ReviewLink {
                 reply_to: Some(0),
-                state: None
+                state: None,
+                group: None
             })
         );
     }
@@ -241,5 +464,82 @@ mod tests {
         assert_eq!(links.get(&1), None);
         assert_eq!(links.get(&3).and_then(|l| l.reply_to), Some(0));
         assert_eq!(links.get(&2), None, "a reply to itself is no reply");
+    }
+
+    fn member(irt: u32) -> Dictionary {
+        dictionary! {"Subtype" => "Highlight", "IRT" => Object::Reference((irt, 0)), "RT" => "Group"}
+    }
+
+    #[test]
+    fn groups_are_followed_to_their_first_and_broken_links_make_none() {
+        let bytes = file(vec![
+            dictionary! {"Subtype" => "Highlight", "NM" => Object::string_literal("first")},
+            member(2),
+            // A member of a member: the same group.
+            member(3),
+            // A ring of two.
+            member(6),
+            member(5),
+            // A link to nothing, and a plain reply.
+            member(99),
+            dictionary! {"Subtype" => "Text", "IRT" => Object::Reference((2, 0)), "RT" => "R"},
+        ]);
+        let links = read_page(&bytes, 0).unwrap();
+        let key = Some(crate::model::annotation::group_hash(b"first"));
+        for position in 0..3 {
+            assert_eq!(
+                links.get(&position).and_then(|l| l.group),
+                key,
+                "{position}"
+            );
+        }
+        for position in 3..7 {
+            assert_eq!(
+                links.get(&position).and_then(|l| l.group),
+                None,
+                "{position}"
+            );
+        }
+        assert_eq!(links.get(&6).and_then(|l| l.reply_to), Some(0));
+    }
+
+    #[test]
+    fn two_firsts_with_the_same_name_are_two_groups() {
+        let bytes = file(vec![
+            dictionary! {"Subtype" => "Highlight", "NM" => Object::string_literal("dup")},
+            dictionary! {"Subtype" => "Highlight", "NM" => Object::string_literal("dup")},
+            member(2),
+            member(3),
+        ]);
+        let links = read_page(&bytes, 0).unwrap();
+        let group = |p: u32| links.get(&p).and_then(|l| l.group);
+        assert!(group(0).is_some() && group(1).is_some());
+        assert_ne!(group(0), group(1), "a duplicate /NM does not merge groups");
+        assert_eq!(group(2), group(0));
+        assert_eq!(group(3), group(1));
+        let again = read_page(&bytes, 0).unwrap();
+        assert_eq!(again.get(&0), links.get(&0), "the keys are stable");
+    }
+
+    #[test]
+    fn a_long_chain_resolves_every_member_once() {
+        // 60 members chained to one first, in an order that makes each walk start from the far end.
+        let mut annots = vec![dictionary! {"Subtype" => "Highlight"}];
+        annots.extend((1..=60u32).map(|n| member(n + 1)));
+        let links = read_page(&file(annots), 0).unwrap();
+        let key = links.get(&0).and_then(|l| l.group);
+        assert!(key.is_some());
+        assert!((1..=60).all(|p| links.get(&p).and_then(|l| l.group) == key));
+    }
+
+    #[test]
+    fn a_chain_longer_than_the_depth_cap_is_no_group() {
+        let depth = MAX_GROUP_DEPTH as u32 + 2;
+        let mut annots = vec![dictionary! {"Subtype" => "Highlight"}];
+        // Entry n (object n + 2) links to the one before it.
+        annots.extend((1..=depth).map(|n| member(n + 1)));
+        let links = read_page(&file(annots), 0).unwrap();
+        assert_eq!(links.get(&depth).and_then(|l| l.group), None);
+        assert!(links.get(&1).and_then(|l| l.group).is_some());
     }
 }

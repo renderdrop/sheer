@@ -48,7 +48,7 @@ export function TopBar({ trafficLightInset }: TopBarProps) {
       data-slot="tabstrip"
       data-tauri-drag-region="deep"
       className={cx(
-        'bg-panel flex h-tabstrip min-w-0 items-end border-b border-border-subtle',
+        'bg-chrome flex h-tabstrip min-w-0 items-end border-b border-border-subtle',
         trafficLightInset ? 'ps-chrome-inset' : 'ps-1',
       )}
     >

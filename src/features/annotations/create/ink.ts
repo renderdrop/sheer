@@ -96,10 +96,45 @@ export function capSamples(samples: readonly Sample[], max: number): Sample[] {
   return out;
 }
 
-/** The points of a finished stroke: smoothed, then capped. */
+/**
+ * Freehand smoothing parameters (F20.4). Pipeline: thin by distance, moving average (two passes), Catmull-Rom, cap.
+ * - SMOOTH_MIN_DISTANCE_PT: samples closer than this to the last kept one are dropped (about 3 screen px at 100 % zoom); the last
+ *   sample is always kept, so the stroke ends where it was drawn and the arrowhead follows the end of the stroke.
+ * - SMOOTH_RADIUS / SMOOTH_PASSES: the average spans 2 * 3 + 1 samples and runs twice (a binomial-like kernel), which removes tremor.
+ * - SMOOTH_STEPS: spline points per segment after thinning.
+ */
+export const SMOOTH_MIN_DISTANCE_PT = 2.5;
+export const SMOOTH_RADIUS = 3;
+export const SMOOTH_PASSES = 2;
+export const SMOOTH_STEPS = 3;
+
+/** Drops samples closer than `minDistance` to the last kept one; the first and last sample always stay. */
+export function thinSamples(samples: readonly Sample[], minDistance = SMOOTH_MIN_DISTANCE_PT): Sample[] {
+  const n = samples.length;
+  if (n < 3) return samples.map((s) => ({ ...s }));
+  const out: Sample[] = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    const s = samples[i];
+    if (s === undefined) continue;
+    const prev = out[out.length - 1];
+    if (prev === undefined || Math.hypot(s.x - prev.x, s.y - prev.y) >= minDistance) out.push({ ...s });
+  }
+  const last = samples[n - 1];
+  const kept = out[out.length - 1];
+  if (last !== undefined && kept !== undefined) {
+    // A last sample too close to the kept one replaces it (but never the first), so the end is exact without a stub.
+    if (out.length > 1 && Math.hypot(last.x - kept.x, last.y - kept.y) < minDistance) out[out.length - 1] = { ...last };
+    else out.push({ ...last });
+  }
+  return out;
+}
+
+/** The points of a finished stroke: thinned, smoothed, then capped. */
 export function smoothStroke(samples: readonly Sample[], max = MAX_STROKE_POINTS): Sample[] {
   if (samples.length < 3) return capSamples(samples, max);
-  return capSamples(catmullRom(movingAverage(samples, 1), 2), max);
+  let line = thinSamples(samples);
+  for (let pass = 0; pass < SMOOTH_PASSES; pass += 1) line = movingAverage(line, SMOOTH_RADIUS);
+  return capSamples(catmullRom(line, SMOOTH_STEPS), max);
 }
 
 function radiusOf(width: number, pressure: number): number {

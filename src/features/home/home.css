@@ -24,8 +24,18 @@
   --title-weight: var(--type-hero-compact-weight);
   --title-tracking: var(--type-hero-compact-tracking);
 
-  padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
   border-inline-start: 1px solid var(--color-border);
+  /* The glow and the drop card are clipped to this box exactly; only the scroller inside may scroll (F20.1). */
+  display: flex;
+  flex-direction: column;
+  contain: paint;
+}
+.home-scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
 }
 @media (min-width: 1200px) {
   .home-main {
@@ -66,6 +76,20 @@
   --search-gap: var(--space-3);
   --head-gap: var(--space-2);
   --pad-bottom: var(--space-2);
+}
+/* Measured fit (homeLayout fitLevel): level 2 drops the card thumbnails and uses the small tool tiles. */
+.home-main[data-fit="2"] {
+  --section-gap: var(--space-3);
+  --head-gap: var(--space-1);
+  --card-h: calc(2 * var(--card-pad) + var(--control-sm));
+  --tile-h: var(--home-tool-tile-height-tight);
+  --tile-h-mini: var(--home-tool-tile-height-tight);
+}
+.home-main[data-fit="2"] .home-thumb {
+  display: none;
+}
+.home-main[data-fit="2"] .home-card-body {
+  justify-content: center;
 }
 .home-content {
   max-width: var(--home-content-max);
@@ -181,20 +205,33 @@
   height: calc(var(--space-1) + var(--space-1) / 2);
 }
 
-/* Tool tiles: four columns, two below 1100 wide. */
+/* Tool tiles (F20.2): the box is the container; four columns when four tiles of --home-tile-min-width fit, else two columns of
+   four rows with the subtitles hidden. */
+.home-tools-box {
+  container: home-tools / inline-size;
+}
 .home-tool-rows {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   /* Rows 12 apart (the proof of H4 sums with 12), columns 16. */
   gap: var(--space-3) var(--space-4);
+  --tile-h-eff: var(--tile-h-mini, var(--home-tool-tile-height-mini));
 }
-@media (min-width: 1100px) {
+/* 4 x 184 (--home-tile-min-width) + 3 x 16 (--space-4) = 784; a container query cannot read a custom property (checked by homeFit.test). */
+@container home-tools (min-width: 784px) {
   .home-tool-rows {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    --tile-h-eff: var(--tile-h);
   }
 }
 .home-tool-rows > li {
-  height: var(--tile-h);
+  height: var(--tile-h-eff);
+  min-width: var(--home-tile-min-width);
+}
+@container home-tools (max-width: 783.98px) {
+  .home-tile-sub {
+    display: none;
+  }
 }
 /* Compact tier: tight padding and icon gap, subtitle 13/18 up to two lines (20 + 36 fits the 72 tile); never an ellipsis at 1280 (en, de). */
 .home-tile {
@@ -209,7 +246,10 @@
   font-size: var(--type-nav-size);
   line-height: var(--type-nav-line);
   font-weight: 500;
-  overflow-wrap: anywhere;
+  /* Never inside a word (F20.2). */
+  overflow-wrap: normal;
+  word-break: keep-all;
+  hyphens: none;
 }
 .home-tile-sub {
   font-size: var(--type-label-size);
@@ -218,7 +258,9 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  hyphens: none;
 }
 .home-main[data-tier="a"] .home-tile-sub {
   font-size: var(--type-body-size);

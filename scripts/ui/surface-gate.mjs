@@ -9,6 +9,7 @@
 //   split    every split button ([data-split]) in hover and pressed: all its parts stay inside its own box (0.5 px) and the box keeps its size
 //   contour  every split tool, main and chevron part, in inactive / inactive+hover / active / active+hover: one outer contour,
 //            hover changes only the background of the hovered half (F19.27)
+//   home     Home does not scroll (F20.1): its scroller and the document have scrollHeight <= clientHeight and scrollWidth <= clientWidth
 //   hover    every toolbar and mode button hovered over CDP: its hover paints (box, ::before/::after, shadow spread, backgrounds) lie inside
 //            the button box and its toolbar, 0 px tolerance (F19.2)
 // Also registered: the ink mini bar, its colour popover and every coach mark step (floating surfaces that are no dialog).
@@ -27,6 +28,7 @@ import {
   checkInViewport,
   checkLabelWrap,
   LABEL_SELECTOR,
+  checkNoScroll,
   checkNotice,
   checkOverlap,
   checkPanelOverlap,
@@ -744,6 +746,22 @@ async function sweepHover(label) {
     rows.push(...rowsFor(`${lang} hover:${label} @${current.w}x${current.h}`, { hover: checkHoverGeometry(items) }));
 }
 
+/** F20.1: Home (with and without the fixture open) must not scroll at this size. */
+async function sweepHome() {
+  const ui = store('stores/ui.ts');
+  await ev(`(async()=>{(await ${ui}).useUi.getState().setView('home')})()`);
+  await sleep(600);
+  const els = await ev(`(()=>{
+    const m = (name, e) => e && { name, scrollWidth: e.scrollWidth, clientWidth: e.clientWidth, scrollHeight: e.scrollHeight, clientHeight: e.clientHeight };
+    return [m('home scroller', document.querySelector('[data-home-scroller]')), m('home main', document.querySelector('[data-home-main]')),
+      m('document', document.documentElement)].filter(Boolean);
+  })()`);
+  const tag = `${lang} home @${current.w}x${current.h}`;
+  rows.push(...rowsFor(tag, { 'home does not scroll': els.length === 0 ? ['home is not shown'] : checkNoScroll(els) }));
+  await ev(`(async()=>{(await ${ui}).useUi.getState().setView('editor')})()`);
+  await sleep(400);
+}
+
 const store = (path) => `import('/src/${path}')`;
 async function openFixture() {
   const active = () =>
@@ -787,6 +805,7 @@ try {
         `(async()=>{(await ${store('i18n/store.ts')}).useLocaleStore.getState().setLocale(${JSON.stringify(lang)})})()`,
       );
       await sleep(500);
+      if (!only || 'home'.includes(only)) await sweepHome();
       await sweepRegistry();
       await sweepTextEdit();
       await sweepInspectors();

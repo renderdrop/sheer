@@ -12,6 +12,7 @@ import { markSelection } from '../annotations/create/fromSelection';
 import { onAddComment } from '../../actions/commentIntent';
 import { addCommentFromSelection } from './comment';
 import { textPointer } from '../viewer/lesen';
+import { useMultiSelection } from './multiSelection';
 import { hasTextSelection } from './selection';
 
 /** A text selection settles this long after the pointer was released, or after the last key of a keyboard selection. */
@@ -143,6 +144,7 @@ export function SelectionBar({ docId, region }: SelectionBarProps) {
     return () => document.removeEventListener('keydown', onKey);
   }, [rects, region]);
 
+  const pinned = useMultiSelection((state) => (state.docId === docId ? state.spans.length : 0));
   const readOnly = docId !== null && isReadOnlyDocument(docId);
   const cite = useCallback(() => {
     if (docId === null || isReadOnlyDocument(docId)) return;
@@ -182,6 +184,7 @@ export function SelectionBar({ docId, region }: SelectionBarProps) {
       {...motionProps}
       ref={barRef}
       role="toolbar"
+      data-selection-bar=""
       aria-label={t('comments.selectionBar')}
       // The bar is placed after it is measured; until then it is invisible, never shown in the wrong place.
       style={{
@@ -194,6 +197,12 @@ export function SelectionBar({ docId, region }: SelectionBarProps) {
       onPointerDown={(event) => event.preventDefault()}
       className="bg-panel border border-border-subtle shadow-floating fixed z-popover flex h-control-md items-center gap-1 rounded-md p-1 text-md text-text"
     >
+      {pinned > 0 && (
+        // Several ranges (F20.7): Highlight and Comment act on all of them.
+        <span data-selection-count="" role="status" className="t-caption px-2 whitespace-nowrap text-text">
+          {t('selection.ranges', { count: pinned + 1 })}
+        </span>
+      )}
       <Button
         size="sm"
         variant="ghost"

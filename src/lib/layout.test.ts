@@ -7,6 +7,7 @@ import { LAYOUT, PANEL } from '../components/tokens';
 import {
   bodyHeight,
   COMMENTS_PANEL_MIN,
+  clampInspectorWidth,
   clampPanelWidth,
   panelWidthFor,
   computeShellLayout,
@@ -219,5 +220,26 @@ describe('the Comments tab width (ADR-106)', () => {
     const input = { hasDocument: true, windowWidth: 1400, panelWidth: PANEL.default, panelCollapsed: false };
     expect(computeShellLayout({ ...input, leftTab: 'comments' }).panelWidth).toBe(COMMENTS_PANEL_MIN);
     expect(computeShellLayout(input).panelWidth).toBe(PANEL.default);
+  });
+});
+
+describe('the resizable inspector (F20.8)', () => {
+  it('clamps to 240 to 480 and falls back to 300', () => {
+    expect(clampInspectorWidth(100)).toBe(240);
+    expect(clampInspectorWidth(240)).toBe(240);
+    expect(clampInspectorWidth(481)).toBe(480);
+    expect(clampInspectorWidth(Number.NaN)).toBe(300);
+  });
+
+  it('its chosen width is the track and leaves the canvas the rest', () => {
+    const wide = computeShellLayout({ ...base, inspectorOpen: true, inspectorWidth: 400 });
+    expect(wide.tracks[3]).toEqual({ slot: 'inspector', size: '400px' });
+    expect(wide.canvasWidth).toBe(computeShellLayout({ ...base }).canvasWidth - 400 + 8 - 8);
+  });
+
+  it('at the 960 px window the widest inspector keeps the canvas minimum by collapsing the page sidebar', () => {
+    const small = computeShellLayout({ ...base, windowWidth: 960, inspectorOpen: true, inspectorWidth: 480 });
+    expect(small.leftCollapsed).toBe(true);
+    expect(small.canvasWidth).toBeGreaterThanOrEqual(LAYOUT.canvasMin);
   });
 });

@@ -12,7 +12,8 @@ import { isConfirmKey } from '../annotations/note/confirmKey';
 import { useAutosize } from '../annotations/note/useAutosize';
 import { deleteThread, discardNew, postReply, run, setReviewState } from '../comments/actions';
 import { useComments } from '../comments/store';
-import { parseDate, type Thread } from '../comments/model';
+import { parseDate, threadIds, threadPages, type Thread } from '../comments/model';
+import { pageListOf } from '../comments/pageLabel';
 import { typeOf } from '../comments/typeInfo';
 import { useCommentHover } from '../comments/useCommentsData';
 import { bubbleDate, initialOf } from './layout';
@@ -134,7 +135,10 @@ export const Bubble = memo(
     const [more, setMore] = useState(false);
     const collapsed = resolved && !selected && !expanded;
     const info = typeOf(root);
-    const page = pageNumberOf(docId, root.pageId);
+    // A group (F20.7) is one comment on several pages: the bubble lists them.
+    const pages = threadPages(thread);
+    const groupPages = pages.length > 1 ? pageListOf(docId, pages) : null;
+    const page = groupPages ?? String(pageNumberOf(docId, root.pageId));
     const hovered = useCommentHover((state) => state.hovered === root.id);
 
     // Editing the text in place. A comment that was just made ("Comment") is written here at once: the store says which one.
@@ -248,6 +252,11 @@ export const Bubble = memo(
             <span className="t-caption truncate text-text" title={root.modified ?? undefined}>
               {date}
             </span>
+            {groupPages !== null && (
+              <span data-group-pages="" className="t-caption truncate text-text">
+                {t('comments.pages', { list: groupPages })}
+              </span>
+            )}
           </span>
           <IconButton
             size="sm"
@@ -274,8 +283,7 @@ export const Bubble = memo(
                 id: 'delete',
                 label: t('comments.delete'),
                 disabled: root.kind === 'opaque',
-                onSelect: () =>
-                  void deleteThread(docId, [root.id, ...replies.map((r) => r.id), ...thread.states.map((s) => s.id)]),
+                onSelect: () => void deleteThread(docId, threadIds(thread)),
               },
             ]}
             trigger={(trigger) => (

@@ -188,6 +188,10 @@ pub struct DocState {
     /// The pages (ids) read from the file whose Sheer keys could not be read (an encrypted file, a read that failed): their annotations
     /// keep the `/SHR_Cite` and `/SHR_Tags` the file has when they are saved (ADR-119).
     keys_unread: HashSet<u32>,
+    /// Members read so far per imported group (by the file-side identity), and the groups with more than `MAX_GROUP_MEMBERS`: those are
+    /// read as ungrouped annotations (a hostile file cannot make one edit fan out over thousands).
+    group_counts: HashMap<u64, HashSet<AnnotId>>,
+    oversized_groups: HashSet<u64>,
     /// The text edits of each page (by page id), replayed over the file page (ADR-125, ARCHITECTURE §13.4).
     pub(super) text_edits: HashMap<u32, super::text_edit::PageEdits>,
     /// The OCR text layer of each page (by page id) that the session made and the file does not have yet (ADR-134); written at save.
@@ -260,6 +264,8 @@ impl DocState {
             page_labels: None,
             bibliography: super::bibliography::BibliographyState::default(),
             keys_unread: HashSet::new(),
+            group_counts: HashMap::new(),
+            oversized_groups: HashSet::new(),
             text_edits: HashMap::new(),
             ocr_layers: std::collections::BTreeMap::new(),
             header_footer: super::header_footer::HeaderFooterState::default(),
@@ -330,6 +336,9 @@ impl DocState {
         };
         match command {
             DocCommand::CreateAnnotation { draft } => of_page(Some(&draft.page_id)),
+            DocCommand::CreateAnnotationGroup { drafts } => {
+                of_page(drafts.first().map(|draft| &draft.page_id))
+            }
             DocCommand::UpdateAnnotation { id, .. } => of_annotation(*id),
             DocCommand::DeleteAnnotations { ids } | DocCommand::MoveAnnotations { ids, .. } => {
                 ids.first().map(|id| of_annotation(*id)).unwrap_or_default()
@@ -603,6 +612,15 @@ impl DocState {
             .collect()
     }
 
+    /// The live members of the group `key` (F20.7), by id.
+    pub(crate) fn group_members(&self, key: &str) -> Vec<AnnotId> {
+        self.entries
+            .iter()
+            .filter(|(_, entry)| !entry.tombstone && entry.annotation.group.as_deref() == Some(key))
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
     /// Whether one more annotation fits on `page` and in the document.
     pub(crate) fn check_room(&self, page: PageId) -> Result<(), AppError> {
         let total = self.live_total;
@@ -780,6 +798,42 @@ impl DocState {
         added
     }
 
+    /// Puts the imported annotation `id` into the group `hash` of the file. A group with more than `MAX_GROUP_MEMBERS` members is no
+    /// group here: the key is taken off the members already in it and none is given to the rest (they read as ungrouped).
+    fn join_imported_group(&mut self, id: AnnotId, hash: u64) {
+        if self.oversized_groups.contains(&hash) {
+            return;
+        }
+        if self
+            .entries
+            .get(&id)
+            .is_none_or(|entry| entry.annotation.is_opaque())
+        {
+            return;
+        }
+        let key = super::annotation::group_key(hash);
+        if let Some(entry) = self.entries.get_mut(&id) {
+            entry.annotation.group = Some(key.clone());
+        }
+        let known = self.group_counts.entry(hash).or_default();
+        known.insert(id);
+        if known.len() <= super::command::MAX_GROUP_MEMBERS {
+            return;
+        }
+        // Ids of a page read again are new: count the live members before calling the group too big.
+        let live: HashSet<AnnotId> = self.group_members(&key).into_iter().collect();
+        if live.len() > super::command::MAX_GROUP_MEMBERS {
+            self.oversized_groups.insert(hash);
+            for entry in self.entries.values_mut() {
+                if entry.annotation.group.as_deref() == Some(key.as_str()) {
+                    entry.annotation.group = None;
+                }
+            }
+        } else {
+            self.group_counts.insert(hash, live);
+        }
+    }
+
     /// Applies the reply links and states of a page that was just read (see [`DocState::import_page_linked`]).
     fn link_replies(&mut self, page: PageId, items: &[Imported], links: &HashMap<u32, ReviewLink>) {
         if links.is_empty() {
@@ -808,6 +862,11 @@ impl DocState {
                 .is_some_and(|entry| matches!(entry.annotation.body, AnnotationBody::Note { .. }));
             // Only a note replies in the model; a state without a parent is not a review reply.
             if parent.is_none() || !is_note {
+                // A member of a group (F20.7) of a kind the model edits, or a group's first; the members on other pages get the same
+                // key. (A note grouped with one on its page replies to it, F19.1.)
+                if let Some(hash) = link.group {
+                    self.join_imported_group(id, hash);
+                }
                 continue;
             }
             let Some(mut entry) = self.entries.remove(&id) else {
@@ -920,7 +979,9 @@ impl DocState {
         if meta.annotation.is_none()
             && matches!(
                 command,
-                DocCommand::CreateAnnotation { .. } | DocCommand::Batch { .. }
+                DocCommand::CreateAnnotation { .. }
+                    | DocCommand::CreateAnnotationGroup { .. }
+                    | DocCommand::Batch { .. }
             )
         {
             if let Some(made) = delta.upserted.values().next() {

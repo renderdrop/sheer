@@ -11,7 +11,7 @@
  *   splitter stays as the leading handle. The sidebar collapses by itself below 860 px or when the canvas would get too narrow.
  * - Home (no document, or the user went back to Home): one slot, the window.
  */
-import { LAYOUT, PANEL } from '../components/tokens';
+import { INSPECTOR, LAYOUT, PANEL } from '../components/tokens';
 
 /** Narrowest the page sidebar is while it shows the Comments tab: a card needs room for its type, author and text (FEEDBACK F15 A5, ADR-106). */
 export const COMMENTS_PANEL_MIN = 280;
@@ -36,6 +36,8 @@ export interface LayoutInput {
   leftTab?: string;
   /** The inspector column is open (a tool inspector shows): it takes `--inspector-width`, else nothing. Default: no. */
   inspectorOpen?: boolean;
+  /** Width the user chose for the inspector column (240 to 480); default 300. */
+  inspectorWidth?: number;
 }
 
 export interface Track {
@@ -108,6 +110,12 @@ export function clampPanelWidth(value: number): number {
   return Math.min(PANEL.max, Math.max(PANEL.min, Math.round(value)));
 }
 
+/** `value` within the inspector's range; anything that is not a finite number gives the default (F20.8). */
+export function clampInspectorWidth(value: number): number {
+  if (!Number.isFinite(value)) return INSPECTOR.default;
+  return Math.min(INSPECTOR.max, Math.max(INSPECTOR.min, Math.round(value)));
+}
+
 function widthOf(input: LayoutInput): number {
   return Number.isFinite(input.windowWidth) ? input.windowWidth : LAYOUT.minWindowWidth;
 }
@@ -118,7 +126,11 @@ export function shellStructure(input: LayoutInput): ShellStructure {
   const panelWidth = panelWidthFor(input.panelWidth, input.leftTab);
   const width = widthOf(input);
   const inspector = input.inspectorOpen === true;
-  const canvasWithLeft = width - panelWidth - LAYOUT.splitter - (inspector ? LAYOUT.inspector : 0);
+  const canvasWithLeft =
+    width -
+    panelWidth -
+    LAYOUT.splitter -
+    (inspector ? clampInspectorWidth(input.inspectorWidth ?? INSPECTOR.default) : 0);
   const collapsedByLayout = width < LAYOUT.leftCollapseBelow || canvasWithLeft < LAYOUT.canvasMin;
   return {
     mode: 'document',
@@ -143,7 +155,12 @@ function rowTracksOf(structure: ShellStructure): RowTrack[] {
 }
 
 /** The tracks of the grid for a structure, with the page sidebar at `panelWidth` (clamped). */
-export function shellTracks(structure: ShellStructure, panelWidth: number, leftTab?: string): ShellTracks {
+export function shellTracks(
+  structure: ShellStructure,
+  panelWidth: number,
+  leftTab?: string,
+  inspectorWidth: number = INSPECTOR.default,
+): ShellTracks {
   const width = panelWidthFor(panelWidth, leftTab);
   const tracks: Track[] =
     structure.mode === 'empty'
@@ -153,7 +170,14 @@ export function shellTracks(structure: ShellStructure, panelWidth: number, leftT
           { slot: 'left', size: structure.leftCollapsed ? NO_ROOM : `${width}px` },
           { slot: 'splitter', size: 'var(--splitter-width)' },
           { slot: 'canvas', size: 'minmax(var(--canvas-min), 1fr)' },
-          { slot: 'inspector', size: structure.inspector ? 'var(--inspector-width)' : NO_ROOM },
+          {
+            slot: 'inspector',
+            size: structure.inspector
+              ? inspectorWidth === INSPECTOR.default
+                ? 'var(--inspector-width)'
+                : `${clampInspectorWidth(inspectorWidth)}px`
+              : NO_ROOM,
+          },
         ];
   const column: Partial<Record<SlotName, number>> = {};
   tracks.forEach((track, index) => {
@@ -179,10 +203,10 @@ export function shellTracks(structure: ShellStructure, panelWidth: number, leftT
 export function computeShellLayout(input: LayoutInput): ShellLayout {
   const structure = shellStructure(input);
   const width = widthOf(input);
-  const tracks = shellTracks(structure, input.panelWidth, input.leftTab);
+  const tracks = shellTracks(structure, input.panelWidth, input.leftTab, input.inspectorWidth);
   if (structure.mode === 'empty') return { ...structure, ...tracks, canvasWidth: Math.max(0, width) };
   const left = structure.leftCollapsed ? 0 : tracks.panelWidth;
-  const inspector = structure.inspector ? LAYOUT.inspector : 0;
+  const inspector = structure.inspector ? clampInspectorWidth(input.inspectorWidth ?? INSPECTOR.default) : 0;
   return { ...structure, ...tracks, canvasWidth: width - left - LAYOUT.splitter - inspector };
 }
 

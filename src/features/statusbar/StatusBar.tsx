@@ -184,7 +184,7 @@ function ZoomControls() {
         aria-invalid={invalid || undefined}
         disabled={off}
         tight
-        className={cx(FIELD, 'w-[calc(var(--space-12)+var(--space-1))]!')}
+        className={cx(FIELD, 'w-[calc(var(--space-16)+var(--space-2))]! tabular-nums')}
         value={draft ?? value}
         onChange={(event) => {
           setDraft(event.target.value);

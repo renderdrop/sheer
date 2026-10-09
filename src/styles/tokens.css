@@ -28,6 +28,7 @@
   /* Color roles (DESIGN 1.2, 1.3). The primitives (Ink, Sand, Stone, ...) are in :root and are not utilities. */
   --color-app: var(--surface-canvas);
   --color-panel: var(--surface-panel);
+  --color-chrome: var(--chrome);
   --color-subtle: var(--surface-subtle);
   --color-pressed: var(--surface-pressed);
   --color-page-area: var(--surface-page-area);
@@ -471,6 +472,7 @@
   --tool-item-height: 56px;
   --tool-item-radius: 8px;
   --kbd-compact: 16px;
+  --chrome: #fafaf8; /* one background for menu bar, tab strip, mode card surround and both sidebars (F20.9) */
   --inspector-width: 300px;
   --inspector-header-height: 48px;
   --inspector-footer-height: 72px;
@@ -626,6 +628,9 @@
   --home-search-height: 48px;
   --home-nav-row-height: 44px;
   --home-card-min: 148px;
+  --home-tile-min-width: 184px; /* narrowest tool tile (F20.2): four per row from 4 x this + 3 gaps, else two per row */
+  --home-tool-tile-height-mini: 48px; /* a tile of the two-per-row layout: title only */
+  --home-tool-tile-height-tight: 36px; /* the same in a window too short for it (F20.1) */
 }
 
 /* legacy aliases — removed in R7 (ADR-100) */
@@ -665,6 +670,7 @@
   :root:root {
     --surface-canvas: Canvas;
     --surface-panel: Canvas;
+    --chrome: Canvas;
     --surface-page-area: Canvas;
     --surface-page: Canvas;
     --surface-subtle: Canvas;

@@ -15,6 +15,7 @@ import { copyCitation } from '../citations/exportActions';
 import { useCitationStyle } from '../citations/style';
 import { useCitations } from '../citations/store';
 import { deleteThread, postReply, run } from '../comments/actions';
+import { threadIds } from '../comments/model';
 import { useCommentHover } from '../comments/useCommentsData';
 import { openReferenceDetails } from '../properties/openReference';
 import { TagChips } from '../tags/TagChips';
@@ -168,8 +169,7 @@ export const CitationBubble = memo(
               {
                 id: 'delete',
                 label: t('comments.delete'),
-                onSelect: () =>
-                  void deleteThread(docId, [root.id, ...replies.map((r) => r.id), ...thread.states.map((s) => s.id)]),
+                onSelect: () => void deleteThread(docId, threadIds(thread)),
               },
             ]}
             trigger={(trigger) => (
