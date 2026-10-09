@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { EASE_DRAW } from '../components/iconMotion';
 import { LAYOUT, PANEL } from '../components/tokens';
 
 /**
@@ -323,6 +324,12 @@ describe('sizes and the focus ring (DESIGN 1.3, 2)', () => {
   it('icon sizes and stroke; --icon-12 and --icon-stroke-sm are gone', () => {
     for (const size of [16, 18, 20, 24]) expect(root.get(`--icon-${size}`)).toBe(`${size}px`);
     expect(root.get('--icon-stroke')).toBe('1.75px');
+    // User units per size: 1.75 px on screen at 16/18/20/24.
+    for (const size of [16, 18, 20])
+      expect(root.get(`--icon-stroke-${size}`)).toBe(`calc(var(--icon-stroke) * 24 / ${size})`);
+    expect(root.get('--icon-stroke-24')).toBe('var(--icon-stroke)');
+    expect(root.get('--ease-draw')).toBe(norm(EASE_DRAW));
+    expect(css).not.toContain('--motion-draw');
     expect(token('--icon-12')).toBeUndefined();
     expect(token('--icon-stroke-sm')).toBeUndefined();
     expect(legacy.has('--icon-12')).toBe(false);
@@ -566,7 +573,7 @@ describe('motion (DESIGN 1.2, MOTION 1)', () => {
       '--hold-outline': '1000ms',
       '--hold-shape': '500ms',
       '--motion-morph': '150ms',
-      '--motion-draw': '200ms',
+      '--motion-icon': '900ms',
     };
     for (const [name, value] of Object.entries(exceptions)) expect(root.get(name), name).toBe(value);
     const times = [...root.entries()].filter(([, value]) => /^\d+(ms|s)$/.test(value)).map(([name]) => name);

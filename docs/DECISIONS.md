@@ -3196,3 +3196,30 @@ real-input smoke, no reviewer. CI green, then release `v2.1.1` with a short repo
 - *Evidence.* F22.1 window captures at 1280×800 and 1920×1080 (`window.ps1`); F22.6 one clip-recorder APNG per place (tool strip,
   home, a menu or dialog) of the acceptance build, driven by CDP hover; files under `review/` (untracked).
 - Models (ADR-142): all packages Sonnet; acceptance-script adaptation Sonnet.
+
+**ADR-146 addendum (owner live feedback, same session).**
+- *Strip alignment.* Left-aligned reads wrong: the strip is centred in the card and spread over its width. Each gap between groups
+  grows equally from `--tool-group-gap` (20 px) up to `--tool-group-gap-max` (48 px), the separator stays centred in its gap; spare
+  width beyond that is split equally left and right. Wrapped lines follow the same rule.
+- *Icon draw.* 200 ms looked dull, alike and too fast. The draw becomes a choreography derived from each icon's own geometry, so
+  icons differ: elements longest first, staggered (each starts after the previous one is partly drawn), alternating direction
+  (even from the start, odd from the end), pen easing `--ease-draw` (ease-in-out), total about 0.5–0.65 s (`--motion-draw`, per
+  element duration by its share of the length, with a floor). Dots and very short strokes fade in at the end instead of drawing
+  (no scale). The Ink 60 → Ink colour change runs over the same duration. Still no scale, shadow or glow; still only on entry, not
+  on disabled hosts, colour only under reduced motion.
+
+**ADR-146 addendum 2 (owner live feedback, second round).** The staggered draw is still too fast to read and most icons look
+"half drawn". Replaced by a motion catalogue per icon (`src/components/iconMotion.ts`), keyed by the Lucide icon id:
+- *Families* (examples): `spin` (rotate/refresh/undo/redo), `nudge` (arrows, chevrons: a push along their direction and back),
+  `swing` (hand waves, bell, pen/highlighter write-wiggle), `lid` (trash lid lifts and settles), `snip` (scissors blades close
+  twice), `orbit` (search/zoom lens circles), `press` (stamp pushes down), `part` (lock shackle lifts; crop corners part; stacked
+  sheets slide apart and back), `rise` (image sun rises), `sequence` (check, x, plus, T: strokes drawn in their natural writing
+  order) and `trace` (fallback: every element drawn completely, one after the other, longest first). Every tool of the strip,
+  the sidebars, the home and the menus gets an explicit family; others fall back to `trace`.
+- *Timing*: about 0.8–1.1 s per icon (`--motion-icon`, per-family factors), pen easing; plays once per pointer entry, a re-entry
+  while it still runs does not restart it; it always ends exactly in the rest state (no fill-forwards). The colour (Ink 60 → Ink)
+  follows in `--motion-base`.
+- *Geometry*: `nonScalingStroke` goes; the stroke width is set in user units per icon size (1.75 px on screen at 16/18/20/24), so
+  dash lengths from `getTotalLength()` are exact in every engine and a draw never stops halfway.
+- Still no scale, shadow or glow (rotation and translation are allowed); nothing on disabled hosts; colour only under reduced
+  motion.

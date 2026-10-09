@@ -21,8 +21,9 @@ export const TOOL_ROW_ID = 'mode-tool-row';
 const CAPTION = 'flex h-tool-caption shrink-0 items-center whitespace-nowrap px-1 text-xs text-text-muted select-none';
 
 /**
- * The line between two groups (F22.2): the gap `--tool-group-gap` (20) wide with the 1 px line centred in it. It belongs to the group
- * before it and wraps with it; at the end of a wrapped line it is hidden (`data-line-end`), so a separator never starts a line.
+ * The line between two groups (F22.2): the gap `--tool-group-gap` (20) wide at least, with the 1 px line centred in it; `spreadGaps`
+ * grows it up to `--tool-group-gap-max`. It belongs to the group before it and wraps with it; at the end of a wrapped line it is
+ * hidden and zero wide (`data-line-end`), so a separator never starts a line.
  */
 function Separator() {
   return (
@@ -31,9 +32,47 @@ function Separator() {
       data-separator-box=""
       className="flex w-tool-group-gap shrink-0 justify-center self-stretch py-2 data-line-end:invisible"
     >
-      <div role="separator" aria-orientation="vertical" data-separator="" className="h-full w-px bg-border" />
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        data-separator=""
+        className="h-full w-px bg-(--tool-separator)"
+      />
     </div>
   );
+}
+
+/** Clears the widths `spreadGaps` set, so the fit measures the strip with the minimum gaps. */
+function resetGaps(element: HTMLElement): void {
+  for (const box of element.querySelectorAll<HTMLElement>('[data-separator-box]')) box.style.width = '';
+}
+
+/**
+ * Spreads each line of the strip (F22.3): every gap between two groups of a line grows equally from `--tool-group-gap` to
+ * `--tool-group-gap-max`; beyond that the line stays centred (the row centres its lines). Measured with the minimum gaps, so growing
+ * gaps never change the fit or the line breaks. A separator at the end of a line is zero wide.
+ */
+function spreadGaps(element: HTMLElement, units: HTMLElement[]): void {
+  const style = getComputedStyle(element);
+  const pad = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
+  const avail = element.clientWidth - pad;
+  const max = Number.parseFloat(style.getPropertyValue('--tool-group-gap-max')) || 48;
+  const lines = new Map<number, HTMLElement[]>();
+  for (const unit of units) lines.set(unit.offsetTop, [...(lines.get(unit.offsetTop) ?? []), unit]);
+  for (const line of lines.values()) {
+    const boxes = line.flatMap((unit) => {
+      const box = unit.querySelector<HTMLElement>('[data-separator-box]');
+      return box === null ? [] : [box];
+    });
+    const end = line[line.length - 1]?.querySelector<HTMLElement>('[data-separator-box]') ?? null;
+    const used = boxes.filter((box) => box !== end);
+    const min = used[0]?.offsetWidth ?? 0;
+    if (min <= 0) continue; // not laid out (no layout engine)
+    const width = line.reduce((sum, unit) => sum + unit.offsetWidth, 0) - (end?.offsetWidth ?? 0);
+    const gap = Math.min(max, min + Math.max(avail - width, 0) / used.length);
+    for (const box of used) box.style.width = `${gap}px`;
+    if (end !== null) end.style.width = '0px';
+  }
 }
 
 /**
@@ -107,7 +146,9 @@ export const ToolRow = memo(function ToolRow() {
   // Measured after the render: the fit that still overflows gets one step tighter before the next paint.
   useLayoutEffect(() => {
     const element = row.current;
-    if (element === null || element.scrollWidth <= element.clientWidth) return;
+    if (element === null) return;
+    resetGaps(element);
+    if (element.scrollWidth <= element.clientWidth) return;
     const next = tighter(current);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the fit is a measurement of the laid-out strip
     if (next !== null) setFit({ ...fit, value: next, need: current.step === 1 ? element.scrollWidth : fit.need });
@@ -124,6 +165,7 @@ export const ToolRow = memo(function ToolRow() {
       const ends = wrapped && next !== undefined && next.offsetTop !== unit.offsetTop;
       unit.querySelector('[data-separator-box]')?.toggleAttribute('data-line-end', ends);
     });
+    spreadGaps(element, units);
     const lines = wrapped ? new Set(units.map((unit) => unit.offsetTop)).size : 1;
     const root = document.documentElement;
     if (lines > 1) root.dataset.toolLines = String(Math.min(lines, 3));
@@ -184,7 +226,7 @@ export const ToolRow = memo(function ToolRow() {
       onKeyDown={onKeyDown}
       onFocus={onFocus}
       className={cx(
-        'bg-subtle relative isolate flex h-tool-area min-w-0 shrink-0 items-center overflow-hidden px-2',
+        'bg-subtle relative isolate flex h-tool-area min-w-0 shrink-0 items-center justify-center-safe overflow-hidden px-2',
         wrapped && 'flex-wrap content-stretch',
       )}
     >

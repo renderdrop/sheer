@@ -904,7 +904,7 @@ describe('the tool card (DESIGN 3.18 E4, F21.9)', () => {
     // 20 apart, the 1 px line centred in the gap, never stretched over the card (F22.2).
     for (const separator of separators) {
       expect(separator.className).toContain('w-px');
-      expect(separator.className).toContain('bg-border');
+      expect(separator.className).toContain('bg-(--tool-separator)');
       expect(separator.parentElement?.className).toContain('w-tool-group-gap');
       expect(separator.parentElement?.className).toContain('justify-center');
       expect(separator.parentElement?.className).not.toContain('flex-1');

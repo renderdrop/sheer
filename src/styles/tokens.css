@@ -423,6 +423,11 @@
   --icon-20: 20px;
   --icon-24: 24px;
   --icon-stroke: 1.75px;
+  /* The stroke in user units per icon size (24-unit view box), so it is --icon-stroke on screen at each size (ADR-146 add. 2). */
+  --icon-stroke-16: calc(var(--icon-stroke) * 24 / 16);
+  --icon-stroke-18: calc(var(--icon-stroke) * 24 / 18);
+  --icon-stroke-20: calc(var(--icon-stroke) * 24 / 20);
+  --icon-stroke-24: var(--icon-stroke);
 
   /* Widths (DESIGN 1.3). The panel values are mirrored as numbers in components/tokens.ts (PANEL). */
   --toggle-width: 36px; /* Toggle track; the knob is 12 with a 2 px gap, travel 20 */
@@ -484,7 +489,9 @@
   --tool-lines: 1; /* lines of the strip; the strip sets data-tool-lines on the root when groups wrap (F22.3) */
   --tool-square: 36px; /* every tool, toggle, split and overflow button: one square */
   --tool-square-compact: 32px; /* fit steps 2 and 3 */
-  --tool-group-gap: 20px; /* between two mode groups; the 1 px separator is centred in it (F22.2) */
+  --tool-group-gap: 20px; /* between two mode groups at least; the 1 px separator is centred in it (F22.2) */
+  --tool-group-gap-max: 48px; /* the gaps spread equally up to this, then the strip is centred (F22.3) */
+  --tool-separator: var(--color-border); /* owner F22.2: 1 px in #E5E5E1, deliberately quiet on the card Sand */
   --tool-line-height: 70px; /* one line of the strip: square 36 + 2 + caption 16, centred; 94 with labels */
   --tool-labelled-width: 64px; /* "Show labels": icon over label, one width for all */
   --tool-item-height: 56px; /* the labelled item */
@@ -569,7 +576,8 @@
   --motion-fast-exit: 80ms;
   --motion-base-exit: 120ms;
   --motion-slow-exit: 140ms;
-  --motion-draw: 200ms; /* F22.6: an icon draws itself once on hover */
+  --motion-icon: 900ms; /* F22.6: base of an icon's hover motion; per-family factors in iconMotion.ts (0.8–1.1 s) */
+  --ease-draw: cubic-bezier(0.65, 0, 0.35, 1); /* the pen: ease-in-out */
   --icon-rest: var(--color-text-muted); /* F22.6: an icon in a host; a host with its own look overrides both */
   --icon-hover: var(--color-text);
   --motion-morph: 150ms; /* F17.5: the raw stroke becomes the fitted shape */
@@ -1731,7 +1739,12 @@
   box-shadow: var(--ring-focus);
 }
 
-/* F22.6 icon hover: inside an interactive host the icon rests in Ink 60 and goes to Ink on hover (the draw itself is in Icon.tsx).
+/* F22.6: hover motions move parts past the 24-unit view box (a lid lifts, a lens circles); never clip them. */
+.sheer-icon {
+  overflow: visible;
+}
+
+/* F22.6 icon hover: inside an interactive host the icon rests in Ink 60 and goes to Ink on hover (the motion itself is in iconMotion.ts).
    Hosts with a state colour (active tool, pressed, accent, danger, tile) and icons with their own colour class keep theirs;
    `--icon-rest` / `--icon-hover` override both ends. Disabled hosts do not change on hover. */
 :is(
@@ -1761,7 +1774,7 @@
 ) {
   & .sheer-icon:not([data-icon-colour]) {
     color: var(--icon-rest);
-    transition: color var(--motion-fast) var(--ease-out);
+    transition: color var(--motion-base) var(--ease-out);
   }
   @media (hover: hover) {
     &:hover:not(:disabled, [aria-disabled="true"]) .sheer-icon:not([data-icon-colour]) {
