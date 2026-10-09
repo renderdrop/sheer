@@ -22,9 +22,10 @@ const DE_JSON: &str = include_str!("../../../src/i18n/locales/de.json");
 /// [`is_action_id`] is the only gate between a menu event and the channel, so an id that is not listed here (a system item,
 /// something a future layout names by mistake) never reaches the webview. A test keeps it equal to the layout, and the
 /// frontend's `src/actions/menu.test.ts` keeps the layout equal to its registry.
-pub const ACTION_IDS: [&str; 64] = [
+pub const ACTION_IDS: [&str; 60] = [
     "settings",
     "open",
+    "restore-recovery",
     "close-document",
     "save",
     "save-as",
@@ -74,11 +75,6 @@ pub const ACTION_IDS: [&str; 64] = [
     "sidebar-tab-outline",
     "sidebar-tab-comments",
     "sidebar-tab-search",
-    "mode-read",
-    "mode-comment",
-    "mode-fill",
-    "mode-pages",
-    "mode-edit",
     "form-highlight",
     "manage-signatures",
     "recognize-text",
@@ -470,16 +466,11 @@ mod tests {
     }
 
     #[test]
-    fn the_tools_menu_lists_the_five_modes_then_form_highlight_and_signatures() {
-        // ADR-102: modes, not tools; the digits are hint text in the Windows menu and never accelerators.
+    fn the_tools_menu_lists_form_highlight_and_signatures() {
+        // F22.2: no mode items; the categories are static captions of the tool strip.
         assert_eq!(
             menu_actions(MenuKind::Tools),
             [
-                "mode-read",
-                "mode-comment",
-                "mode-fill",
-                "mode-pages",
-                "mode-edit",
                 "form-highlight",
                 "manage-signatures",
                 "recognize-text",
@@ -487,10 +478,6 @@ mod tests {
                 "header-footer"
             ]
         );
-        assert!(actions()
-            .iter()
-            .filter(|action| action.action.starts_with("mode-"))
-            .all(|action| action.accelerator.is_none() && action.requires_document));
         assert!(!ACTION_IDS.iter().any(|id| id.starts_with("tool-")));
     }
 
@@ -500,6 +487,7 @@ mod tests {
             menu_actions(MenuKind::File),
             [
                 "open",
+                "restore-recovery",
                 "save",
                 "save-as",
                 "export-copy",
@@ -680,6 +668,7 @@ mod tests {
                 "manage-signatures",
                 "open",
                 "reset-tips",
+                "restore-recovery",
                 "settings",
                 "toggle-margin-comments",
                 "welcome-tour"

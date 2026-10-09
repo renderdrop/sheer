@@ -68,6 +68,7 @@ describe('primitives (DESIGN 1.1)', () => {
   const primitives: Record<string, string> = {
     '--color-yellow': '#fff84d',
     '--color-yellow-bright': '#ffff22',
+    '--color-peach': '#ffc9a8',
     '--color-ink': '#0f0f0f',
     '--color-text-secondary': '#6f6f6b',
     '--color-canvas': '#fafaf8',
@@ -262,6 +263,16 @@ describe('semantic tokens and the role layer (DESIGN 1.2, 1.3)', () => {
   });
 });
 
+describe('home glow (F22.1)', () => {
+  it('is one circle at 95% / 0%, radius max(0.6 window, 0.75 surface), Solar through peach to transparent', () => {
+    const glow = root.get('--glow-home') ?? '';
+    expect(glow.match(/radial-gradient/g)).toHaveLength(1);
+    expect(glow).toContain('circle max(calc(var(--glow-win-w,1280px) * 0.6),calc(var(--glow-w,1000px) * 0.75))');
+    expect(glow).toContain('at calc(var(--glow-w,1000px) * 0.95) 0,');
+    expect(glow).toMatch(/rgba\(255,248,77,0\.95\) 0%,var\(--color-peach\) 45%,transparent 100%/);
+  });
+});
+
 describe('highlight, stroke and glow tokens (DESIGN 1.4, 5)', () => {
   const palette: Record<string, [string, string]> = {
     solar: ['#fff84d', '#fff84d'],
@@ -431,6 +442,13 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     }
   });
 
+  it('LAYOUT.toolLine and toolLineLabels match --tool-line-height (plain and with labels on)', () => {
+    const plain = /:root\s*\{[^}]*?--tool-line-height:\s*(\d+)px/.exec(css);
+    const labels = /data-tool-labels="on"\]\s*\{[^}]*?--tool-line-height:\s*(\d+)px/.exec(css);
+    expect(Number(plain?.[1])).toBe(LAYOUT.toolLine);
+    expect(Number(labels?.[1])).toBe(LAYOUT.toolLineLabels);
+  });
+
   it('PANEL and LAYOUT, the numbers JavaScript calculates with, match the tokens', () => {
     expect(`${PANEL.min}px`).toBe(root.get('--panel-min'));
     expect(`${PANEL.default}px`).toBe(root.get('--panel-default'));
@@ -548,6 +566,7 @@ describe('motion (DESIGN 1.2, MOTION 1)', () => {
       '--hold-outline': '1000ms',
       '--hold-shape': '500ms',
       '--motion-morph': '150ms',
+      '--motion-draw': '200ms',
     };
     for (const [name, value] of Object.entries(exceptions)) expect(root.get(name), name).toBe(value);
     const times = [...root.entries()].filter(([, value]) => /^\d+(ms|s)$/.test(value)).map(([name]) => name);
@@ -747,6 +766,7 @@ describe('Tailwind theme', () => {
       '--cite-fill',
       '--glow-w',
       '--glow-h',
+      '--glow-win-w',
       // Set per size class on `.home` (home.css) from the home tokens.
       ...['pad-top', 'pad-x', 'pad-bottom', 'greeting-row', 'plus-top', 'title-gap', 'title-size', 'title-line'].map(
         (n) => `--${n}`,

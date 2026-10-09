@@ -78,6 +78,7 @@ describe('the registry', () => {
       'copy-citation-list',
       'save-citation-list',
       'export-comments',
+      'restore-recovery',
       'sidebar-tab-pages',
       'sidebar-tab-outline',
       'sidebar-tab-comments',
@@ -91,7 +92,6 @@ describe('the registry', () => {
       'welcome-tour',
       'reset-tips',
       ...TOOLS.map((tool): ActionId => `tool-${tool}`),
-      ...'read comment fill pages edit'.split(' ').map((mode): ActionId => `mode-${mode}` as ActionId),
     ];
     expect([...ACTION_IDS].sort()).toEqual([...expected].sort());
   });
@@ -123,11 +123,6 @@ describe('shortcuts per platform', () => {
     'close-document': { macos: '⌘W', windows: 'Ctrl+W' },
     save: { macos: '⌘S', windows: 'Ctrl+S' },
     'save-as': { macos: '⇧⌘S', windows: 'Ctrl+Shift+S' },
-    'mode-read': { macos: null, windows: null },
-    'mode-comment': { macos: null, windows: null },
-    'mode-fill': { macos: null, windows: null },
-    'mode-pages': { macos: null, windows: null },
-    'mode-edit': { macos: null, windows: null },
     'merge-files': { macos: null, windows: null },
     'split-document': { macos: null, windows: null },
     'extract-pages': { macos: null, windows: null },
@@ -187,6 +182,7 @@ describe('shortcuts per platform', () => {
     'copy-citation-list': { macos: null, windows: null },
     'save-citation-list': { macos: null, windows: null },
     'export-comments': { macos: null, windows: null },
+    'restore-recovery': { macos: null, windows: null },
     'sidebar-tab-pages': { macos: null, windows: null },
     'sidebar-tab-outline': { macos: null, windows: null },
     'sidebar-tab-comments': { macos: null, windows: null },
@@ -309,6 +305,7 @@ describe('enabled', () => {
   it('without a document only the commands that need none can run', () => {
     expect(enabledIds(NO_DOCUMENT)).toEqual([
       'open',
+      'restore-recovery',
       'images-to-pdf',
       'toggle-margin-comments',
       'view-home',

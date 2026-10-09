@@ -20,7 +20,6 @@ import { useSmartLinks } from '../smartlinks/store';
 import { ModeCard, ToolRow, switchMode } from '.';
 import { useToolInspector } from '../inspector/toolInspector';
 import { focusToolItem, TOOL_ITEM_WAIT_MS } from './switch';
-import { handleModeKey } from './useModeEffects';
 
 vi.mock('../../api/signing', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/signing')>()),
@@ -110,22 +109,32 @@ describe('the mode groups (F21.9)', () => {
       ).toBeTruthy();
     }
     expect(groups().filter((group) => group.dataset.active === 'true')).toEqual([groups()[0]]);
-    expect(tab('Read').getAttribute('aria-pressed')).toBe('true');
-    expect(captions().filter((entry) => entry.getAttribute('aria-pressed') === 'true')).toHaveLength(1);
-    expect(captions().map((entry) => entry.getAttribute('aria-keyshortcuts'))).toEqual(['1', '2', '3', '4', '5']);
     // Every tool of every mode is in the strip.
     for (const id of ['select', 'highlight', 'signature', 'organize', 'redact']) {
       expect(document.querySelector(`[data-toolbar-item="${id}"]`), id).not.toBeNull();
     }
   });
 
-  it('a caption click switches the mode and releases the tool to Auswahl', async () => {
+  it('the captions are static text: no button, not focusable, no state, no key hint, no tooltip (F22.2)', async () => {
     const { user } = setup(<Rows />);
-    act(() => useUi.getState().selectTool('hand'));
+    for (const caption of captions()) {
+      expect(caption.tagName).toBe('SPAN');
+      expect(caption.hasAttribute('tabindex')).toBe(false);
+      expect(caption.hasAttribute('aria-pressed')).toBe(false);
+      expect(caption.hasAttribute('aria-keyshortcuts')).toBe(false);
+    }
+    expect(screen.queryByRole('button', { name: 'Comment' })).toBeNull();
     await user.click(tab('Comment'));
-    expect(useUi.getState()).toMatchObject({ mode: 'comment', activeTool: 'select', toolLocked: false });
-    expect(tab('Comment').getAttribute('aria-pressed')).toBe('true');
-    expect(document.querySelector('[data-mode-group="comment"]')?.getAttribute('data-active')).toBe('true');
+    expect(useUi.getState().mode).toBe('read');
+    // The whole strip is one tab stop.
+    expect(document.querySelectorAll('[data-roving][tabindex="0"]')).toHaveLength(1);
+  });
+
+  it('the keys 1 to 5 do nothing (F22.2)', async () => {
+    const { user } = setup(<Rows />);
+    await user.keyboard('2');
+    await user.keyboard('5');
+    expect(useUi.getState().mode).toBe('read');
   });
 
   it('a tool of another group enters its mode', async () => {
@@ -137,24 +146,6 @@ describe('the mode groups (F21.9)', () => {
     expect(
       document.querySelectorAll('[data-mode-group]:not([data-active]) [aria-pressed="true"][data-on]'),
     ).toHaveLength(0);
-  });
-
-  it('the captions are one tab stop; Left, Right, Home and End move the focus, Enter switches', async () => {
-    const { user } = setup(<Rows />);
-    expect(captions().filter((entry) => entry.tabIndex === 0)).toEqual([tab('Read')]);
-    tab('Read').focus();
-    await user.keyboard('{ArrowRight}');
-    expect(document.activeElement).toBe(tab('Comment'));
-    expect(useUi.getState().mode).toBe('read');
-    await user.keyboard('{End}');
-    expect(document.activeElement).toBe(tab('Edit'));
-    await user.keyboard('{ArrowRight}');
-    expect(document.activeElement).toBe(tab('Read'));
-    await user.keyboard('{ArrowLeft}');
-    await user.keyboard('{Enter}');
-    expect(useUi.getState().mode).toBe('edit');
-    await user.keyboard('{Home}');
-    expect(document.activeElement).toBe(tab('Read'));
   });
 
   it('keeps the mode per document tab for the session, and a new document starts in Lesen', () => {
@@ -174,109 +165,6 @@ describe('the mode groups (F21.9)', () => {
     act(() => useUi.getState().selectTool('draw'));
     expect(useUi.getState()).toMatchObject({ mode: 'comment', activeTool: 'draw' });
     expect(item('Draw').getAttribute('aria-pressed')).toBe('true');
-  });
-});
-
-describe('the keys 1 to 5', () => {
-  const press = (key: string, init: KeyboardEventInit = {}, target: EventTarget = window) => {
-    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
-    act(() => {
-      target.dispatchEvent(event);
-    });
-    return event;
-  };
-
-  it('switch the mode from anywhere', () => {
-    setup(<Rows />);
-    press('2');
-    expect(useUi.getState().mode).toBe('comment');
-    press('5');
-    expect(useUi.getState().mode).toBe('edit');
-    press('1', {}, document.body);
-    expect(useUi.getState().mode).toBe('read');
-  });
-
-  it('are not taken with a modifier: Ctrl+1, Ctrl+2 and Ctrl+0 stay the zoom keys', () => {
-    setup(<Rows />);
-    for (const init of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { shiftKey: true }]) {
-      const event = press('3', init);
-      expect(event.defaultPrevented).toBe(false);
-    }
-    expect(useUi.getState().mode).toBe('read');
-  });
-
-  it('are left to inputs, editable elements, menus, dialogs and the form fields', () => {
-    setup(
-      <div>
-        <Rows />
-        <input aria-label="field" />
-        <div contentEditable suppressContentEditableWarning data-testid="edit" />
-        <div role="menu">
-          <button role="menuitem">item</button>
-        </div>
-        <div role="dialog" aria-modal="false">
-          <button>in dialog</button>
-        </div>
-        <div data-form-widget="">
-          <button>widget</button>
-        </div>
-      </div>,
-    );
-    const targets = [
-      screen.getByLabelText('field'),
-      screen.getByTestId('edit'),
-      screen.getByRole('menuitem'),
-      screen.getByRole('button', { name: 'in dialog' }),
-      screen.getByRole('button', { name: 'widget' }),
-    ];
-    for (const target of targets) {
-      const event = press('4', {}, target);
-      expect(event.defaultPrevented).toBe(false);
-    }
-    expect(useUi.getState().mode).toBe('read');
-  });
-
-  it('are left to a list and to the radios of a group (every selector of the list that owns digits)', () => {
-    setup(
-      <div>
-        <Rows />
-        <div role="listbox" aria-label="pages">
-          <div role="option" aria-selected="true" tabIndex={0}>
-            page
-          </div>
-        </div>
-        <div role="radiogroup" aria-label="choice">
-          <button role="radio" aria-checked="true">
-            radio
-          </button>
-        </div>
-      </div>,
-    );
-    for (const target of [screen.getByRole('option'), screen.getByRole('radio')]) {
-      expect(press('3', {}, target).defaultPrevented).toBe(false);
-    }
-    expect(useUi.getState().mode).toBe('read');
-  });
-
-  it('are left to a modal dialog and to an event something else took', () => {
-    setup(<Rows />);
-    const modal = document.createElement('div');
-    modal.setAttribute('aria-modal', 'true');
-    document.body.append(modal);
-    press('2', {}, modal);
-    modal.remove();
-    expect(useUi.getState().mode).toBe('read');
-    const taken = new KeyboardEvent('keydown', { key: '2', bubbles: true, cancelable: true });
-    taken.preventDefault();
-    expect(handleModeKey(taken)).toBe(false);
-  });
-
-  it('ignore a held key and other keys', () => {
-    setup(<Rows />);
-    press('2', { repeat: true });
-    press('x');
-    press('0');
-    expect(useUi.getState().mode).toBe('read');
   });
 });
 
@@ -666,12 +554,12 @@ describe('Seiten', () => {
     ).toEqual(['Blank page', 'Pages from file…']);
   });
 
-  it('Ordnen cannot be released by Esc: the grid stays until another mode is chosen', async () => {
+  it('Ordnen cannot be released by Esc: the grid stays until a tool of another group is chosen', async () => {
     const { user } = setup(<Rows />);
     item('Arrange').focus();
     await user.keyboard('{Escape}');
     expect(useUi.getState()).toMatchObject({ mode: 'pages', activeTool: 'pages' });
-    await user.click(tab('Read'));
+    await user.click(document.querySelector<HTMLElement>('[data-toolbar-item="select"]') as HTMLElement);
     expect(useUi.getState()).toMatchObject({ mode: 'read', activeTool: 'select' });
   });
 
@@ -745,11 +633,11 @@ describe('Bearbeiten', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('a mode switch closes the tool inspector', async () => {
+  it('choosing a tool of another group closes the tool inspector', async () => {
     const { user } = setup(<Rows />);
     await user.click(item('Crop'));
     expect(useToolInspector.getState().open).toBe('crop');
-    await user.click(tab('Read'));
+    await user.click(document.querySelector<HTMLElement>('[data-toolbar-item="select"]') as HTMLElement);
     expect(useToolInspector.getState().open).toBeNull();
   });
 
@@ -779,20 +667,20 @@ describe('Bearbeiten', () => {
   it('a mode switch keeps the redaction mode on until Anwenden or Abbrechen', async () => {
     const { user } = setup(<Rows />);
     await user.click(item('Redact'));
-    await user.click(tab('Read'));
+    await user.click(document.querySelector<HTMLElement>('[data-toolbar-item="select"]') as HTMLElement);
     expect(useUi.getState().redactMode).toBe(true);
   });
 });
 
-describe('the overflow (F21.9)', () => {
+describe('the fit (F22.3)', () => {
   const widths = { client: 0 };
   let scroll: PropertyDescriptor | undefined;
   let client: PropertyDescriptor | undefined;
 
-  /** jsdom has no layout: a labelled item is 64 wide, a square 36, a compact square 28; the strip is `widths.client` wide. */
+  /** jsdom has no layout: a labelled item is 64 wide, a square 36, a compact square 32; the strip is `widths.client` wide. */
   const itemWidth = (element: Element) => {
     if (element.querySelector('[data-label]') !== null) return 64;
-    return (element.closest('[data-split]') ?? element).className.includes('size-tool-square-compact') ? 28 : 36;
+    return (element.closest('[data-split]') ?? element).className.includes('size-tool-square-compact') ? 32 : 36;
   };
 
   beforeEach(() => {
@@ -826,7 +714,6 @@ describe('the overflow (F21.9)', () => {
   const fit = () => screen.getByRole('toolbar').getAttribute('data-fit');
   const labelled = () => screen.getByRole('toolbar').querySelectorAll('[data-label]').length;
   const count = () => document.querySelectorAll('[data-toolbar-item]').length;
-  const overflows = () => [...document.querySelectorAll<HTMLElement>('[data-toolbar-item^="overflow-"]')];
   /** All tools of the five modes. */
   let total = 0;
   beforeEach(() => {
@@ -850,7 +737,7 @@ describe('the overflow (F21.9)', () => {
     expect(fit()).toBe('2');
     expect(labelled()).toBe(0);
     expect(item('Hand').getAttribute('aria-label')).toBe('Hand');
-    expect(overflows()).toHaveLength(0);
+    expect(document.querySelector('[data-toolbar-item^="overflow-"]')).toBeNull();
   });
 
   it('without labels, step 1 is the 36 square, one size for tools, toggles and splits', () => {
@@ -863,36 +750,36 @@ describe('the overflow (F21.9)', () => {
     expect(item('Rotate').closest('[data-split]')?.className).toContain('size-tool-square');
   });
 
-  it('step 3: trailing tools of the fullest group leave into its overflow button, never the active tool', async () => {
-    widths.client = total * 28 - 1;
-    const { user } = setup(<Rows />);
+  it('step 3: whole groups wrap, no tool leaves and there is no overflow button or menu', () => {
+    widths.client = total * 32 - 1;
+    setup(<Rows />);
     expect(fit()).toBe('3');
-    // Bearbeiten has nine: its last two leave (the overflow button takes one square back).
-    expect(overflows().map((entry) => entry.dataset.toolbarItem)).toEqual(['overflow-edit']);
-    expect(document.querySelector('[data-toolbar-item="properties"]')).toBeNull();
-    expect(document.querySelector('[data-toolbar-item="protect"]')).toBeNull();
-    const more = overflows()[0] as HTMLElement;
-    expect(more.className).toContain('size-tool-square-compact');
-    expect(more.closest('[data-mode-group]')?.getAttribute('data-mode-group')).toBe('edit');
-    await user.click(more);
-    const menu = await screen.findByRole('menu');
-    const listed = within(menu)
-      .getAllByRole('menuitem')
-      .map((entry) => entry.textContent);
-    expect(listed).toEqual(['Protect', 'Metadata']);
-    await user.click(within(menu).getByRole('menuitem', { name: 'Metadata' }));
-    expect(useUi.getState()).toMatchObject({ mode: 'edit', propsOpen: true });
+    expect(count()).toBe(total);
+    expect(screen.getByRole('toolbar').className).toContain('flex-wrap');
+    expect(document.querySelector('[data-toolbar-item^="overflow-"]')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^More .* tools$/ })).toBeNull();
   });
 
-  it('the active tool never leaves, and every group keeps one tool', () => {
-    widths.client = 28 * 5;
-    act(() => useUi.getState().selectTool('textSelect'));
-    setup(<Rows />);
-    expect(item('Select text').getAttribute('aria-pressed')).toBe('true');
-    for (const group of document.querySelectorAll('[data-mode-group]')) {
-      expect(
-        group.querySelectorAll('[data-toolbar-item]:not([data-toolbar-item^="overflow-"])').length,
-      ).toBeGreaterThan(0);
+  it('the card grows by the second line, and a separator at the end of a line is hidden', () => {
+    const top = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop');
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        const units = [...(this.closest('[role="toolbar"]')?.querySelectorAll('[data-unit]') ?? [])];
+        return units.indexOf(this) >= 3 ? 70 : 0;
+      },
+    });
+    try {
+      widths.client = total * 32 - 1;
+      const { unmount } = setup(<Rows />);
+      expect(document.documentElement.dataset.toolLines).toBe('2');
+      const boxes = [...document.querySelectorAll('[data-separator-box]')];
+      expect(boxes.map((box) => box.hasAttribute('data-line-end'))).toEqual([false, false, true, false]);
+      unmount();
+      expect(document.documentElement.dataset.toolLines).toBeUndefined();
+    } finally {
+      if (top !== undefined) Object.defineProperty(HTMLElement.prototype, 'offsetTop', top);
+      else Reflect.deleteProperty(HTMLElement.prototype, 'offsetTop');
     }
   });
 
@@ -905,7 +792,7 @@ describe('the overflow (F21.9)', () => {
   });
 
   it('starts over when the room grows (the width is read again)', () => {
-    widths.client = total * 28 - 1;
+    widths.client = total * 32 - 1;
     const first = setup(<Rows />);
     expect(fit()).toBe('3');
     first.unmount();
@@ -955,25 +842,21 @@ describe('the active tool and the labels (DESIGN Q2, Q6)', () => {
 });
 
 describe('the tool card (DESIGN 3.18 E4, F21.9)', () => {
-  it('the captions are small secondary text buttons; the current one is Ink 500; the strip is Sand', () => {
+  it('the captions are small static secondary text; the strip is Sand', () => {
     const { container } = setup(<Rows />);
     expect(container.querySelector('[data-glide-pill="mode"]')).toBeNull();
     expect(tab('Read').className).toContain('text-xs');
     expect(tab('Read').className).toContain('text-text-muted');
-    expect(tab('Read').className).toContain('aria-pressed:text-text');
-    expect(tab('Read').className).toContain('aria-pressed:font-medium');
-    expect(tab('Read').getAttribute('aria-pressed')).toBe('true');
-    expect(tab('Edit').getAttribute('aria-pressed')).toBe('false');
+    expect(tab('Read').className).not.toContain('cursor-pointer');
     expect(container.querySelector('[data-slot="tool-row"]')?.className).toContain('bg-subtle');
     expect(container.querySelector('[data-mode-group="read"]')?.getAttribute('aria-labelledby')).toBe(tab('Read').id);
   });
 
-  it('the caption tooltip names the mode and its key', async () => {
+  it('the caption has no tooltip', async () => {
     const { user } = setup(<Rows />);
     await user.hover(tab('Pages'));
-    await waitFor(() => expect(openTooltip()).not.toBeNull());
-    expect(openTooltip()?.textContent).toContain('Pages');
-    expect(openTooltip()?.textContent).toContain('4');
+    await new Promise((done) => setTimeout(done, 700));
+    expect(openTooltip()).toBeNull();
   });
 
   it('is one framed card with no tab header: border all round, radius md, the strip inside', () => {
@@ -991,9 +874,7 @@ describe('the tool card (DESIGN 3.18 E4, F21.9)', () => {
     expect(strip?.className).toContain('h-tool-area');
     // The first group starts exactly at the strip's padding: no offset before it.
     expect(strip?.className).toContain('px-2');
-    expect(strip?.querySelector('[data-mode-group]')).toBe(
-      Array.from(strip?.children ?? []).find((child) => child.hasAttribute('data-mode-group')),
-    );
+    expect(strip?.querySelector('[data-glide-pill]')?.nextElementSibling?.hasAttribute('data-unit')).toBe(true);
     expect(item('Select').className).toContain('h-tool-item');
     expect(screen.getByRole('region', { name: 'Modes and tools' })).not.toBeNull();
   });
@@ -1020,6 +901,14 @@ describe('the tool card (DESIGN 3.18 E4, F21.9)', () => {
     setup(<Rows />);
     const separators = screen.getAllByRole('separator', { hidden: true });
     expect(separators).toHaveLength(4);
+    // 20 apart, the 1 px line centred in the gap, never stretched over the card (F22.2).
+    for (const separator of separators) {
+      expect(separator.className).toContain('w-px');
+      expect(separator.className).toContain('bg-border');
+      expect(separator.parentElement?.className).toContain('w-tool-group-gap');
+      expect(separator.parentElement?.className).toContain('justify-center');
+      expect(separator.parentElement?.className).not.toContain('flex-1');
+    }
     for (const separator of separators) {
       expect(separator.getAttribute('aria-orientation')).toBe('vertical');
       expect(separator.closest('[data-mode-group]')).toBeNull();

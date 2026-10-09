@@ -3164,3 +3164,35 @@ layout at both sizes.
 Owner instruction (same day): minimal changes need no extensive test rounds. After F21.9 only the full check before the commit,
 CI and one screenshot pass at 1280×800 and 960×640; no further acceptance-script rounds and no real-input smoke for v2.1.0.
 Acceptance scripts that assume mode tabs (v20rc3, v20final, v21 toolbar/home mode checks) are adapted in the Politur ticket.
+
+## ADR-146 — Session "v2.1.1 — owner polish (F22)"
+
+**Status:** accepted (2026-10-09, owner instruction). Model policy ADR-142, rules 13–17 unchanged.
+
+**Scope and checks (owner).** F22.1–F22.6 (`docs/FEEDBACK.md`). Deliberately minimal: `check:fast` per package, the full check
+once before the release commit, only the affected acceptance phases; no surface gate, no designer round, no security review, no
+real-input smoke, no reviewer. CI green, then release `v2.1.1` with a short report.
+
+**Defaults recorded so no question is needed.**
+- *F22.1 glow.* One radial gradient, circle, centre at 95 % / 0 % of the home surface (px from `HomeGlow`'s ResizeObserver),
+  radius `max(0.6 × window width, 0.75 × surface width)` (window width written by `HomeGlow` as `--glow-win-w`), Solar yellow at the
+  centre fading through a new peach token to transparent. The F21.1 anchoring (own layer, no drift, px geometry) stays.
+- *F22.2 strip.* The mode stays an internal state that follows the active tool (the page grid still belongs to the pages tools);
+  nothing in the UI switches it any more: the captions are plain text (not buttons, not focusable, no "current" weight), the keys
+  1–5 and `aria-keyshortcuts` go, the strip is one tab stop. Groups sit 20 px apart (token), the 1 px separator line is centred in
+  that gap in `--color-border` (#E5E5E1); the strip no longer stretches the separators over the card width.
+- *F22.3 narrow.* Fit steps: 1. as set (36 px squares or labels), 2. every square 32 px (was 28), 3. the strip wraps whole groups
+  onto a second line; the overflow "…" button and its menu go. The tool card grows to two lines then and the layout below follows
+  it (no overlap, rule 8); a separator never starts a line.
+- *F22.4 restore.* New action "Restore…" (File menu, native and in-app, en/de) that opens the existing recovery list with every
+  record on disk, including those postponed with "Decide later" and those shown at an earlier start; with none, a toast says so.
+  Supersedes "the banner is the only entry point" of the ADR-145 addendum.
+- *F22.6 icon hover.* In `Icon`: icons inside an interactive host (button, link, menu item, tab, option, label) react to the
+  host's pointer entry; plain decorative icons outside a host do not. Rest colour `--color-text-muted` (the current palette's
+  "Ink 60"), hover `--color-text`; hosts with a state colour (active tool on Solar, accent, danger, on-accent) keep theirs via an
+  `--icon-rest`/`--icon-hover` override. The draw runs once per entry via the Web Animations API on every geometry element
+  (dash length from `getTotalLength()`, scaled to screen space because of `nonScalingStroke`), 200 ms `--ease-out`, nothing on
+  leave, nothing when the host is disabled (`:disabled`, `aria-disabled`), colour only under reduced motion.
+- *Evidence.* F22.1 window captures at 1280×800 and 1920×1080 (`window.ps1`); F22.6 one clip-recorder APNG per place (tool strip,
+  home, a menu or dialog) of the acceptance build, driven by CDP hover; files under `review/` (untracked).
+- Models (ADR-142): all packages Sonnet; acceptance-script adaptation Sonnet.

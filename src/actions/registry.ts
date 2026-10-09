@@ -58,6 +58,7 @@ import {
 import type { Platform } from '../api/app';
 import { closeWindow } from '../api/window';
 import { armStamp } from '../features/annotations/stamps/store';
+import { openRestoreList } from '../features/recovery/actions';
 import { runFlatten } from '../features/forms/actions';
 import { copyCitationList, saveCitationList } from '../features/citations/exportActions';
 import { createCitationFromSelection } from '../features/citations/store';
@@ -87,7 +88,7 @@ import { useViewer } from '../features/viewer/useViewer';
 import type { PlainKey, Translate } from '../i18n';
 import type { Shortcut } from '../lib/shortcuts';
 import { useTools } from '../stores/tools';
-import { MODES, useUi, type LeftPanelTab, type Mode, type ToolId } from '../stores/ui';
+import { useUi, type LeftPanelTab, type ToolId } from '../stores/ui';
 import { requestAddComment } from './commentIntent';
 import { runHistoryStep } from './history';
 import { formatBinding, resolveBinding, type Binding, type Shortcuts } from './shortcut';
@@ -96,13 +97,12 @@ import { mayCopy, mayEdit, mayHeaderFooter, mayPrint, mayRecognize, maySaveTextP
 /** The action of each tool of the toolbar: it makes the tool the active one. */
 export type ToolActionId = `tool-${ToolId}`;
 
-/** The action of each mode of the editor (Werkzeuge menu, DESIGN v2 3.2): it makes the mode the active one. */
-export type ModeActionId = `mode-${Mode}`;
 
 /** The id of every action. These strings are also the native menu's item ids (`src/actions/menu.json`, the Rust allowlist). */
 export type ActionId =
   | 'open'
   | 'close-document'
+  | 'restore-recovery'
   | 'save'
   | 'save-as'
   | 'merge-files'
@@ -166,7 +166,6 @@ export type ActionId =
   | 'header-footer'
   | 'welcome-tour'
   | 'reset-tips'
-  | ModeActionId
   | ToolActionId;
 
 /** Where an action belongs (the menu bar's layout is `menu.json`; the group is for readers and tests). */
@@ -282,24 +281,6 @@ const SIDEBAR_TABS: readonly (readonly [string, LeftPanelTab, PlainKey])[] = [
   ['search', 'search', 'menu.view.tabSearch'],
 ];
 
-/** The five mode actions of the Werkzeuge menu (labels in the menus only; the digits 1 to 5 are hints there, never accelerators). */
-const MODE_LABELS: Readonly<Record<Mode, PlainKey>> = {
-  read: 'menu.tools.modeRead',
-  comment: 'menu.tools.modeComment',
-  fill: 'menu.tools.modeFill',
-  pages: 'menu.tools.modePages',
-  edit: 'menu.tools.modeEdit',
-};
-
-const MODE_ACTIONS: readonly ActionDef[] = MODES.map((mode): ActionDef => ({
-  id: `mode-${mode}`,
-  labelKey: MODE_LABELS[mode],
-  group: 'view',
-  menuBar: true,
-  enabled: needsDocument,
-  run: () => useUi.getState().setMode(mode),
-}));
-
 const SIDEBAR_TAB_ACTIONS: readonly ActionDef[] = SIDEBAR_TABS.map(([name, tab, labelKey]): ActionDef => ({
   id: `sidebar-tab-${name}` as ActionId,
   labelKey,
@@ -352,6 +333,14 @@ export const ACTIONS: readonly ActionDef[] = [
     menuBar: true,
     enabled: () => true,
     run: () => void useViewer.getState().open(),
+  },
+  {
+    id: 'restore-recovery',
+    labelKey: 'menu.file.restore',
+    group: 'file',
+    menuBar: true,
+    enabled: () => true,
+    run: () => void openRestoreList(),
   },
   {
     id: 'close-document',
@@ -806,7 +795,6 @@ export const ACTIONS: readonly ActionDef[] = [
     // A mode (DESIGN 3.38): the key toggles it like the toolbar item does.
     run: () => useUi.getState().setRedactMode(!useUi.getState().redactMode),
   },
-  ...MODE_ACTIONS,
   ...SIDEBAR_TAB_ACTIONS,
   {
     id: 'delete-selection',

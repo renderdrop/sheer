@@ -1,97 +1,48 @@
-import { Ellipsis } from 'lucide-react';
-import {
-  Fragment,
-  memo,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type FocusEvent,
-  type KeyboardEvent,
-} from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
 
-import { Icon, Menu, Tooltip, type MenuEntry } from '../../components';
 import { cx } from '../../components/cx';
 import { useGlidePill } from '../../components/glide';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { useT } from '../../i18n';
 import { useSettings } from '../../stores/settings';
-import { useUi, type Mode } from '../../stores/ui';
-import {
-  COMPACT_BELOW,
-  FIT_START,
-  fitOnResize,
-  hiddenInGroups,
-  keyOfMode,
-  MODE_LABEL,
-  modeAfterKey,
-  movableIn,
-  tighter,
-  type Fit,
-  type SlotDef,
-} from './model';
-import { focusCanvas, switchMode } from './switch';
-import { asEntry, BOX, ToolItem, type ToolSize } from './ToolItem';
+import { useUi } from '../../stores/ui';
+import { COMPACT_BELOW, FIT_START, fitOnResize, MODE_LABEL, tighter, type Fit } from './model';
+import { focusCanvas } from './switch';
+import { ToolItem, type ToolSize } from './ToolItem';
 import { useModeEffects } from './useModeEffects';
 import { useModeGroups } from './useSlots';
 
 /** The id of the tool strip. */
 export const TOOL_ROW_ID = 'mode-tool-row';
 
-/** A group's overflow button: the same square as every tool. */
-const MORE =
-  'flex shrink-0 cursor-pointer items-center justify-center rounded-(--tool-item-radius) text-text transition-colors duration-fast ' +
-  'not-aria-disabled:hover:bg-panel not-aria-disabled:aria-expanded:bg-panel';
+/**
+ * The caption under a group (F22.2): plain small text in secondary ink. Not a button, not focusable, no tooltip, no state.
+ */
+const CAPTION = 'flex h-tool-caption shrink-0 items-center whitespace-nowrap px-1 text-xs text-text-muted select-none';
 
 /**
- * The mode caption under a group (F21.9): small, secondary ink; the current mode's caption is Ink 500. A text button that switches
- * to its mode; Left, Right, Home and End move between the captions (one tab stop, on the current mode).
+ * The line between two groups (F22.2): the gap `--tool-group-gap` (20) wide with the 1 px line centred in it. It belongs to the group
+ * before it and wraps with it; at the end of a wrapped line it is hidden (`data-line-end`), so a separator never starts a line.
  */
-const CAPTION =
-  'flex h-tool-caption shrink-0 cursor-pointer items-center whitespace-nowrap rounded-sm px-1 text-xs text-text-muted ' +
-  'transition-colors duration-fast hover:text-text aria-pressed:font-medium aria-pressed:text-text';
-
-/** What a group's overflow menu lists for the tools that left the strip: an item, or a submenu for a split one. */
-function moreEntries(slots: readonly SlotDef[]): MenuEntry[] {
-  return slots.map((slot): MenuEntry => {
-    const base = {
-      id: slot.id,
-      label: slot.label,
-      icon: slot.icon,
-      ...(slot.on ? { checked: true } : {}),
-      ...(slot.disabledReason === undefined ? {} : { disabled: true }),
-    };
-    if (slot.variants === undefined) return { ...base, onSelect: slot.run };
-    return {
-      ...base,
-      submenu: slot.variants.map(asEntry),
-    };
-  });
-}
-
-/**
- * The thin line between two mode groups. It takes the spare width of the strip (all separators equally), so the groups spread
- * over the whole card with the first at the start padding and the last at the end padding; margin-x 8, 4 when compact.
- */
-function Separator({ compact }: { compact: boolean }) {
+function Separator() {
   return (
-    <div aria-hidden="true" className={cx('flex flex-1 justify-center self-stretch py-2', compact ? 'px-1' : 'px-2')}>
+    <div
+      aria-hidden="true"
+      data-separator-box=""
+      className="flex w-tool-group-gap shrink-0 justify-center self-stretch py-2 data-line-end:invisible"
+    >
       <div role="separator" aria-orientation="vertical" data-separator="" className="h-full w-px bg-border" />
     </div>
   );
 }
 
-/** The roving key of a group's overflow button. */
-const overflowKey = (mode: Mode) => `overflow:${mode}`;
-
 /**
- * The tool card's strip (F21.9, DESIGN 3.18 E4): the tools of all five modes side by side, one group per mode in mode order, each
- * with its caption below and a thin line between the groups. The mode is implicit: a tool of another group enters its mode. The
- * strip is one toolbar of one tab stop (Left, Right, Home, End; Enter and Space; Esc releases to Auswahl and focuses the canvas);
- * the captions are a second stop. It never wraps or scrolls: when it would overflow it gives up, in this order, 1. nothing (labels
- * when "Show labels" is on, else the 36 squares), 2. every item a compact 28 square, 3. trailing tools of the fullest group (never
- * the active tool) into that group's overflow button. The fit is measured after each render and starts over when the width or the
- * slots change, so it is settled before the next paint.
+ * The tool card's strip (F22.2, F22.3, DESIGN 3.18 E4): the tools of all five modes side by side, one group per mode in mode order,
+ * each with a static caption below and a thin line between the groups. The strip is one toolbar of one tab stop (Left, Right, Home,
+ * End; Enter and Space; Esc releases to Auswahl and focuses the canvas). The mode is internal and follows the active tool. It never
+ * scrolls: when it would overflow it gives up, in this order, 1. nothing (labels when "Show labels" is on, else the 36 squares),
+ * 2. every item a 32 square, 3. whole groups wrap onto a further line (the card grows by that line). The fit is measured after each
+ * render and starts over when the width or the slots change, so it is settled before the next paint.
  */
 export const ToolRow = memo(function ToolRow() {
   const t = useT();
@@ -101,7 +52,6 @@ export const ToolRow = memo(function ToolRow() {
   const row = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [stop, setStop] = useState<string | null>(null);
-  const [captionStop, setCaptionStop] = useState<Mode | null>(null);
   const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth < COMPACT_BELOW);
   useModeEffects();
 
@@ -154,32 +104,48 @@ export const ToolRow = memo(function ToolRow() {
     return () => set.removeEventListener('loadingdone', again);
   }, []);
 
-  const ids = groups.map((group) => group.slots.map((slot) => slot.id));
-  const movable = movableIn(ids);
   // Measured after the render: the fit that still overflows gets one step tighter before the next paint.
   useLayoutEffect(() => {
     const element = row.current;
     if (element === null || element.scrollWidth <= element.clientWidth) return;
-    const next = tighter(current, movable);
+    const next = tighter(current);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the fit is a measurement of the laid-out strip
     if (next !== null) setFit({ ...fit, value: next, need: current.step === 1 ? element.scrollWidth : fit.need });
   });
 
+  // Wrapped (step 3): a separator that ends a line is hidden, and the card grows by the lines (root attribute -> grid row).
+  const wrapped = current.step === 3;
+  useLayoutEffect(() => {
+    const element = row.current;
+    if (element === null) return;
+    const units = [...element.querySelectorAll<HTMLElement>('[data-unit]')];
+    units.forEach((unit, at) => {
+      const next = units[at + 1];
+      const ends = wrapped && next !== undefined && next.offsetTop !== unit.offsetTop;
+      unit.querySelector('[data-separator-box]')?.toggleAttribute('data-line-end', ends);
+    });
+    const lines = wrapped ? new Set(units.map((unit) => unit.offsetTop)).size : 1;
+    const root = document.documentElement;
+    if (lines > 1) root.dataset.toolLines = String(Math.min(lines, 3));
+    else delete root.dataset.toolLines;
+  });
+  useEffect(
+    () => () => {
+      delete document.documentElement.dataset.toolLines;
+    },
+    [],
+  );
+
   // Spell 1: the Solar fill is one element that glides to the active item (a direct child of a group's tools: the split or the button).
   const pill = useGlidePill(row, '[data-tools] > [data-on="true"]', activeId, '--motion-base');
 
-  const left = current.step === 3 ? hiddenInGroups(ids, activeId, current.hidden) : new Set<string>();
   const size: ToolSize = current.step === 1 ? (labels ? 'labelled' : 'square') : 'compact';
-  const compact = size === 'compact';
 
-  const keys = groups.flatMap((group) => {
-    const shown = group.slots
-      .filter((slot) => !left.has(slot.id))
-      .flatMap((slot) =>
-        slot.variants !== undefined || slot.colour !== undefined ? [slot.id, `${slot.id}:more`] : [slot.id],
-      );
-    return group.slots.some((slot) => left.has(slot.id)) ? [...shown, overflowKey(group.mode)] : shown;
-  });
+  const keys = groups.flatMap((group) =>
+    group.slots.flatMap((slot) =>
+      slot.variants !== undefined || slot.colour !== undefined ? [slot.id, `${slot.id}:more`] : [slot.id],
+    ),
+  );
   const tabStop = stop !== null && keys.includes(stop) ? stop : (keys[0] ?? '');
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -206,16 +172,6 @@ export const ToolRow = memo(function ToolRow() {
     if (id !== undefined) setStop(id);
   };
 
-  // The captions: their own tab stop, Left, Right, Home and End move the focus between them (Enter or a click switches).
-  const onCaptionKey = (event: KeyboardEvent<HTMLButtonElement>, at: Mode) => {
-    if (event.altKey || event.ctrlKey || event.metaKey) return;
-    const next = modeAfterKey(at, event.key);
-    if (next === null) return;
-    event.preventDefault();
-    event.stopPropagation();
-    row.current?.querySelector<HTMLElement>(`[data-mode-caption="${next}"]`)?.focus();
-  };
-
   return (
     <div
       ref={row}
@@ -227,7 +183,10 @@ export const ToolRow = memo(function ToolRow() {
       data-labels={showLabels ? 'on' : 'off'}
       onKeyDown={onKeyDown}
       onFocus={onFocus}
-      className="bg-subtle relative isolate flex h-tool-area min-w-0 shrink-0 items-center overflow-hidden px-2"
+      className={cx(
+        'bg-subtle relative isolate flex h-tool-area min-w-0 shrink-0 items-center overflow-hidden px-2',
+        wrapped && 'flex-wrap content-stretch',
+      )}
     >
       <span
         ref={pill}
@@ -240,11 +199,8 @@ export const ToolRow = memo(function ToolRow() {
         const active = group.mode === mode;
         const label = t(MODE_LABEL[group.mode]);
         const captionId = `mode-caption-${group.mode}`;
-        const gone = group.slots.filter((slot) => left.has(slot.id));
-        const more = t('modes.moreOf', { mode: label });
         return (
-          <Fragment key={group.mode}>
-            {index > 0 && <Separator compact={compact} />}
+          <div key={group.mode} data-unit="" className="flex shrink-0 items-center">
             <div
               role="group"
               aria-labelledby={captionId}
@@ -252,56 +208,22 @@ export const ToolRow = memo(function ToolRow() {
               data-active={active ? 'true' : undefined}
               className="flex shrink-0 flex-col items-center justify-center gap-half"
             >
-              <div data-tools="" className={cx('flex items-center', !compact && 'gap-half')}>
-                {group.slots
-                  .filter((slot) => !left.has(slot.id))
-                  .map((slot) => (
-                    <ToolItem key={slot.id} slot={slot} size={size} stop={tabStop} />
-                  ))}
-                {gone.length > 0 && (
-                  <Menu
-                    label={more}
-                    entries={moreEntries(gone)}
-                    trigger={(trigger) => (
-                      <Tooltip label={more}>
-                        <button
-                          {...trigger}
-                          type="button"
-                          data-toolbar-item={`overflow-${group.mode}`}
-                          data-roving={overflowKey(group.mode)}
-                          aria-label={more}
-                          tabIndex={tabStop === overflowKey(group.mode) ? 0 : -1}
-                          className={cx(MORE, BOX[size === 'labelled' ? 'square' : size])}
-                        >
-                          <Icon icon={Ellipsis} size={18} />
-                        </button>
-                      </Tooltip>
-                    )}
-                  />
-                )}
+              <div data-tools="" className={cx('flex items-center gap-half')}>
+                {group.slots.map((slot) => (
+                  <ToolItem key={slot.id} slot={slot} size={size} stop={tabStop} />
+                ))}
               </div>
-              <Tooltip label={label} shortcut={keyOfMode(group.mode)}>
-                <button
-                  type="button"
-                  id={captionId}
-                  data-mode-caption={group.mode}
-                  data-tour-anchor={
-                    group.mode === 'comment' || group.mode === 'fill' ? `mode-${group.mode}` : undefined
-                  }
-                  aria-pressed={active}
-                  aria-keyshortcuts={keyOfMode(group.mode)}
-                  tabIndex={(captionStop ?? mode) === group.mode ? 0 : -1}
-                  onFocus={() => setCaptionStop(group.mode)}
-                  onBlur={() => setCaptionStop(null)}
-                  onClick={() => switchMode(group.mode)}
-                  onKeyDown={(event) => onCaptionKey(event, group.mode)}
-                  className={CAPTION}
-                >
-                  {label}
-                </button>
-              </Tooltip>
+              <span
+                id={captionId}
+                data-mode-caption={group.mode}
+                data-tour-anchor={group.mode === 'comment' || group.mode === 'fill' ? `mode-${group.mode}` : undefined}
+                className={CAPTION}
+              >
+                {label}
+              </span>
             </div>
-          </Fragment>
+            {index < groups.length - 1 && <Separator />}
+          </div>
         );
       })}
     </div>

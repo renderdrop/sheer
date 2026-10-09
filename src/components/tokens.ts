@@ -42,6 +42,9 @@ export const LAYOUT = {
   /** Icons only (default, F21.6, F21.9); with labels it is `modeCardLabels`. */
   modeCard: 72,
   modeCardLabels: 96,
+  /** One line of the tool strip (`--tool-line-height`), without the card's 2 px border; 94 with labels. */
+  toolLine: 70,
+  toolLineLabels: 94,
   statusbar: 30,
   inspector: 300,
   minibar: 40,

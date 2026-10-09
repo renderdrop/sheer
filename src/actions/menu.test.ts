@@ -277,8 +277,6 @@ describe('the signature lock (DESIGN 3.8 S5)', () => {
       'tool-hand',
       'tool-select',
       'tool-textSelect',
-      'mode-read',
-      'mode-edit',
       'zoom-in',
       'print',
     ] as const) {

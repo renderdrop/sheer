@@ -179,6 +179,7 @@
   --spacing-tool-labelled: var(--tool-labelled-width);
   --spacing-tool-badge: var(--tool-badge);
   --spacing-tool-caption: var(--tool-caption-height);
+  --spacing-tool-group-gap: var(--tool-group-gap);
   --spacing-inspector: var(--inspector-width);
   --spacing-inspector-header: var(--inspector-header-height);
   --spacing-inspector-footer: var(--inspector-footer-height);
@@ -313,6 +314,7 @@
   /* Primitives (DESIGN 1.1, BRAND 24). Raw values; components use the roles above, not these. */
   --color-yellow: #fff84d; /* Solar */
   --color-yellow-bright: #ffff22;
+  --color-peach: #ffc9a8; /* F22.1: soft warm peach, the middle of the home glow: Solar's warm neighbour, light enough to keep Ink text at AA over it */
   --color-ink: #0f0f0f;
   --color-text-secondary: #6f6f6b;
   --color-canvas: #fafaf8;
@@ -479,8 +481,11 @@
      caption 16, centred); with labels 96, see below. */
   --mode-card-height: 72px;
   --tool-area-height: calc(var(--mode-card-height) - 2px);
+  --tool-lines: 1; /* lines of the strip; the strip sets data-tool-lines on the root when groups wrap (F22.3) */
   --tool-square: 36px; /* every tool, toggle, split and overflow button: one square */
-  --tool-square-compact: 28px; /* compaction steps 2 and 3 */
+  --tool-square-compact: 32px; /* fit steps 2 and 3 */
+  --tool-group-gap: 20px; /* between two mode groups; the 1 px separator is centred in it (F22.2) */
+  --tool-line-height: 70px; /* one line of the strip: square 36 + 2 + caption 16, centred; 94 with labels */
   --tool-labelled-width: 64px; /* "Show labels": icon over label, one width for all */
   --tool-item-height: 56px; /* the labelled item */
   --tool-item-radius: 8px;
@@ -502,20 +507,15 @@
   --home-tool-tile-height-compact: 72px;
   --card-starred: rgba(255, 248, 77, 0.22);
   --star-fill: var(--accent);
-  /* F21.1: geometry in px from the surface size (--glow-w/--glow-h, set by HomeGlow's ResizeObserver), no percentages of a moving box. */
-  --glow-home:
-    radial-gradient(
-      ellipse calc(var(--glow-w, 1000px) * 0.38) calc(var(--glow-h, 700px) * 0.45) at calc(var(--glow-w, 1000px) * 0.72)
-        calc(var(--glow-h, 700px) * 0.04),
-      rgba(255, 248, 77, 0.95),
-      transparent 70%
-    ),
-    radial-gradient(
-      ellipse calc(var(--glow-w, 1000px) * 0.36) calc(var(--glow-h, 700px) * 0.5) at calc(var(--glow-w, 1000px) * 0.92)
-        calc(var(--glow-h, 700px) * 0.24),
-      rgba(255, 65, 3, 0.28),
-      transparent 72%
-    );
+  /* F22.1: one circular glow at 95% / 0% of the home surface (px from --glow-w, set by HomeGlow's ResizeObserver, no percentages of a
+     moving box); radius max(60% of the window width = --glow-win-w, 75% of the surface width). Solar at the centre, via peach, to transparent. */
+  --glow-home: radial-gradient(
+    circle max(calc(var(--glow-win-w, 1280px) * 0.6), calc(var(--glow-w, 1000px) * 0.75)) at
+      calc(var(--glow-w, 1000px) * 0.95) 0,
+    rgba(255, 248, 77, 0.95) 0%,
+    var(--color-peach) 45%,
+    transparent 100%
+  );
   --type-hero-size: 96px;
   --type-hero-line: 76px;
   --type-hero-weight: 500;
@@ -569,6 +569,9 @@
   --motion-fast-exit: 80ms;
   --motion-base-exit: 120ms;
   --motion-slow-exit: 140ms;
+  --motion-draw: 200ms; /* F22.6: an icon draws itself once on hover */
+  --icon-rest: var(--color-text-muted); /* F22.6: an icon in a host; a host with its own look overrides both */
+  --icon-hover: var(--color-text);
   --motion-morph: 150ms; /* F17.5: the raw stroke becomes the fitted shape */
   /* Named exceptions (MOTION 1.3): only these. */
   --motion-check: 240ms; /* spell 6 */
@@ -950,6 +953,17 @@
 /* "Show labels" on (F21.6, F21.9): the icon-over-label card, 2 border + 94 area (item 56 + 2 + caption 16, centred). */
 :root[data-tool-labels="on"] {
   --mode-card-height: 96px;
+  --tool-line-height: 94px;
+}
+
+/* The strip wraps whole groups onto a second or third line (F22.3): the card grows by whole lines, the grid row follows. */
+:root[data-tool-lines="2"] {
+  --tool-lines: 2;
+  --mode-card-height: calc(var(--tool-lines) * var(--tool-line-height) + 2px);
+}
+:root[data-tool-lines="3"] {
+  --tool-lines: 3;
+  --mode-card-height: calc(var(--tool-lines) * var(--tool-line-height) + 2px);
 }
 
 @utility z-tooltip {
@@ -1715,4 +1729,43 @@
 [data-citation]:focus-visible:not([data-focus-owned]) {
   outline: var(--focus-width) solid transparent;
   box-shadow: var(--ring-focus);
+}
+
+/* F22.6 icon hover: inside an interactive host the icon rests in Ink 60 and goes to Ink on hover (the draw itself is in Icon.tsx).
+   Hosts with a state colour (active tool, pressed, accent, danger, tile) and icons with their own colour class keep theirs;
+   `--icon-rest` / `--icon-hover` override both ends. Disabled hosts do not change on hover. */
+:is(
+  button,
+  a[href],
+  label,
+  summary,
+  [role="button"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  [role="menuitemcheckbox"],
+  [role="tab"],
+  [role="option"],
+  [role="link"]
+):not(
+  [data-on="true"],
+  [aria-pressed="true"],
+  [aria-checked="true"],
+  [aria-selected="true"],
+  [aria-current],
+  [class*="text-on-"],
+  [class*="text-danger"],
+  [class*="text-error"],
+  [class*="text-accent"],
+  [class*="text-band-"],
+  [class*="text-tile-icon"]
+) {
+  & .sheer-icon:not([data-icon-colour]) {
+    color: var(--icon-rest);
+    transition: color var(--motion-fast) var(--ease-out);
+  }
+  @media (hover: hover) {
+    &:hover:not(:disabled, [aria-disabled="true"]) .sheer-icon:not([data-icon-colour]) {
+      color: var(--icon-hover);
+    }
+  }
 }

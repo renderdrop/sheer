@@ -8,7 +8,7 @@ import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { handleAppEvent } from '../viewer/appEvents';
-import { loadRecoveries, resetPending } from './actions';
+import { loadRecoveries, openRestoreList, resetPending } from './actions';
 import { RecoveryBanner } from './RecoveryBanner';
 import { useRecovery } from './store';
 
@@ -185,6 +185,27 @@ describe('the recovery banner (DESIGN 3.50)', () => {
     await waitFor(() => expect(screen.queryByRole('region')).toBeNull());
     expect(useRecovery.getState().entries).toHaveLength(1);
     expect(api.discardRecovery).not.toHaveBeenCalled();
+  });
+});
+
+describe('File > Restore… (F22.4)', () => {
+  it('lists every record, also the ones shown before or postponed', async () => {
+    api.listRecoveries.mockResolvedValue([entry(1, { fresh: false }), entry(2, { fresh: false })]);
+    setup(<RecoveryBanner />);
+    await act(async () => undefined);
+    expect(screen.queryByRole('region')).toBeNull();
+    useRecovery.getState().hide();
+    await act(async () => openRestoreList());
+    expect(await screen.findByRole('region')).toBeTruthy();
+    expect(useRecovery.getState().entries).toHaveLength(2);
+    expect(useRecovery.getState().hidden).toBe(false);
+  });
+
+  it('says so in a toast when no record is on disk', async () => {
+    api.listRecoveries.mockResolvedValue([]);
+    await act(async () => openRestoreList());
+    expect(useUi.getState().toast?.message).toBe('No documents to restore.');
+    expect(useRecovery.getState().entries).toHaveLength(0);
   });
 });
 

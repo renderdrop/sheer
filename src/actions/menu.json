@@ -58,6 +58,10 @@
           "accelerator": "CmdOrCtrl+O"
         },
         {
+          "action": "restore-recovery",
+          "label": "menu.file.restore"
+        },
+        {
           "separator": true
         },
         {
@@ -413,34 +417,6 @@
       "label": "menu.tools",
       "access": "menu.access.tools",
       "items": [
-        {
-          "action": "mode-read",
-          "label": "menu.tools.modeRead",
-          "requiresDocument": true
-        },
-        {
-          "action": "mode-comment",
-          "label": "menu.tools.modeComment",
-          "requiresDocument": true
-        },
-        {
-          "action": "mode-fill",
-          "label": "menu.tools.modeFill",
-          "requiresDocument": true
-        },
-        {
-          "action": "mode-pages",
-          "label": "menu.tools.modePages",
-          "requiresDocument": true
-        },
-        {
-          "action": "mode-edit",
-          "label": "menu.tools.modeEdit",
-          "requiresDocument": true
-        },
-        {
-          "separator": true
-        },
         {
           "action": "form-highlight",
           "label": "menu.tools.formHighlight",

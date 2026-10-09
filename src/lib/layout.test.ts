@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { LAYOUT, PANEL } from '../components/tokens';
 import {
   bodyHeight,
+  modeCardHeight,
   COMMENTS_PANEL_MIN,
   clampInspectorWidth,
   clampPanelWidth,
@@ -109,6 +110,11 @@ describe('the editor rows of DESIGN 3.18 E1', () => {
     expect(bodyHeight(shellStructure({ ...base, menuRow: true }), LAYOUT.minWindowHeight)).toBe(444);
     expect(bodyHeight(shellStructure(base), LAYOUT.minWindowHeight)).toBe(472);
     expect(bodyHeight(shellStructure({ ...base, hasDocument: false }), 640)).toBe(640);
+    // A second line of the tool strip takes 70 (94 with labels) from the body: nothing overlaps (F22.3).
+    expect(bodyHeight(shellStructure(base), LAYOUT.minWindowHeight, false, 2)).toBe(472 - 70);
+    expect(bodyHeight(shellStructure(base), LAYOUT.minWindowHeight, true, 2)).toBe(472 - 24 - 94);
+    expect(modeCardHeight(false, 1)).toBe(LAYOUT.modeCard);
+    expect(modeCardHeight(true, 1)).toBe(LAYOUT.modeCardLabels);
   });
 });
 

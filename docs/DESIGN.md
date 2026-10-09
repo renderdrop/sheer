@@ -211,7 +211,7 @@ Columns: **nav 200** | **main 1fr** (White). Main padding 32 (48 from 1440 wide)
 
 **Menu row (Windows only).** No border, empty space drags. From x 8: Datei · Bearbeiten · Ansicht · Werkzeuge · Hilfe, buttons 28 high, padding-x 8, radius sm, `.t-label` 400 Ink; hover Sand, open #E5E5E1, focus ring; §4 Menus 4 below, from `menu.json`. Right: caption buttons 46 × 32 (close hover `--color-danger`); hidden in full screen.
 - Keyboard: Alt (alone) or F10 focuses Datei and shows mnemonics; Alt+D/B/A/W/H (en F/E/V/T/H) opens; Left/Right switch menus (wrapping); Down/Enter/Space open; Esc closes, then returns focus. ARIA `menubar`/`menuitem`, `aria-haspopup`, `aria-expanded`.
-- Contents: Datei unchanged from `menu.json` (it already holds Save/Save As, Export copy, Export images, Compress, Protect, Document properties, Print, Close). Ansicht loses "Eigenschaften". Werkzeuge = the five modes as radio items, "1"–"5" as hint text only (never registered as accelerators), then Felder hervorheben, Signaturen verwalten; tool items go. macOS's native Werkzeuge matches.
+- Contents: Datei unchanged from `menu.json` (it already holds Save/Save As, Export copy, Export images, Compress, Protect, Document properties, Print, Close). Ansicht loses "Eigenschaften". Werkzeuge = no mode items (F22.2: the categories are static captions of the tool strip), only Felder hervorheben, Signaturen verwalten; tool items go. macOS's native Werkzeuge matches.
 - **Home has no menu row** (BRAND §26; its nav covers open, recent, tools). Home's Windows caption buttons also become 46 × 32 so they never jump between views (amends §3.1).
 
 **Top bar** (White, 1px border bottom; empty space is the drag region). Grid `1fr auto 1fr`:
@@ -221,7 +221,7 @@ Columns: **nav 200** | **main 1fr** (White). Main padding 32 (48 from 1440 wide)
 - **Export and More ⋯ leave** (BRAND §26): Datei and Ansicht hold every item.
 
 **Mode row.** `role="tablist"` "Modus". Text tabs from x 16, 40 high, padding-x 12, gap 4, `.t-label`, §2.8 (inactive Text-secondary 400, hover Ink, active Ink 500 + 2px Solar underline), focus ring inset. **Lesen 1 · Kommentieren 2 · Ausfüllen & Signieren 3 · Seiten 4 · Bearbeiten 5** (kbd in tooltip).
-- Keyboard: roving, Left/Right/Home/End move and activate; Tab goes to the tool row. Digits 1–5 work anywhere except with a modifier (Ctrl+1/2/0 stay zoom) or in inputs, contenteditable, live form fields, menus, dialogs.
+- Keyboard: roving, Left/Right/Home/End move and activate; Tab goes to the tool row. The digits 1–5 no longer switch modes (F22.2).
 - **Default:** Lesen on every open; hub cards land in their mode (Sign, Fill form → 3; Split → 4; Redact → 5). Kept per document tab for the session.
 - **Switch:** the tool becomes Auswählen (a stroke in progress commits, ADR-056); the selection stays unless Seiten is entered or left; pending redaction marks and their band stay until Anwenden/Abbrechen. A v1.1 single-letter tool shortcut of another mode switches mode first. Underline moves in `--motion-fast` (none with reduced motion).
 
@@ -231,7 +231,7 @@ Columns: **nav 200** | **main 1fr** (White). Main padding 32 (48 from 1440 wide)
 - **Variants = one slot**, split item: main part (last used variant's icon, family label) activates it; a 20-wide chevron part (own roving stop, or Alt+Down) opens a Menu of variants and, for colour tools, a swatch row.
 - **Overflow** (never wraps or scrolls): 1. all labels; 2. inactive items icon-only 36 × 36 with tooltip; 3. items leave from the right into a "Mehr" ⋯ last slot (never the active tool). At 960 step 2 suffices.
 
-**Tool assignment (binding: FEEDBACK F14, owner).** Every item shows icon + label; at most eight visible per mode, the rest under "Mehr" ⋯ as the last slot (overflow steps above). Keys 1–5 switch the mode; Esc returns to Auswahl in every mode (no Auswahl slot outside Lesen). Colour tools (marked °) carry the 20-wide chevron part with the swatch row of §1.4; [ ] = variants in the same slot.
+**Tool assignment (binding: FEEDBACK F14, owner).** Every item shows icon + label; at most eight visible per mode, the rest under "Mehr" ⋯ as the last slot (overflow steps above). Esc returns to Auswahl in every mode (no Auswahl slot outside Lesen). Colour tools (marked °) carry the 20-wide chevron part with the swatch row of §1.4; [ ] = variants in the same slot.
 
 | Mode | Slots, in this order |
 |---|---|
@@ -1502,6 +1502,8 @@ Sources: `docs/brand/editor-rc3.png` (2× of 1440 × 900; px below = image px ÷
 - States: hover White; pressed `--surface-pressed` + 0.98; active tool Solar + Ink 600 + `aria-pressed` + `--tool-active-edge` (DEVIATION: template shows no hairline; Solar vs Sand is 1.02:1, WCAG 1.4.11 needs the edge); toggle on White + Stone border + Ink 600; disabled 0.4, tooltip says why; focus `--ring-focus`.
 - Split items: main part + 16-wide chevron part (`chevron-down` 12) at the right, full height, own hover; Alt+Down opens.
 - Slots ≤ 9 (Bearbeiten has 9; amends §3.2's 8). Overflow: icon-only when window < 1100 or the labelled row does not fit (ResizeObserver): items 44 × 44 vertically centred, separators 1 × 24, card height unchanged; then "Mehr" ⋯ as §3.2.
+
+- **F22 strip (supersedes the header, the overflow and the keys above; F21.9 card).** One plain strip: the five groups side by side, each with a static caption (`text-xs`, Text-secondary; not a button, not focusable, no tooltip, no current weight). No mode tabs and no keys 1–5; the mode is internal and follows the active tool. Groups sit `--tool-group-gap` (20) apart with the 1 px `--color-border` separator centred in the gap (it does not stretch). The strip is one tab stop. Fit: 1. as set (36 squares or labels), 2. every square `--tool-square-compact` (32), 3. whole groups wrap onto a second line; a separator never starts a line. No "…" overflow. The card grows by `--tool-line-height` (70, 94 with labels) per line via `data-tool-lines` on the root (`--mode-card-height`), so the grid below follows.
 
 | Mode | Groups (· item, \| separator) |
 |---|---|

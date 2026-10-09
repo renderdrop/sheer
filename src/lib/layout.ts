@@ -210,13 +210,18 @@ export function computeShellLayout(input: LayoutInput): ShellLayout {
   return { ...structure, ...tracks, canvasWidth: width - left - LAYOUT.splitter - inspector };
 }
 
+/** The tool card's height: 2 px border plus `lines` lines of the strip (a second line when whole groups wrap, F22.3). */
+export function modeCardHeight(labels: boolean, lines: number): number {
+  return (labels ? LAYOUT.toolLineLabels : LAYOUT.toolLine) * Math.max(1, lines) + 2;
+}
+
 /** The height of the body (the canvas column) in a window of `windowHeight`: what is left under the header rows. */
-export function bodyHeight(structure: ShellStructure, windowHeight: number, labels = false): number {
+export function bodyHeight(structure: ShellStructure, windowHeight: number, labels = false, lines = 1): number {
   if (structure.mode === 'empty') return windowHeight;
   const header =
     LAYOUT.tabstrip +
     2 * LAYOUT.gutter +
-    (labels ? LAYOUT.modeCardLabels : LAYOUT.modeCard) +
+    modeCardHeight(labels, lines) +
     LAYOUT.statusbar +
     (structure.menuRow ? LAYOUT.menubar : 0);
   return windowHeight - header;

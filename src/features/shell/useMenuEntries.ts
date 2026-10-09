@@ -37,7 +37,6 @@ export function useMenuEntries(menuId: string, afterRun: () => void): readonly M
   const platform = useSettings((state) => state.platform) ?? currentPlatform();
   const state = useActionState();
   const structure = useShellStructure();
-  const mode = useUi((ui) => ui.mode);
   const leftTab = useUi((ui) => ui.leftPanelTab);
   const docId = useDocuments(selectActiveId);
   const scrollMode = useDocViewValue(docId, (view) => view.scrollMode);
@@ -59,7 +58,6 @@ export function useMenuEntries(menuId: string, afterRun: () => void): readonly M
         },
         checked: (id) => {
           if (id.startsWith('scroll-')) return scrollMode === id.slice('scroll-'.length);
-          if (id.startsWith('mode-')) return mode === id.slice('mode-'.length);
           if (id === 'toggle-left-panel') return !structure.leftCollapsed;
           if (id in TAB_OF) return leftTab === TAB_OF[id];
           if (id === 'form-highlight') return formHighlight;
@@ -77,7 +75,6 @@ export function useMenuEntries(menuId: string, afterRun: () => void): readonly M
       state,
       afterRun,
       scrollMode,
-      mode,
       structure.leftCollapsed,
       leftTab,
       formHighlight,

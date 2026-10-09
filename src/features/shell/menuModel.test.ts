@@ -131,6 +131,7 @@ describe('the Windows menus built from menu.json', () => {
   it('has the File menu of the design: the commands outside the modes, Close, Settings and Exit last', () => {
     expect(labels('file')).toEqual([
       'Open…',
+      'Restore…',
       '-',
       'Save',
       'Save As…',
@@ -171,15 +172,9 @@ describe('the Windows menus built from menu.json', () => {
     expect(buildMenuEntries('view', context()).map((entry) => entry.id)).not.toContain('toggle-inspector');
   });
 
-  it('list the five modes as radio items with the digit as hint, then form highlight and signatures, and no tools', () => {
-    const entries = buildMenuEntries('tools', context({ checked: (id) => (id === 'mode-fill' ? true : undefined) }));
+  it('list form highlight and signatures without mode items (F22.2), and no tools', () => {
+    const entries = buildMenuEntries('tools', context());
     expect(labels('tools')).toEqual([
-      'Read',
-      'Comment',
-      'Fill & Sign',
-      'Pages',
-      'Edit',
-      '-',
       'Highlight Form Fields',
       'Manage Signatures…',
       '-',
@@ -187,32 +182,20 @@ describe('the Windows menus built from menu.json', () => {
       'Save As Text PDF…',
       'Headers & Footers…',
     ]);
-    const modes = entries.slice(0, 5).flatMap((entry) => (entry.type === 'separator' ? [] : [entry]));
-    expect(modes.map((entry) => entry.shortcut)).toEqual(['1', '2', '3', '4', '5']);
-    expect(modes.map((entry) => [entry.radio, entry.checked])).toEqual([
-      [true, false],
-      [true, false],
-      [true, true],
-      [true, false],
-      [true, false],
-    ]);
-    expect(entries.map((entry) => entry.id).some((id) => id.startsWith('tool-'))).toBe(false);
-    expect(labels('tools', context({ t: translators.de })).slice(0, 5)).toEqual([
-      'Lesen',
-      'Kommentieren',
-      'Ausfüllen & Signieren',
-      'Seiten',
-      'Bearbeiten',
+    expect(entries.map((entry) => entry.id).some((id) => id.startsWith('tool-') || id.startsWith('mode-'))).toBe(false);
+    expect(labels('tools', context({ t: translators.de })).slice(0, 2)).toEqual([
+      'Formularfelder hervorheben',
+      'Unterschriften verwalten…',
     ]);
   });
 
   it('run the action of the item and show its check state', () => {
     const run = vi.fn();
-    const entries = buildMenuEntries('tools', context({ run, checked: (id) => id === 'mode-comment' }));
-    const draw = entries.find((entry) => entry.id === 'mode-comment');
-    if (draw === undefined || draw.type === 'separator') throw new Error('no Comment');
+    const entries = buildMenuEntries('tools', context({ run, checked: (id) => id === 'form-highlight' }));
+    const draw = entries.find((entry) => entry.id === 'form-highlight');
+    if (draw === undefined || draw.type === 'separator') throw new Error('no form highlight');
     expect(draw.checked).toBe(true);
     draw.onSelect?.();
-    expect(run).toHaveBeenCalledWith('mode-comment');
+    expect(run).toHaveBeenCalledWith('form-highlight');
   });
 });

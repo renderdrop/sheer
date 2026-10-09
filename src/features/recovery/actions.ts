@@ -36,6 +36,21 @@ export async function loadRecoveries(): Promise<void> {
   }
 }
 
+/**
+ * File > Restore… (F22.4, ADR-146): opens the recovery list with every record on disk, also those postponed with "Decide later"
+ * or shown by an earlier start. It only reads and shows; whether a record counts as new stays the banner's business. With none,
+ * a toast says so.
+ */
+export async function openRestoreList(): Promise<void> {
+  const entries: readonly RecoveryEntry[] = await listRecoveries().catch(() => []);
+  if (entries.length === 0) {
+    useUi.getState().showToast({ message: tr()('recover.none') });
+    return;
+  }
+  for (const entry of entries) shownThisSession.add(entry.id);
+  useRecovery.getState().setEntries(entries);
+}
+
 /** Restores record `id`; resolves to whether the document opened. A failure keeps the row, with its alert. */
 export async function restoreOne(entry: RecoveryEntry): Promise<boolean> {
   const store = useRecovery.getState();

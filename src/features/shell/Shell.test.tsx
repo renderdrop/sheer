@@ -7,7 +7,7 @@ import { PANEL } from '../../components/tokens';
 import { setup } from '../../test/render';
 import { useSettings } from '../../stores/settings';
 import { activeDocument, opened } from '../../stores/documents.testutil';
-import { useUi } from '../../stores/ui';
+import { useUi, type Mode } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { useViewer } from '../viewer/useViewer';
 import { resetViewer } from '../viewer/viewer.testutil';
@@ -83,13 +83,10 @@ const pageTextNow = () => `${pageField().value} ${pageField().nextElementSibling
 /** The left of the top bar: the file name, or with two or more documents the tabs; it has the name of every open document. */
 const tabs = () => document.querySelector<HTMLElement>('[data-slot="tabstrip"]') as HTMLElement;
 const toolPressed = (name: string) => tool(name).getAttribute('aria-pressed');
-/** Switches the mode with its caption (F21.9). */
-const inMode = async (user: ReturnType<typeof setup>['user'], name: string) =>
-  user.click(
-    [...document.querySelectorAll<HTMLElement>('[data-mode-caption]')].find(
-      (entry) => entry.textContent === name,
-    ) as HTMLElement,
-  );
+/** Enters a mode (F22.2: the mode follows the tools; nothing in the UI switches it alone, so the store does). */
+const inMode = async (_user: ReturnType<typeof setup>['user'], name: string) => {
+  act(() => useUi.getState().setMode(name.toLowerCase() as Mode));
+};
 const readout = () => status().getByRole('textbox', { name: 'Zoom' }) as HTMLInputElement;
 /** Clicks a button of the status bar by its name. */
 const zoomItem = async (user: ReturnType<typeof setup>['user'], name: string) => {

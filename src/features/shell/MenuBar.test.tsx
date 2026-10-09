@@ -44,6 +44,7 @@ describe('the Windows menu bar (DESIGN 3.56)', () => {
     const menu = await screen.findByRole('menu', { name: 'File' });
     expect(labelsOf(menu)).toEqual([
       'Open…',
+      'Restore…',
       'Save',
       'Save As…',
       'Export Copy…',
@@ -64,30 +65,18 @@ describe('the Windows menu bar (DESIGN 3.56)', () => {
     ]);
   });
 
-  it('has the Tools menu with the five modes as radio items, the active one checked, and no tools', async () => {
+  it('has the Tools menu without mode items and without tools', async () => {
     const { user } = setup(<MenuBar />);
     await user.click(screen.getByRole('menuitem', { name: 'Tools' }));
     const menu = await screen.findByRole('menu', { name: 'Tools' });
     expect(labelsOf(menu)).toEqual([
-      'Read',
-      'Comment',
-      'Fill & Sign',
-      'Pages',
-      'Edit',
       'Highlight Form Fields',
       'Manage Signatures…',
       'Recognize Text…',
       'Save As Text PDF…',
       'Headers & Footers…',
     ]);
-    const radios = within(menu).getAllByRole('menuitemradio');
-    expect(radios.map((radio) => radio.getAttribute('aria-checked'))).toEqual([
-      'true',
-      'false',
-      'false',
-      'false',
-      'false',
-    ]);
+    expect(within(menu).queryAllByRole('menuitemradio')).toEqual([]);
   });
 
   it('moves between the titles with Left and Right (wrapping) and opens with Down', async () => {

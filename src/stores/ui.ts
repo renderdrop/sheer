@@ -50,7 +50,7 @@ export const TOOLS = [
 ] as const;
 export type ToolId = (typeof TOOLS)[number];
 
-/** The five modes of the editor (DESIGN v2 3.2, FEEDBACK F14), in tab order: keys 1 to 5. */
+/** The five modes of the editor (DESIGN v2 3.2, FEEDBACK F14), in tab order. */
 export const MODES = ['read', 'comment', 'fill', 'pages', 'edit'] as const;
 export type Mode = (typeof MODES)[number];
 

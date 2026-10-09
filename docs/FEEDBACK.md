@@ -336,3 +336,12 @@ Every item is checked in the acceptance build, including moving the window and r
 - [x] F21.8 Page thumbnails: bold headings clog into black blocks again. Check whether the 3× render pipeline still applies after the layout change; prove before/after with `owner-pdf-E4`.
 - [x] F21.9 (owner, live) Tool card: small offset between "Read" and the first icon; icons of different widths look lost with empty space on the right. All tools side by side in one strip, groups separated only by the category name below; no tabs. No large tests.
 - Acceptance (2026-10-09, acceptance build, Windows 11, CDP + native window move/resize via window.ps1): v21 173/174 before F21.9 (glow 15/15 over three native sizes with move paths, recovery 14/15 → both defects fixed in 5a1ef54, home 53/53 incl. every tool launch, splitters 22/22, freehand 12/12, toolbar 42/42, hf 6/6, thumbs 9/9); regressions v20final 127, v20rc3 121, v20rc2 115, v19-backlog 129, v17-ocr 101, v16-range 23 all green, v16-smartlinks hover-preview flake under load; F21.9 by owner instruction screenshot-only at 1280×800 and 960×640. macOS via CI only.
+
+## F22 — Owner polish v2.1.1 (owner, 2026-10-09; ADR-146)
+
+- [ ] F22.1 Home gradient larger and anchored further into the top right corner: centre at about 95 % / 0 % of the surface, radius at least 60 % of the window width, yellow to peach; same at 1280×800 and 1920×1080, screenshot at both.
+- [ ] F22.2 Tool strip: the categories are no switchable modes any more, only static captions under the groups; no tab logic, no keys 1–5, every tool always reachable. Group distance down to 20 px, separator a 1 px line in `#E5E5E1`, so it reads as one strip, not five blocks.
+- [ ] F22.3 Narrow window: instead of "…" first icons to 32 px, then a wrap to two lines.
+- [ ] F22.4 "File → Restore…" as a fixed entry to postponed recovery records.
+- [ ] F22.5 Acceptance scripts that still expect mode tabs: switch to the strip, only so far that they run.
+- [ ] F22.6 Icon hover app-wide in the shared Icon component: on hover entry the icon path draws itself once in 200 ms ease-out (stroke-dasharray/dashoffset over the path length) while the colour goes from Ink 60 to Ink. No scale, shadow or glow; not on leave; not on disabled icons; with prefers-reduced-motion only the colour change. Everything that uses the Icon component; icons rendered past it are switched over. Proven once in the acceptance build by a recording at three places.

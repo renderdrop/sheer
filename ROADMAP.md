@@ -436,6 +436,10 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 
 - [x] F21 — nine points of docs/FEEDBACK.md F21 (2026-10-09: acceptance build incl. native window move/resize, v21 173/174 → defects fixed, regressions green, security PASS, F21.9 screenshot-only by owner instruction)
 
+## F22 "Owner polish" (v2.1.1, ADR-146)
+
+- [ ] F22 — six points of docs/FEEDBACK.md F22
+
 ## Politur v2.1 (minors after the v2.0 sweep)
 
 - [ ] Politur v2.1 — picked in a later session
