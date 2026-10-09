@@ -6,15 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-09
+
+Owner test of v2.0.0 (F21): a calmer tool card in one strip, a steady home gradient, full Recent and Tools views, recovery that asks only once, and sharper thumbnails.
+
 ### Changed
 - Home: the gradient is drawn on its own layer anchored to the window surface and repainted on every resize — no more stripes or cut-off areas while moving or resizing the window.
 - Home: "Recent" shows every recent file as a card grid with previews; "Tools" lists every tool of the app (icon, title, subtitle), and each one opens a file and starts with the tool active and ready.
-- Tool card shows icons only with quick tooltips (150 ms); labels can be turned back on in Settings ("Show labels"); the card is 8 px lower.
+- Tool card: all tools of every mode side by side in one strip, grouped under small category names instead of mode tabs; every tool button has the same size; quick tooltips (150 ms); labels can be turned back on in Settings ("Show labels").
 - Sidebar drag handles are invisible until hovered (thin line), and the sidebars merge into the surface without an edge.
 - Freehand shape recognises circles, ellipses and rectangles and draws a clean closed shape that keeps a slight hand-drawn wobble; other shapes close smoothly.
 
 ### Fixed
-- The recovery banner no longer returns on every start: discarded or restored documents are deleted and never reported again, and the banner only appears for new recoveries.
+- The recovery banner no longer returns on every start: discarded or restored documents are deleted and never reported again (discard can still be undone for a few seconds), and the banner only appears for new recoveries.
+- Banners on the home screen no longer slide under the window buttons.
 - Header/footer background now covers the full text height and shows in the live preview and before saving.
 - Page and recent-file thumbnails keep bold headings legible again (supersampled at every thumbnail size).
 

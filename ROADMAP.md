@@ -432,9 +432,13 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - (v1.4.2 security, low) assert the 3× thumbnail size against `limits`; use the PDFium bitmap stride; second marker for the dev-registry bundle guard
   - (v1.4.2) 834397b does not type-check alone (store rename landed in 4a70409; pushed history, not rewritten)
 
+## F21 "Owner test v2.0.0" (v2.1.0, ADR-145)
+
+- [x] F21 — nine points of docs/FEEDBACK.md F21 (2026-10-09: acceptance build incl. native window move/resize, v21 173/174 → defects fixed, regressions green, security PASS, F21.9 screenshot-only by owner instruction)
+
 ## Politur v2.1 (minors after the v2.0 sweep)
 
-- [ ] Politur v2.1 — picked in the v2.1 session
+- [ ] Politur v2.1 — picked in a later session
   - (R1 review) text_edit deadline not cleared explicitly (safe: fresh thread per run); `i % 512` restarts per form slice; no test of the contained() wiring
   - (R2 review) test_support::bind is not reentrant (document: never nest); token colour test panics unclearly on rgb()/3-digit hex
   - (designer v2.0-rc.1, minor) second document tab truncates while the top bar has room; home "Oder öffnen" reads as caption text — consider a Secondary button
@@ -445,3 +449,4 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - (F21 B2 review) owner thumbnail test only asserts dark_after <= dark_before (not that pixels changed); thumbnails above ~1000×1000 px fall back to factor 1 (no supersampling)
   - (security v2.1, low) hf_detect.rs:368 x1 - x0 without max guard (unreachable today); list_recoveries writes shown.json (consider an acknowledge command); v21.mjs builds a -Command string from the exe path (use -File)
   - (F21 FX review/security) recovery Undo can race the fire-and-forget discard (chain or reload); failed move_to_trash deletes instead (undo then not_found); discard/undo rename under the state mutex; gate does not assert the editor banner sits below the menu row; trash dir and record dir created with recursive builder — check symlink_metadata before renaming into them (low, same-user attacker)
+  - (F21.9) acceptance scripts still assume mode tabs (v20rc3 rows, v20final tabs, v21 toolbar/home "mode tab selected"), adapt to data-mode-group; v16-smartlinks hover preview flaky under load (p1/p6); ToolItem sets size-44 and h-tool-item (56 wins) — pick one

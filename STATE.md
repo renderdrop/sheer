@@ -1,19 +1,12 @@
 # STATE
-phase: session "v2.1 — owner test v2.0.0 (F21)" (ADR-145, tempo level 4, model policy ADR-142) — in progress
-version: 2.0.0 (tag v2.0.0, stable); target v2.1.0 (stable)
-current_item: F21.1–F21.8 (docs/FEEDBACK.md F21)
+phase: session "v2.1 — owner test v2.0.0 (F21)" (ADR-145, tempo level 4, model policy ADR-142) closed: v2.1.0 released (stable)
+version: 2.1.0 (tag v2.1.0, stable)
+current_item: none — next session: owner decides (proposal: Politur v2.1 — acceptance scripts on the one-strip tool card, minors, security lows — plus a macOS visual check)
+  final: v21 173/174 before F21.9 (both defects fixed in 5a1ef54), regressions v20final/v20rc3/v20rc2/v19/v17-ocr/v16-range green, v16-smartlinks hover flake; F21.9 screenshot-only (owner instruction); security audit PASS + FX targeted PASS
 packages:
-  wave 1: B1 F21.2 recovery + settings field show_tool_labels (backend-implementer, Sonnet; storage/autosave.rs, commands/recovery.rs, storage/settings.rs, src/features/recovery/*, src/api/recovery.ts)
-          B2 F21.7 header/footer field + F21.8 thumbnail supersampling (backend-implementer, Opus; pdfwrite/header_footer.rs, model/header_footer.rs, engine/worker.rs, engine/downscale.rs, storage/thumbs.rs, src/features/headerFooter/*)
-          FA F21.3 home Recent grid + Tools catalogue (implementer, Sonnet; src/features/home/* except the glow line, src/features/hub/*)
-          FC F21.5 freehand shape fit (implementer, Opus; src/features/annotations/create/*)
-  all packages committed (98f6348 B1, 0d71e5d B2, 08819f7 FC, 39cf943 FA+FB+FD, bf8832e AC); reviews B1/B2 PASS (minors → Politur v2.1)
-  security audit v2.0.0..HEAD PASS (3 lows → Politur); CI #160 GREEN
-  acceptance v21 (run-final.log): 173/174 — glow 15/15, recovery 14/15, home 53/53, splitters 22/22, freehand 12/12, toolbar 42/42, hf 6/6, thumbs 9/9; inspector border-s found + fixed (uncommitted, build rebuilt)
-  running: FX (discard final on backend + undo command; banner caption safe area + gate check); REG step 2 (v20final/v20rc3/v20rc2/v19/v17/v16 + annot-smoke on acceptance build)
-  then: commit, rebuild, v21 recovery re-run, surface gate --wide, real smoke, release v2.1.0
-last_completed: v2.0.0 — F20.1–F20.11, F19.28, author detection, designer round, final audit; report docs/reports/2026-10-09-v2.0.0-final.md
-loop_count_this_session: 0
+  B1 F21.2 recovery (98f6348) + FX trash/undo + caption-safe banners (5a1ef54); B2 F21.7/F21.8 (0d71e5d); FC F21.5 (08819f7); FA+FB+FD F21.1/.3/.4/.6 (39cf943); FE F21.9 one strip (see release); reviews B1/B2/FX PASS
+last_completed: v2.1.0 — F21.1–F21.9; report docs/reports/2026-10-09-v2.1.0-f21.md
+loop_count_this_session: 3 (session closed, STOP set)
 open_blockers: 3 (B-002, B-005, B-008, human-only)
 notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
   ADR-120: every push starts with `bash scripts/ci-status.sh`; red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs`; real input only `smoke-real.mjs` (≤ 5 min, announced).

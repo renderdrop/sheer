@@ -3154,3 +3154,13 @@ with a report.
   footer outlines drawn over the box) and a box only up to cap height. The box now spans the full Helvetica glyph height + 3 pt.
 - F21.8: hypothesis confirmed (A4 sidebar thumbnail 354×501, recent card 433×560 > 320). `RenderKey.thumbnail` from the render
   priority; factor 3× or 2× within a 2048² px budget; thumbnails above about 1000² px render at 1×.
+
+**ADR-145 addendum 2 (owner live feedback during the session, F21.9).** The mode tabs go: all tools of the five modes sit side
+by side in one strip, groups separated only by the mode name as a small caption below each group; every tool button is the same
+square (split-button variants via a chevron badge inside the square); the mode follows the active tool (captions switch modes,
+shortcuts 1–5 unchanged). This supersedes the tab part of F19.16/F20.11 and the template `editor-rc3.png` for the card header.
+Owner instruction: implement directly, no large test rounds — unit tests that break are updated, acceptance only checks the
+layout at both sizes.
+Owner instruction (same day): minimal changes need no extensive test rounds. After F21.9 only the full check before the commit,
+CI and one screenshot pass at 1280×800 and 960×640; no further acceptance-script rounds and no real-input smoke for v2.1.0.
+Acceptance scripts that assume mode tabs (v20rc3, v20final, v21 toolbar/home mode checks) are adapted in the Politur ticket.
