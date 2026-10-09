@@ -324,3 +324,17 @@ export function checkNoScroll(elements) {
     return out;
   });
 }
+
+/**
+ * F21.2 / rule 8: no control of a banner may intersect a caption button (the buttons sit over the top strip of Home).
+ * @param {{name:string,rect:{left:number,top:number,right:number,bottom:number}}[]} controls banner controls
+ * @param {{name:string,rect:{left:number,top:number,right:number,bottom:number}}[]} captions caption buttons
+ */
+export function checkCaptionClear(controls, captions) {
+  const out = [];
+  for (const control of controls)
+    for (const caption of captions)
+      if (overlap(control.rect, caption.rect))
+        out.push(`${control.name} sits under the caption button ${caption.name}`);
+  return out;
+}

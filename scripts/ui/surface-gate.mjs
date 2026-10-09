@@ -10,6 +10,7 @@
 //   contour  every split tool, main and chevron part, in inactive / inactive+hover / active / active+hover: one outer contour,
 //            hover changes only the background of the hovered half (F19.27)
 //   home     Home does not scroll (F20.1): its scroller and the document have scrollHeight <= clientHeight and scrollWidth <= clientWidth
+//   banner   F21.2: with the recovery and the error banner shown, on Home and in the editor, no banner control intersects a caption button
 //   hover    every toolbar and mode button hovered over CDP: its hover paints (box, ::before/::after, shadow spread, backgrounds) lie inside
 //            the button box and its toolbar, 0 px tolerance (F19.2)
 // Also registered: the ink mini bar, its colour popover and every coach mark step (floating surfaces that are no dialog).
@@ -20,6 +21,7 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 
 import {
+  checkCaptionClear,
   checkClipped,
   checkControlOverlap,
   checkDescendants,
@@ -783,6 +785,47 @@ async function sweepHome() {
   await sleep(400);
 }
 
+/** F21.2 / rule 8: on Home and in the editor no banner control (recovery, error) intersects the caption buttons. */
+async function sweepBanners() {
+  const ui = store('stores/ui.ts');
+  const rec = store('features/recovery/store.ts');
+  const entry = (id) =>
+    `{id:${id},displayName:'gate-${id}.pdf',savedAt:'2026-10-01T10:00:00Z',pageCount:2,original:'unchanged'}`;
+  const measure = () =>
+    ev(`(()=>{
+    const rect = (e) => { const b = e.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom }; };
+    const controls = [...document.querySelectorAll('[data-slot="banner"] button, [data-slot="banner"] a, [data-slot="banner"] input')]
+      .filter((e) => e.getClientRects().length > 0).map((e) => ({ name: (e.getAttribute('aria-label') || e.textContent || e.tagName).trim().slice(0, 40), rect: rect(e) }));
+    const captions = [...document.querySelectorAll('[data-slot="caption-controls"] button')].map((e) => ({ name: e.getAttribute('aria-label') || 'caption', rect: rect(e) }));
+    return { controls, captions };
+  })()`);
+  for (const view of ['home', 'editor']) {
+    await ev(`(async()=>{(await ${ui}).useUi.getState().setView(${JSON.stringify(view)})})()`);
+    await sleep(500);
+    for (const kind of ['recovery', 'error']) {
+      if (kind === 'recovery')
+        await ev(`(async()=>{(await ${rec}).useRecovery.getState().setEntries([${entry(1)},${entry(2)}])})()`);
+      else
+        await ev(
+          `(async()=>{(await ${ui}).useUi.getState().showBanner({code:'internal',key:'error.internal',retryable:true})})()`,
+        );
+      await sleep(500);
+      const { controls, captions } = await measure();
+      const tag = `${lang} banner ${kind} on ${view} @${current.w}x${current.h}`;
+      rows.push(
+        ...rowsFor(tag, {
+          'banner controls found': controls.length === 0 ? ['no banner control is shown'] : [],
+          'banner clear of caption buttons': checkCaptionClear(controls, captions),
+        }),
+      );
+      if (kind === 'recovery') await ev(`(async()=>{(await ${rec}).useRecovery.getState().setEntries([])})()`);
+      else await ev(`(async()=>{(await ${ui}).useUi.getState().dismissBanner()})()`);
+    }
+  }
+  await ev(`(async()=>{(await ${ui}).useUi.getState().setView('editor')})()`);
+  await sleep(300);
+}
+
 const store = (path) => `import('/src/${path}')`;
 async function openFixture() {
   const active = () =>
@@ -827,6 +870,7 @@ try {
       );
       await sleep(500);
       if (!only || 'home'.includes(only)) await sweepHome();
+      if (!only || 'banner'.includes(only)) await sweepBanners();
       await sweepRegistry();
       await sweepTextEdit();
       await sweepInspectors();

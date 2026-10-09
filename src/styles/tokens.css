@@ -202,6 +202,7 @@
   --spacing-progress: var(--progress-height);
   --spacing-comments-dot: var(--comments-dot);
   --spacing-caption-button: var(--caption-button-width);
+  --spacing-caption-safe: var(--caption-safe-width);
   --spacing-chrome-inset: var(--chrome-inset-mac);
   --spacing-canvas-min: var(--canvas-min);
   --spacing-canvas-gutter: var(--canvas-gutter);
@@ -460,6 +461,9 @@
   --banner-min-height: 40px;
   --caption-button-width: 46px;
   --caption-button-height: 28px;
+  --caption-safe-width: calc(
+    var(--caption-button-width) * 3
+  ); /* the three caption buttons: the banner slot keeps this much clear on Home (F21.2) */
   /* v2.0.0-rc.3 editor grid (DESIGN 3.18 E1): menu | tab strip | gutter | mode card | gutter | body | status bar. */
   --tabstrip-height: 42px;
   --doc-tab-height: 36px;

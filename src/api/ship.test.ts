@@ -7,6 +7,7 @@ import {
   AUTOSAVE_STATUSES,
   discardAllRecoveries,
   discardRecovery,
+  undoDiscardRecovery,
   listRecoveries,
   parseRecoveryEntry,
   restoreRecovery,
@@ -74,6 +75,9 @@ describe('recovery commands', () => {
     invokeMock.mockResolvedValueOnce(undefined);
     await discardRecovery(3);
     expect(invokeMock).toHaveBeenLastCalledWith('discard_recovery', { id: 3 });
+    invokeMock.mockResolvedValueOnce(undefined);
+    await undoDiscardRecovery(3);
+    expect(invokeMock).toHaveBeenLastCalledWith('undo_discard_recovery', { id: 3 });
     invokeMock.mockResolvedValueOnce(2);
     await expect(discardAllRecoveries()).resolves.toBe(2);
     invokeMock.mockResolvedValueOnce(-1);

@@ -39,15 +39,22 @@ export function queuedCount(mounted: number, winner: BannerKind): number {
 /**
  * The banner slot (DESIGN v2 3.2): the row at the top of the canvas column, 0 high while nothing has to be said, so pages never sit
  * under it. One F6 stop for every banner (DESIGN 2.3); the banners stack in flow, and each brings its own height. Home has the same
- * slot above its body.
+ * slot above its body. On Home the Windows caption buttons are laid over the top strip (the slot starts at the window top), so there the
+ * slot keeps `caption-safe` (the three buttons) clear on its end side and no banner control can sit under them (rule 8, F21.2). In the
+ * editor the slot is below the menu row and needs no inset.
  */
-export function BannerSlot() {
+export function BannerSlot({ captionSafe = false }: { captionSafe?: boolean }) {
   const t = useT();
   const winner = useBannerWinner();
   const others = useRef<HTMLDivElement>(null);
   const queued = queuedCount(useChildCount(others), winner);
   return (
-    <div data-region="banner" data-slot="banner" className="flex min-w-0 flex-col">
+    <div
+      data-region="banner"
+      data-slot="banner"
+      data-caption-safe={captionSafe ? '' : undefined}
+      className={cx('flex min-w-0 flex-col', captionSafe && 'pe-caption-safe')}
+    >
       <RedactBanner />
       <SigBanner />
       <OcrBanner />

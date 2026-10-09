@@ -309,3 +309,17 @@ describe('checkPanelOverlap (rc.3 inspector)', () => {
     ]);
   });
 });
+
+describe('caption safe area (F21.2)', () => {
+  const captions = [
+    { name: 'Minimize', rect: r(822, 0, 868, 28) },
+    { name: 'Close', rect: r(914, 0, 960, 28) },
+  ];
+  it('flags a banner control under a caption button and accepts one clear of them', () => {
+    expect(c.checkCaptionClear([{ name: 'Restore all', rect: r(700, 4, 810, 28) }], captions)).toEqual([]);
+    expect(c.checkCaptionClear([{ name: 'Close', rect: r(900, 4, 940, 28) }], captions)).toEqual([
+      'Close sits under the caption button Close',
+    ]);
+    expect(c.checkCaptionClear([{ name: 'Row', rect: r(700, 40, 960, 80) }], captions)).toEqual([]);
+  });
+});

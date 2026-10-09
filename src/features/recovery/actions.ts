@@ -2,6 +2,7 @@ import {
   discardRecovery,
   listRecoveries,
   restoreRecovery,
+  undoDiscardRecovery,
   type RecoveryEntry,
   type RecoveryId,
 } from '../../api/recovery';
@@ -62,43 +63,15 @@ export async function restoreAll(): Promise<void> {
   for (const entry of useRecovery.getState().entries) await restoreOne(entry);
 }
 
-/** Discards that wait for their toast to end: record ids by the toast that carries the undo. */
-const pending = new Map<number, readonly RecoveryEntry[]>();
-let watching = false;
-
-function finish(rows: readonly RecoveryEntry[]): Promise<unknown> {
-  return Promise.all(rows.map((row) => discardRecovery(row.id).catch(() => undefined)));
-}
-
-/** The window is closing: discards still inside their undo window become final now (F21.2). Resolves when the backend answered. */
-export async function flushPendingDiscards(): Promise<void> {
-  const all = [...pending.values()];
-  pending.clear();
-  await Promise.all(all.map(finish));
-}
-
-/** A discard becomes final when its toast is gone: ended, replaced by another, or dismissed. */
-function watchToasts(): void {
-  if (watching) return;
-  watching = true;
-  // A window that goes away without the quit walk (no document open) still sends the deletes.
-  if (typeof window !== 'undefined') window.addEventListener('pagehide', () => void flushPendingDiscards());
-  useUi.subscribe((state) => {
-    for (const [toastId, rows] of pending) {
-      if (state.toast?.id !== toastId) {
-        pending.delete(toastId);
-        void finish(rows);
-      }
-    }
-  });
-}
-
-/** Hides rows now, offers Undo for 8 s, and deletes the records when the toast ends. */
+/**
+ * Hides rows and tells the backend at once (it never lists them again, whatever happens to the window, F21.2), and offers Undo for
+ * 8 s: Undo asks the backend to list the records again. The backend deletes what stays discarded at exit or the next start.
+ */
 export function discardRows(rows: readonly RecoveryEntry[]): void {
   if (rows.length === 0) return;
-  watchToasts();
   const store = useRecovery.getState();
   store.remove(rows.map((row) => row.id));
+  void Promise.all(rows.map((row) => discardRecovery(row.id).catch(() => undefined)));
   const [first] = rows;
   const message =
     rows.length === 1 && first !== undefined
@@ -109,13 +82,11 @@ export function discardRows(rows: readonly RecoveryEntry[]): void {
     action: {
       label: tr()('recover.undo'),
       run: () => {
-        for (const [toastId, held] of pending) if (held === rows) pending.delete(toastId);
+        void Promise.all(rows.map((row) => undoDiscardRecovery(row.id).catch(() => undefined)));
         useRecovery.getState().restoreRows(rows);
       },
     },
   });
-  const toastId = useUi.getState().toast?.id;
-  if (toastId !== undefined) pending.set(toastId, rows);
 }
 
 export const discardOne = (id: RecoveryId): void => {
@@ -125,8 +96,7 @@ export const discardOne = (id: RecoveryId): void => {
 
 export const discardEverything = (): void => discardRows(useRecovery.getState().entries);
 
-/** Test helper: forget pending discards. */
+/** Test helper: forget what this session showed. */
 export function resetPending(): void {
-  pending.clear();
   shownThisSession.clear();
 }

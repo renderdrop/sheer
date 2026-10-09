@@ -629,6 +629,16 @@ fn restoring_an_unknown_record_is_not_found_and_discarding_works_through_the_sta
     s.state.discard_recovery(listed[0].id).unwrap();
     assert_eq!(s.state.discard_all_recoveries().unwrap(), 0);
     assert!(s.state.list_recoveries().unwrap().is_empty());
+    // The undo window: the discard is taken back once, then the record is listed again as before.
+    s.state.undo_discard_recovery(listed[0].id).unwrap();
+    assert_eq!(
+        s.state
+            .undo_discard_recovery(listed[0].id)
+            .unwrap_err()
+            .code(),
+        ErrorCode::NotFound
+    );
+    assert_eq!(s.state.list_recoveries().unwrap().len(), 1);
 }
 
 #[test]

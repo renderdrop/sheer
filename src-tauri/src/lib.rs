@@ -218,6 +218,7 @@ pub fn run() -> Result<(), AppError> {
             commands::recovery::restore_recovery,
             commands::recovery::discard_recovery,
             commands::recovery::discard_all_recoveries,
+            commands::recovery::undo_discard_recovery,
             commands::update::check_for_update,
             commands::update::download_update,
             commands::update::install_update_on_quit,

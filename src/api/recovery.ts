@@ -83,9 +83,14 @@ export async function restoreRecovery(id: RecoveryId): Promise<OpenOutcome> {
   return outcome;
 }
 
-/** Deletes one record. The UI calls it after the 8 s undo window (DESIGN 3.48, ADR-054 section 5). */
+/** Discards one record at once: it is never listed again. `undoDiscardRecovery` takes it back until the app exits (F21.2). */
 export function discardRecovery(id: RecoveryId): Promise<void> {
   return call<void>('discard_recovery', { id });
+}
+
+/** Takes a discard back (the Undo of the toast): the record is listed again. Rejects with `not_found` when it is gone. */
+export function undoDiscardRecovery(id: RecoveryId): Promise<void> {
+  return call<void>('undo_discard_recovery', { id });
 }
 
 /** Deletes every record; resolves to how many there were. */

@@ -142,6 +142,7 @@ fn main() {
         "restore_recovery",
         "discard_recovery",
         "discard_all_recoveries",
+        "undo_discard_recovery",
         "check_for_update",
         "download_update",
         "install_update_on_quit",

@@ -515,6 +515,7 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-list-recoveries",
         "allow-restore-recovery",
         "allow-discard-recovery",
+        "allow-undo-discard-recovery",
         "allow-discard-all-recoveries",
         "allow-check-for-update",
         "allow-download-update",

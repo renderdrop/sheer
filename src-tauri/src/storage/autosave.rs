@@ -30,6 +30,8 @@ use crate::limits;
 pub const DIR_NAME: &str = "autosave";
 const LOCK_NAME: &str = "lock";
 const QUARANTINE_DIR: &str = "quarantine";
+/// Discarded records wait here for the undo window (F21.2); purged at startup and at exit.
+const TRASH_DIR: &str = "trash";
 /// A manifest is a few hundred bytes; anything bigger is not ours.
 const MANIFEST_MAX: u64 = 64 * 1024;
 const MANIFEST_VERSION: u32 = 1;
@@ -183,6 +185,8 @@ struct Inner {
     status: HashMap<DocumentId, AutosaveStatus>,
     too_large: HashSet<DocumentId>,
     dead: Vec<Dead>,
+    /// Discarded records whose files sit in the trash folder; `undo_discard` brings them back.
+    trashed: Vec<Dead>,
     restored: HashMap<DocumentId, Restored>,
 }
 
@@ -238,6 +242,51 @@ fn create_private_dir(path: &Path) -> io::Result<()> {
         builder.mode(0o700);
     }
     builder.create(path)
+}
+
+/// The trash file name of a record's file with `extension`.
+fn trash_name(record: &Dead, extension: &str) -> String {
+    let session = record
+        .dir
+        .file_name()
+        .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+    format!("{session}-{}.{extension}", record.n)
+}
+
+/// Moves a record's files to the trash folder; `false` when that failed (the files are deleted then).
+fn move_to_trash(root: &Path, record: &Dead) -> bool {
+    let target = root.join(TRASH_DIR);
+    let moved = create_private_dir(&target).is_ok()
+        && ["json", "pdf"].iter().all(|extension| {
+            fs::rename(
+                record.dir.join(format!("{}.{extension}", record.n)),
+                target.join(trash_name(record, extension)),
+            )
+            .is_ok()
+        });
+    if !moved {
+        // A half-moved record: delete what is left of it.
+        remove_record_files(&record.dir, record.n);
+        let _ = fs::remove_file(target.join(trash_name(record, "json")));
+        let _ = fs::remove_file(target.join(trash_name(record, "pdf")));
+    }
+    moved
+}
+
+/// Moves a trashed record's files back to its session directory; `false` when that failed.
+fn move_from_trash(root: &Path, record: &Dead) -> bool {
+    let source = root.join(TRASH_DIR);
+    if create_private_dir(&record.dir).is_err() {
+        return false;
+    }
+    // The pdf first: a manifest never exists without its file.
+    ["pdf", "json"].iter().all(|extension| {
+        fs::rename(
+            source.join(trash_name(record, extension)),
+            record.dir.join(format!("{}.{extension}", record.n)),
+        )
+        .is_ok()
+    })
 }
 
 fn remove_record_files(dir: &Path, n: u32) {
@@ -349,12 +398,18 @@ fn scan(root: &Path, own: &Path, now: SystemTime) -> Vec<Dead> {
     let Ok(entries) = fs::read_dir(root) else {
         return found;
     };
+    // Records discarded before a crash or quit stay discarded: the trash does not outlive its session.
+    let _ = fs::remove_dir_all(root.join(TRASH_DIR));
     let retention = limits::AUTOSAVE_RETENTION;
     let too_old = |saved_at: u64| seconds(now).saturating_sub(saved_at) > retention.as_secs();
     for entry in entries.flatten() {
         let dir = entry.path();
         let is_dir = fs::symlink_metadata(&dir).is_ok_and(|metadata| metadata.is_dir());
-        if !is_dir || dir == own || entry.file_name() == QUARANTINE_DIR {
+        if !is_dir
+            || dir == own
+            || entry.file_name() == QUARANTINE_DIR
+            || entry.file_name() == TRASH_DIR
+        {
             continue;
         }
         let Some(lock) = take_dead_lock(&dir, now) else {
@@ -496,6 +551,8 @@ impl Autosave {
         for id in restored {
             self.drop_dead(id);
         }
+        let _ = fs::remove_dir_all(self.root.join(TRASH_DIR));
+        self.lock().trashed.clear();
         let _ = self.lock.unlock();
         let _ = fs::remove_dir_all(&self.dir);
     }
@@ -786,7 +843,16 @@ impl Autosave {
     /// Writes the ledger: the records that exist now count as shown, keys of records that are gone are dropped, and the ledger stays
     /// within `LEDGER_MAX`. Best effort: a failure only means the banner may show again.
     pub fn mark_shown(&self) {
-        let mut keys: Vec<String> = self.lock().dead.iter().map(ledger_key).collect();
+        let mut keys: Vec<String> = {
+            let inner = self.lock();
+            // Trashed records stay in the ledger: an undone discard is listed again, not as news.
+            inner
+                .dead
+                .iter()
+                .chain(&inner.trashed)
+                .map(ledger_key)
+                .collect()
+        };
         keys.sort_unstable();
         keys.dedup();
         let skip = keys.len().saturating_sub(LEDGER_MAX);
@@ -811,13 +877,43 @@ impl Autosave {
         }
     }
 
-    /// Deletes record `id`; `not_found` (`recovery`) for an id that is not listed.
+    /// Discards record `id` at once: it is never listed again. Its files wait in the trash folder until the end of the session
+    /// (`undo_discard` brings them back, the next start or the exit deletes them). `not_found` (`recovery`) for an id not listed.
     pub fn discard(&self, id: u32) -> Result<(), AppError> {
-        if self.drop_dead(id) {
-            Ok(())
-        } else {
-            Err(AppError::not_found("recovery"))
+        let mut inner = self.lock();
+        let position = inner
+            .dead
+            .iter()
+            .position(|record| record.id == id)
+            .ok_or(AppError::not_found("recovery"))?;
+        let record = inner.dead.remove(position);
+        if move_to_trash(&self.root, &record) {
+            inner.trashed.push(record);
         }
+        Ok(())
+    }
+
+    /// Takes a discard back: the record is listed again (with its old id, not as news). `not_found` (`recovery`) when it is not in
+    /// the trash (never discarded, or already gone).
+    pub fn undo_discard(&self, id: u32) -> Result<(), AppError> {
+        let mut inner = self.lock();
+        let position = inner
+            .trashed
+            .iter()
+            .position(|record| record.id == id)
+            .ok_or(AppError::not_found("recovery"))?;
+        let record = inner.trashed.remove(position);
+        if !move_from_trash(&self.root, &record) {
+            let trash = self.root.join(TRASH_DIR);
+            let _ = fs::remove_file(trash.join(trash_name(&record, "json")));
+            let _ = fs::remove_file(trash.join(trash_name(&record, "pdf")));
+            return Err(AppError::not_found("recovery"));
+        }
+        inner.dead.push(record);
+        inner
+            .dead
+            .sort_by_key(|record| std::cmp::Reverse(record.manifest.saved_at));
+        Ok(())
     }
 
     /// Deletes every record that is not open as a recovered document; answers how many.
@@ -1094,7 +1190,7 @@ mod tests {
     fn files_of_dead_sessions(dir: &TempDir) -> usize {
         let mut count = 0;
         for session in fs::read_dir(dir.path().join(DIR_NAME)).unwrap().flatten() {
-            if session.path().is_dir() {
+            if session.path().is_dir() && session.file_name() != TRASH_DIR {
                 count += fs::read_dir(session.path())
                     .unwrap()
                     .flatten()
@@ -1119,6 +1215,56 @@ mod tests {
         next.shutdown();
         drop(next);
         assert!(Autosave::start(dir.path()).unwrap().list().is_empty());
+    }
+
+    #[test]
+    fn lifecycle_discard_then_quit_inside_the_undo_window_stays_discarded() {
+        let dir = TempDir::new();
+        crash(&dir);
+        let next = Autosave::start(dir.path()).unwrap();
+        next.mark_shown();
+        next.discard(next.list()[0].id).unwrap();
+        assert!(next.list().is_empty());
+        next.shutdown();
+        drop(next);
+        assert!(!dir.path().join(DIR_NAME).join(TRASH_DIR).exists());
+        assert!(Autosave::start(dir.path()).unwrap().list().is_empty());
+    }
+
+    #[test]
+    fn lifecycle_discard_then_crash_inside_the_undo_window_stays_discarded() {
+        let dir = TempDir::new();
+        crash(&dir);
+        let next = Autosave::start(dir.path()).unwrap();
+        next.discard(next.list()[0].id).unwrap();
+        drop(next);
+        let after = Autosave::start(dir.path()).unwrap();
+        assert!(after.list().is_empty());
+        assert!(!dir.path().join(DIR_NAME).join(TRASH_DIR).exists());
+    }
+
+    #[test]
+    fn lifecycle_undo_then_quit_lists_the_record_once_more_as_not_new() {
+        let dir = TempDir::new();
+        crash(&dir);
+        let next = Autosave::start(dir.path()).unwrap();
+        let id = next.list()[0].id;
+        next.mark_shown();
+        next.discard(id).unwrap();
+        // A list in between must not make the record news again.
+        next.mark_shown();
+        assert!(next.undo_discard(id + 1).is_err());
+        next.undo_discard(id).unwrap();
+        assert!(next.undo_discard(id).is_err(), "only once");
+        let listed = next.list();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, id);
+        assert!(!listed[0].fresh);
+        next.shutdown();
+        drop(next);
+        let again = Autosave::start(dir.path()).unwrap().list();
+        assert_eq!(again.len(), 1);
+        assert!(!again[0].fresh);
     }
 
     #[test]

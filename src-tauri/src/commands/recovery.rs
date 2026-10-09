@@ -5,7 +5,8 @@
 //! |---|---|---|
 //! | `list_recoveries` | none | `RecoveryEntry[]` of dead sessions |
 //! | `restore_recovery` | `id: RecoveryId` | `AppEvent` (`opened`, `needsPassword`, `openFailed`), the document as `DocKind::Recovered` |
-//! | `discard_recovery` | `id: RecoveryId` | nothing |
+//! | `discard_recovery` | `id: RecoveryId` | nothing; the record is never listed again (its files wait in the trash until exit) |
+//! | `undo_discard_recovery` | `id: RecoveryId` | nothing; lists the record again, `not_found` when it is gone |
 //! | `discard_all_recoveries` | none | how many were removed |
 //!
 //! Every answer names a record by a session-scoped [`RecoveryId`], never by path. This module also holds the `AppState` side of autosave:
@@ -274,6 +275,14 @@ impl AppState {
             .discard(id)
     }
 
+    /// Takes a discard back while the session lives.
+    pub fn undo_discard_recovery(&self, id: RecoveryId) -> Result<(), AppError> {
+        self.autosave
+            .get()
+            .ok_or(AppError::not_found("recovery"))?
+            .undo_discard(id)
+    }
+
     /// Deletes every record and answers how many there were.
     pub fn discard_all_recoveries(&self) -> Result<u32, AppError> {
         Ok(self
@@ -371,6 +380,16 @@ pub async fn restore_recovery(
 pub async fn discard_recovery(state: State<'_, AppState>, id: RecoveryId) -> Result<(), UiError> {
     let state = state.inner().clone();
     blocking(move || state.discard_recovery(id)).await
+}
+
+/// Takes a discard back (the Undo of the toast).
+#[tauri::command]
+pub async fn undo_discard_recovery(
+    state: State<'_, AppState>,
+    id: RecoveryId,
+) -> Result<(), UiError> {
+    let state = state.inner().clone();
+    blocking(move || state.undo_discard_recovery(id)).await
 }
 
 /// Deletes every record.

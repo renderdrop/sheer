@@ -638,6 +638,7 @@ async fn list_recoveries(state) -> Result<Vec<RecoveryEntry>, UiError>;
 async fn restore_recovery(state, id: RecoveryId) -> Result<AppEvent, UiError>;  // opened | needsPassword | openFailed (TS: OpenOutcome), as DocKind::Recovered
 async fn discard_recovery(state, id: RecoveryId) -> Result<(), UiError>;
 async fn discard_all_recoveries(state) -> Result<u32, UiError>;                    // how many were removed
+async fn undo_discard_recovery(state, id: RecoveryId) -> Result<(), UiError>;             // takes a discard back; the record is listed again
 
 // commands/update.rs: the only commands that reach the network, and only through update/
 async fn check_for_update(app, state) -> Result<Option<UpdateInfo>, UiError>;      // unsupported_feature while the key is the placeholder

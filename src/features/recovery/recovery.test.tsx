@@ -8,7 +8,7 @@ import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { handleAppEvent } from '../viewer/appEvents';
-import { flushPendingDiscards, loadRecoveries, resetPending } from './actions';
+import { loadRecoveries, resetPending } from './actions';
 import { RecoveryBanner } from './RecoveryBanner';
 import { useRecovery } from './store';
 
@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   listRecoveries: vi.fn(),
   restoreRecovery: vi.fn(),
   discardRecovery: vi.fn(),
+  undoDiscardRecovery: vi.fn(),
 }));
 vi.mock('../../api/recovery', () => api);
 vi.mock('../viewer/useViewer', () => ({ adoptOpenOutcomes: vi.fn() }));
@@ -38,6 +39,7 @@ beforeEach(() => {
   resetPending();
   Object.values(api).forEach((fn) => fn.mockReset());
   api.discardRecovery.mockResolvedValue(undefined);
+  api.undoDiscardRecovery.mockResolvedValue(undefined);
 });
 afterEach(() => {
   MotionGlobalConfig.skipAnimations = false;
@@ -139,31 +141,21 @@ describe('the recovery banner (DESIGN 3.50)', () => {
     expect(screen.getByRole('button', { name: 'Discard' })).toBeTruthy();
   });
 
-  it('discards with Undo for the toast lifetime and deletes the record when the toast ends', async () => {
+  it('discards at once in the backend (F21.2) and Undo asks the backend to list the record again', async () => {
     api.listRecoveries.mockResolvedValue([entry(1), entry(2)]);
     const { user } = setup(<RecoveryBanner />);
     await user.click((await screen.findAllByRole('button', { name: 'Discard' }))[0] as HTMLElement);
     expect(useUi.getState().toast?.action?.label).toBe('Undo');
-    expect(api.discardRecovery).not.toHaveBeenCalled();
+    expect(api.discardRecovery).toHaveBeenCalledWith(1);
     act(() => useUi.getState().toast?.action?.run());
+    expect(api.undoDiscardRecovery).toHaveBeenCalledWith(1);
     expect(useRecovery.getState().entries.map((row) => row.id)).toEqual([1, 2]);
-    expect(api.discardRecovery).not.toHaveBeenCalled();
 
     await user.click((await screen.findAllByRole('button', { name: 'Discard' }))[1] as HTMLElement);
     act(() => useUi.getState().dismissToast());
     expect(api.discardRecovery).toHaveBeenCalledWith(2);
-    expect(api.discardRecovery).toHaveBeenCalledTimes(1);
-  });
-
-  it('flushes a pending discard when the window closes (F21.2)', async () => {
-    api.listRecoveries.mockResolvedValue([entry(1), entry(2)]);
-    const { user } = setup(<RecoveryBanner />);
-    await user.click((await screen.findAllByRole('button', { name: 'Discard' }))[0] as HTMLElement);
-    expect(api.discardRecovery).not.toHaveBeenCalled();
-    await flushPendingDiscards();
-    expect(api.discardRecovery).toHaveBeenCalledWith(1);
-    await flushPendingDiscards();
-    expect(api.discardRecovery).toHaveBeenCalledTimes(1);
+    expect(api.discardRecovery).toHaveBeenCalledTimes(2);
+    expect(api.undoDiscardRecovery).toHaveBeenCalledTimes(1);
   });
 
   it('shows the banner only when a record is new to the persisted ledger (F21.2)', async () => {
@@ -183,7 +175,6 @@ describe('the recovery banner (DESIGN 3.50)', () => {
     const { user } = setup(<RecoveryBanner />);
     await user.click(await screen.findByRole('button', { name: 'Discard all' }));
     expect(useUi.getState().toast?.message).toBe('Changes to 2 documents discarded');
-    act(() => useUi.getState().dismissToast());
     expect(api.discardRecovery.mock.calls.map((call) => call[0]).sort()).toEqual([1, 2]);
   });
 

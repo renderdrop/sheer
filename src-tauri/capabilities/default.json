@@ -119,6 +119,7 @@
     "allow-restore-recovery",
     "allow-discard-recovery",
     "allow-discard-all-recoveries",
+    "allow-undo-discard-recovery",
     "allow-check-for-update",
     "allow-download-update",
     "allow-install-update-on-quit",

@@ -61,7 +61,7 @@ export function CaptionBar({ maximized, onChanged }: CaptionBarProps) {
   };
 
   return (
-    <div role="group" aria-label={t('window.controls')} className="flex h-full shrink-0">
+    <div role="group" aria-label={t('window.controls')} data-slot="caption-controls" className="flex h-full shrink-0">
       <CaptionButton label={t('window.minimize')} icon={Minus} onClick={act(minimizeWindow)} />
       <CaptionButton
         label={maximized ? t('window.restore') : t('window.maximize')}
