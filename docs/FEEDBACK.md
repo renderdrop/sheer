@@ -309,14 +309,15 @@ Templates: `docs/brand/editor-rc3.png`, `docs/brand/home-rc3.png` (untracked, ru
 
 Every item is checked in the acceptance build at 1280×800 and 960×640.
 
-- [ ] F20.1 Home: a grey strip at the top or right cuts the gradient and the page scrolls slightly. Glow layer clipped exactly to the surface, no overflow, no scrolling from 960×640 up; gate check "home does not scroll".
-- [ ] F20.2 Tool tiles in a narrow window: titles break mid-word. Never break words; below the width of two rows of four switch to four rows of two, hide subtitles, minimum tile width.
-- [ ] F20.3 Thumbnails in "Recently opened" are blurry: render at card size × device pixel ratio like the page thumbnails; comparison screenshot.
-- [ ] F20.4 Freehand (pen, arrow, shape): much stronger smoothing — Catmull-Rom with higher tension plus minimum point distance; before/after comparison on three strokes.
-- [ ] F20.5 Colour picker: "+" opens a second popover with the same palette. "+" opens only a hex field and recently used colours, no second palette.
-- [ ] F20.6 Page thumbnails follow scrolling in jumps. Smooth follow, proportional to the position in the document.
-- [ ] F20.7 Comment hover: while the mouse is on the bubble, the mark stays highlighted. New: multi-selection with Ctrl held — select several separate text ranges and attach one comment; across pages the comment is created per page and linked as a group.
-- [ ] F20.8 Right inspector resizable in width (240–480 px), width remembered.
-- [ ] F20.9 Top bar: a white line appears under the tool card and the white background jumps against the light grey of the left sidebar. One chrome background colour (`#FAFAF8`) for menu bar, tab strip, area around the card and sidebars; the card sits on it without a gap; no extra white areas. Screenshot of the seams.
-- [ ] F20.10 Zoom display in the status bar: "100 %" does not fit. Field sized for four digits plus percent sign, tabular figures.
-- [ ] F20.11 Mode tabs: the active tab ("Read") shows a double contour — its own border meets the card border. Tabs and card share one contour: the active tab has a border only on top and sides and merges seamlessly into the sand area below, no second line. Check all five tabs, also with key chip.
+- [x] F20.1 Home: a grey strip at the top or right cuts the gradient and the page scrolls slightly. Glow layer clipped exactly to the surface, no overflow, no scrolling from 960×640 up; gate check "home does not scroll".
+- [x] F20.2 Tool tiles in a narrow window: titles break mid-word. Never break words; below the width of two rows of four switch to four rows of two, hide subtitles, minimum tile width.
+- [x] F20.3 Thumbnails in "Recently opened" are blurry: render at card size × device pixel ratio like the page thumbnails; comparison screenshot.
+- [x] F20.4 Freehand (pen, arrow, shape): much stronger smoothing — Catmull-Rom with higher tension plus minimum point distance; before/after comparison on three strokes.
+- [x] F20.5 Colour picker: "+" opens a second popover with the same palette. "+" opens only a hex field and recently used colours, no second palette.
+- [x] F20.6 Page thumbnails follow scrolling in jumps. Smooth follow, proportional to the position in the document.
+- [x] F20.7 Comment hover: while the mouse is on the bubble, the mark stays highlighted. New: multi-selection with Ctrl held — select several separate text ranges and attach one comment; across pages the comment is created per page and linked as a group.
+- [x] F20.8 Right inspector resizable in width (240–480 px), width remembered.
+- [x] F20.9 Top bar: a white line appears under the tool card and the white background jumps against the light grey of the left sidebar. One chrome background colour (`#FAFAF8`) for menu bar, tab strip, area around the card and sidebars; the card sits on it without a gap; no extra white areas. Screenshot of the seams.
+- [x] F20.10 Zoom display in the status bar: "100 %" does not fit. Field sized for four digits plus percent sign, tabular figures.
+- [x] F20.11 Mode tabs: the active tab ("Read") shows a double contour — its own border meets the card border. Tabs and card share one contour: the active tab has a border only on top and sides and merges seamlessly into the sand area below, no second line. Check all five tabs, also with key chip.
+- Acceptance (2026-10-09, acceptance build v2.0.0 final tree, Windows 11, CDP, 1280×800 + 960×640): v20final 63/63, v20rc3 60/60, v20rc2 57/57, v19-backlog 64/64, v17-ocr 50/50, v16-range 11/11, v16-smartlinks 79/79, surface gate --wide 2584/2584 (incl. "home does not scroll" with and without open documents), annot-smoke 16/16, real-input smoke PASS; macOS via CI only. F20.1 at 960×640 with open documents shows three tool tiles plus "More tools" so home never scrolls.

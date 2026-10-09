@@ -1,8 +1,8 @@
 # STATE
-phase: session "v2.0.0 final — owner test rc.3 (F20)" (ADR-144, tempo level 4, model policy ADR-142) in progress
-version: 2.0.0-rc.3 (tag v2.0.0-rc.3, pre-release; latest stable v1.9.0)
-current_item: J done (smoke = rotation left by gate, script fix; card name ellipsis fix; designer shots review/v200/designer2-*); running: K (Opus) home scroll with open row 960x640 + gate hover fails + F20.3 check; designer round
-  queued: commit wave · acceptance v20final + all scripts · designer round · security audit · release v2.0.0
+phase: session "v2.0.0 final — owner test rc.3 (F20)" (ADR-144, tempo level 4, model policy ADR-142) closed: v2.0.0 released (stable)
+version: 2.0.0 (tag v2.0.0, stable)
+current_item: none — next session: owner decides (proposal: v2.1 — macOS check of the new layout, polish minors; signing when certificates exist)
+  final: v20final 63/63, v20rc3 60/60, v20rc2 57/57, v19 64/64, v17-ocr 50/50, v16-range 11/11, smartlinks 79/79, gate 2584/2584, annot 16/16, real smoke PASS
 packages:
   review A PASS; minors (polish): gate home sweep only one state (with/without open row), 784px literal in container query, FIT_NEEDS hand-synced, long de tile title could overflow
   review D PASS; minors: foreign.rs:507 Groups::of per page read (O(pages×annots), full parse — check perf on 500 pages), group text edit skips locked members silently, multi-range drag untested end-to-end
@@ -10,8 +10,8 @@ packages:
   E author detection: authors 15/8/8/0 → 15/14/14/0 (truth/found/correct/wrong), year 19/17/14/3 → 19/19/15/4 (corpus-03 deck no year in truth), kind 15/12/11/1 unchanged, others unchanged; corpus-21 letter-spaced not found
   final security audit: FAIL (high Groups::of loop) → S1 fixed (bounded key attempts, scan outside CACHE lock) → verification PASS; deny 0, npm audit 0
   designer round: PASS (no blocker); majors: home 960 "+" misaligned, Smart links toggle filled Solar → K (home) + L (editor: toggle style, tab gaps, separator, h-scrollbar at 100 %)
-last_completed: v2.0.0-rc.3 — F19.16–F19.27; report docs/reports/2026-10-09-v2.0.0-rc.3-f19-teil2.md
-loop_count_this_session: 0
+last_completed: v2.0.0 — F20.1–F20.11, F19.28, author detection, designer round, final audit; report docs/reports/2026-10-09-v2.0.0-final.md
+loop_count_this_session: 30 (session closed, STOP set)
 open_blockers: 3 (B-002, B-005, B-008, human-only)
 notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
   ADR-120: every push starts with `bash scripts/ci-status.sh`; red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs`; real input only `smoke-real.mjs` (≤ 5 min, announced).
@@ -20,6 +20,8 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
   ADR-142: model per package named in the brief (Opus: audits, engine-critical Rust, 2nd fix round; Haiku: mechanic). Briefs that start a dev/acceptance window must say: stop it only by process path (incident 2026-10-08: an agent killed sheer.exe by name).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - 8b76a2d..release F20.6 fix + release v2.0.0 → run pending (read next session)
+  - 20b6885..f9ac9b5 security fix groups, acceptance + designer fixes → run #158 (37917277747) GREEN
   - d50b084..e436c3b ADR-144, F20 A–D2, E authors, v20final + F19.28 harness → run #157 (37901107867) GREEN
   - ef915aa..282b0a4 mini bar fix + release v2.0.0-rc.3 → run #156 (37883414883) GREEN; release run #23 (37883414919) success (pre-release)
   - fa3c247 acceptance round 2 fixes + changelog → run #155 (37874555467) GREEN

@@ -4484,7 +4484,7 @@ dependencies = [
 
 [[package]]
 name = "sheer"
-version = "2.0.0-rc.3"
+version = "2.0.0"
 dependencies = [
  "apple-native-keyring-store",
  "base64 0.22.1",
