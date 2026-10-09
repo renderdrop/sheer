@@ -145,7 +145,7 @@ const makeSession =
       const d = document.querySelector('[data-surface="ocr-dialog"]');
       if (!d) return null;
       const on = d.querySelector('[data-ocr="scope"] label[data-checked]');
-      const start = d.querySelector('[data-ocr="start"]');
+      const start = d.querySelector('[data-inspector="apply"]');
       return {
         language: d.querySelector('[data-language]')?.dataset.language,
         fallback: d.querySelector('[data-ocr="language-fallback"]')?.textContent?.trim() ?? null,
@@ -160,7 +160,7 @@ const makeSession =
     })()`);
     const startRun = async () => {
       await resetLog();
-      await input.click({ selector: '[data-ocr="start"]' });
+      await input.click({ selector: '[data-inspector="apply"]' });
       await input.waitFor(`!document.querySelector('[data-surface="ocr-dialog"]')`, {
         timeoutMs: 5000,
         what: 'dialog closed',
@@ -302,8 +302,8 @@ const makeSession =
           `${info?.scope}; language ${info?.language}`,
         );
         C(
-          's1: Start enabled, reads "1 Seite erkennen"',
-          !info?.startDisabled && info?.startLabel === '1 Seite erkennen',
+          's1: Start enabled, reads "Erkennen"',
+          !info?.startDisabled && info?.startLabel === 'Erkennen',
           info?.startLabel ?? '',
         );
         await shot(`${SHOTS}/ocr-02-dialog`);
@@ -465,8 +465,8 @@ const makeSession =
         await openDialog();
         const info = await dialogInfo();
         C(
-          's5: scope "Gescannte Seiten (1)" and Start "1 Seite erkennen"',
-          info?.scope === 'Gescannte Seiten (1)' && info?.startLabel === '1 Seite erkennen',
+          's5: scope "Gescannte Seiten (1)" and Start "Erkennen"',
+          info?.scope === 'Gescannte Seiten (1)' && info?.startLabel === 'Erkennen',
           `${info?.scope}; ${info?.startLabel}`,
         );
         await startRun();

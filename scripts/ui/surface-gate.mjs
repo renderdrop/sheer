@@ -347,10 +347,15 @@ async function sweepTextEdit() {
     await sleep(400);
     const r = await pageRect();
     const k = r.width / 612;
+    // The line is found through textEditLines (as the reflow probe does); the fixed 72/136 pt box stays the fallback.
+    const box = await ev(
+      `(async()=>{const api=await import('/src/api/textEdit.ts'); const id=${stores('stores/documents.ts')}.useDocuments.getState().activeId; const r=await api.textEditLines(id,0); const l=r.lines.find(l=>/^The quick/.test(l.text)); return l?l.box:null})()`,
+    ).catch(() => null);
+    const b = box ?? { x: 72, y: 136, w: 258, h: 20 };
     return {
-      x: r.left + 110 * k,
-      y: r.top + 148 * k,
-      rect: { x: r.left + 72 * k, y: r.top + 136 * k, w: 258 * k, h: 20 * k },
+      x: r.left + (b.x + Math.min(40, b.w / 2)) * k,
+      y: r.top + (b.y + b.h / 2) * k,
+      rect: { x: r.left + b.x * k, y: r.top + b.y * k, w: b.w * k, h: b.h * k },
     };
   };
   await ev(`(async()=>{${stores('stores/ui.ts')}.useUi.getState().setMode('edit')})()`);
@@ -368,6 +373,12 @@ async function sweepTextEdit() {
     await mouse('mouseReleased', p.x, p.y);
     for (let i = 0; i < 20 && !(await ev(`!!document.querySelector('[data-testid="textedit-box"]')`)); i++)
       await sleep(150);
+    if (!(await ev(`!!document.querySelector('[data-testid="textedit-box"]')`))) {
+      const hit = await ev(
+        `(() => { const e = document.elementFromPoint(${p.x}, ${p.y}); return e ? e.tagName + ' ' + (e.getAttribute('data-testid') ?? e.getAttribute('data-textedit-surface') ?? e.className) : 'none'; })()`,
+      );
+      throw new Error(`the click on the line opened no edit box (element at the point: ${String(hit).slice(0, 80)})`);
+    }
     await sleep(300);
   };
   await probe(

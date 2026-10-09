@@ -196,16 +196,31 @@
 .home-tool-rows > li {
   height: var(--tile-h);
 }
+/* Compact tier: tight padding and icon gap, subtitle 13/18 up to two lines (20 + 36 fits the 72 tile); never an ellipsis at 1280 (en, de). */
 .home-tile {
-  padding-inline: var(--space-6);
-  gap: calc(var(--space-8) + var(--space-1));
+  padding-inline: var(--space-4);
+  gap: var(--space-3);
+}
+.home-main[data-tier="a"] .home-tile {
+  padding-inline: var(--space-5);
+  gap: var(--space-4);
 }
 .home-tile-title {
   font-size: var(--type-nav-size);
   line-height: var(--type-nav-line);
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 .home-tile-sub {
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-line);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.home-main[data-tier="a"] .home-tile-sub {
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
 }

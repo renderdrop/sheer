@@ -29,6 +29,15 @@ describe('placeBar', () => {
     expect(placeBar(box(960, 300, 1000, 400), bar, bounds)).toMatchObject({ left: 1000 - 8 - 300 });
   });
 
+  it('keeps the right edge inside a 960 wide canvas, docks when the bar cannot fit', () => {
+    const narrow = box(0, 100, 960, 700);
+    const wide = { width: 420, height: 40 };
+    const placed = placeBar(box(900, 300, 950, 400), wide, narrow);
+    expect(placed).toMatchObject({ mode: 'above' });
+    if (placed.mode !== 'dock') expect(placed.left + wide.width).toBeLessThanOrEqual(960 - 8);
+    expect(placeBar(box(900, 300, 950, 400), { width: 950, height: 40 }, narrow)).toEqual({ mode: 'dock' });
+  });
+
   it('docks when the canvas is narrower than the bar (no clipped bar, F19.17)', () => {
     expect(placeBar(box(10, 300, 50, 400), bar, box(0, 100, 200, 700))).toEqual({ mode: 'dock' });
   });

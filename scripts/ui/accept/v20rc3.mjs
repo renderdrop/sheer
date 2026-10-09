@@ -215,8 +215,8 @@ const session = async (ctx) => {
         const menu = g.menu !== null;
         await shot(`f19-16-editor-${w}x${h}`);
         C(
-          `F19.16 (${w}x${h}): editor rows 28/42/12/104/12/body/30`,
-          rowsMatch(tracks, h, menu) && g.tabs === 42 && g.card === 104 && g.status === 30 && (!menu || g.menu === 28),
+          `F19.16 (${w}x${h}): editor rows 28/42/12/106/12/body/30`,
+          rowsMatch(tracks, h, menu) && g.tabs === 42 && g.card === 106 && g.status === 30 && (!menu || g.menu === 28),
           JSON.stringify({
             tracks,
             menu: g.menu,

@@ -616,8 +616,8 @@ const session = async (ctx) => {
         );
         const hfItem = items.find((i) => i.id === 'headerFooter');
         C(
-          'HF-AC 1 (rc.3): Bearbeiten has the tool item "Kopf- und Fußzeile"',
-          hfItem !== undefined && hfItem.label.includes('Kopf- und Fußzeile'),
+          'HF-AC 1 (rc.3): Bearbeiten has the tool item "Kopf-/Fußzeile"',
+          hfItem !== undefined && hfItem.label.includes('Kopf-/Fußzeile'),
           `${items.length} items, ids ${items.map((i) => i.id).join(',')}`,
         );
         await input.click({ selector: '[data-slot="tool-row"] [data-toolbar-item="headerFooter"]' });
@@ -637,7 +637,7 @@ const session = async (ctx) => {
         await input.click({ role: 'tab', text: 'Lesen' });
         await sleep(500);
       } catch (e) {
-        C('HF-AC 1 (rc.3): Bearbeiten has the tool item "Kopf- und Fußzeile"', false, e.message);
+        C('HF-AC 1 (rc.3): Bearbeiten has the tool item "Kopf-/Fußzeile"', false, e.message);
       }
 
       await openHf();
@@ -680,11 +680,7 @@ const session = async (ctx) => {
 
       // HF-AC 6: re-apply with a centre header text replaces, never duplicates
       await openHf();
-      C(
-        'HF-AC 6: reopening shows the "existing" hint and Entfernen',
-        (await exists('[data-hf="existing"]')) && (await exists('[data-hf="remove"]')),
-        '',
-      );
+      C('HF-AC 6: reopening shows Entfernen (rc.3: no separate hint)', await exists('[data-hf="remove"]'), '');
       const kept = [await slotText('footerRight'), await slotText('footerLeft')];
       C(
         'HF-AC 6: the saved settings are loaded',

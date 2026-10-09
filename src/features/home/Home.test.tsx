@@ -196,6 +196,19 @@ describe('Home', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Tools' })).toBeTruthy();
   });
 
+  it('never truncates tile text with an ellipsis and describes each tile by its full subtitle', async () => {
+    const { container } = setup(<Home platform="windows" />);
+    await screen.findByRole('button', { name: /^Alpha.pdf/ });
+    const tiles = container.querySelectorAll('[data-home-tools] button');
+    expect(tiles.length).toBe(8);
+    for (const tile of tiles) {
+      expect(tile.querySelector('.truncate')).toBeNull();
+      const sub = tile.querySelector('.home-tile-sub');
+      expect(sub?.id).toBeTruthy();
+      expect(tile.getAttribute('aria-describedby')).toBe(sub?.id);
+    }
+  });
+
   it('offers no Show all when the recents fit in two rows', async () => {
     setup(<Home platform="macos" />);
     await screen.findByRole('button', { name: /^Alpha\.pdf/ });

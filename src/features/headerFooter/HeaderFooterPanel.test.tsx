@@ -82,8 +82,10 @@ describe('the inspector form', () => {
     const right = await screen.findByRole('button', { name: 'Footer, Right' });
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Header, Left' })));
     expect(screen.getByRole('complementary', { name: 'Headers and footers' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Footer, Left' }).textContent).toBe('Date');
-    expect(right.textContent).toBe('Page number');
+    // Short visible column caption over the value (wrapping, never cut); the full name is the accessible label.
+    expect(screen.getByRole('button', { name: 'Footer, Left' }).textContent).toBe('LeftDate');
+    expect(right.textContent).toBe('RightPage number');
+    expect(right.querySelector('.truncate')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Apply' }));
@@ -115,7 +117,7 @@ describe('the inspector form', () => {
     const { user } = setup(<HeaderFooterPanel />);
     expect(await screen.findByRole('button', { name: 'Remove' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Apply' }).getAttribute('aria-disabled')).toBe('true');
-    expect(screen.getByRole('button', { name: 'Header, Centre' }).textContent).toBe('Text');
+    expect(screen.getByRole('button', { name: 'Header, Centre' }).textContent).toBe('CentreText');
     await user.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(applyCommand).toHaveBeenCalledTimes(1));
     expect(applyCommand.mock.calls[0]?.[1]).toEqual({ type: 'setHeaderFooter', spec: null });

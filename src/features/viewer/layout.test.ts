@@ -520,6 +520,20 @@ describe('anchoring: the point under the pointer stays put when the zoom changes
     expect(scrollFor(layout, { page: 0, xPt: -500, yPt: -500, viewX: 0, viewY: 0 })).toEqual({ left: 0, top: 0 });
   });
 
+  it('may scroll into the canvas padding the real scroller has around the content', () => {
+    const layout = layoutOf(pages(3), 'continuous', { zoom: 1 });
+    const far = { page: 2, xPt: 10_000, yPt: 100_000, viewX: 0, viewY: 0 };
+    const plain = scrollFor(layout, far);
+    const padded = scrollFor(layout, far, 16);
+    expect(padded.left).toBe(plain.left + 32);
+    expect(padded.top).toBeCloseTo(plain.top + 32);
+    // Content that fits the content box but overflows the padded scroller: 17 is reachable, not clamped to 0.
+    const fits = layoutOf(pages(1), 'continuous', { zoom: 0.1 });
+    const at17 = { page: 0, xPt: 0, yPt: 0, viewX: -(17 - (fits.box(0)?.left ?? 0)), viewY: 0 };
+    expect(scrollFor(fits, at17).left).toBe(0);
+    expect(scrollFor(fits, at17, 17).left).toBe(17);
+  });
+
   it('goes to the top of the page for an anchor from a page that is not in the layout', () => {
     const layout = layoutOf(pages(4), 'single', { current: 0 });
     expect(scrollFor(layout, { page: 3, xPt: 5, yPt: 5, viewX: 0, viewY: 0 })).toEqual({ left: 0, top: 0 });

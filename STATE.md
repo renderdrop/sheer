@@ -9,7 +9,8 @@ packages:
   wave S committed 282bc1d: A smartlinks (gate 100/100/90.5 %), B OCR text PDF [Opus] (security PASS, 4 medium → H), C comments, D draw/shapes, E history (frontend), F crop keys + split button
   committed 4755e21: G sources F19.21 + G2 ISBN + H sec fixes/get_history + v20rc3 script (security reviews S1-B and G/H: PASS, mediums fixed)
   acceptance round 1: v20rc3 50/60, gate 2238/2308 (37 registry drift, 20 mode-tab hover, 9 toast/status overlap, 2 minibar clip), annot-smoke 16/16, v16-smartlinks 76/79, v16-range 11/11, v19-backlog 22/28, v20rc2 38/47 (old layout)
-  running fixes: FX-1 layout (tool area 72, tab hover, toast, minibar, home+banner) · FX-2 smartlinks glued markers + v16 preview (cargo) · FX-3 imprint author/title (cargo) · FX-4 gate registry + v19/v20rc2/v16 scripts
+  fixes committed 70313f8 (FX-1..FX-4 + stamp mode); round 2: v20rc3 60/60, v17-ocr 50/50, v16-range 11/11, v19 64/64, annot 16/16, v16-smartlinks 77/79, v20rc2 56/57, gate 2507/2540
+  running: FX-5 (scroll restore clamp, de home tiles, ink minibar 960, hf slot labels) · FX-6 gate openers textedit/font/notice; then round 3 (gate, v16-smartlinks, v20rc2, v20rc3)
   then: full check, commit, rebuild, acceptance round 2, real-input smoke, rc.3
   then: full check, commit, build:acceptance, v20rc3 + touched scripts, surface gate, annot-smoke, real-input smoke, rc.3 release, report
 last_completed: v2.0.0-rc.2 — report docs/reports/2026-10-08-v2.0.0-rc.2-f19-teil1.md
@@ -22,6 +23,7 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
   ADR-142: model per package named in the brief (Opus: audits, engine-critical Rust, 2nd fix round; Haiku: mechanic). Briefs that start a dev/acceptance window must say: stop it only by process path (incident 2026-10-08: an agent killed sheer.exe by name).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - 70313f8 acceptance round 1 fixes → run #154 (37868472036) GREEN
   - 4755e21 G/G2/H + v20rc3 → run #153 (37862527681) GREEN
   - 282bc1d wave S F19.20/.22-.27 → run #152 (37857822228) GREEN
   - e3784c4 palettes F19.19 → run #151 (37854203156) GREEN

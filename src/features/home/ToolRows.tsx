@@ -78,6 +78,7 @@ export function ToolRows({ all = false, onMore }: ToolRowsProps) {
             tabIndex={roving.tabIndexOf(tile.id)}
             aria-disabled={(tile.id !== 'more' && locked) || undefined}
             aria-busy={busy === tile.id || undefined}
+            aria-describedby={`home-tile-${tile.id}-sub`}
             onClick={() => {
               if (tile.id === 'more') onMore?.();
               else if (!locked) void runHubCard(tile.id);
@@ -86,8 +87,10 @@ export function ToolRows({ all = false, onMore }: ToolRowsProps) {
           >
             <Icon icon={tile.icon} size={24} className="shrink-0" />
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="home-tile-title truncate">{t(tile.titleKey)}</span>
-              <span className="home-tile-sub truncate text-text-muted">{t(tile.hintKey)}</span>
+              <span className="home-tile-title">{t(tile.titleKey)}</span>
+              <span id={`home-tile-${tile.id}-sub`} className="home-tile-sub text-text-muted">
+                {t(tile.hintKey)}
+              </span>
             </span>
           </button>
         </li>

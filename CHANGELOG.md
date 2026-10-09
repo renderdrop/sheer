@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-rc.3] - 2026-10-09
+
+Release candidate 3: beta feedback F19 part 2 — new editor and home layout, switchable palettes, smarter links and source detection, text PDF after OCR, history panel.
+
+### Added
+- Editor layout: tab strip with undo, redo, history and search; mode card with file-tab registers and key chips 1–5; tool settings for crop, header/footer, stamp, text recognition and the source reference in a 300 px inspector instead of popups; status bar with save state, page, zoom and fit.
+- Home: side navigation (Start, Recent, Starred, Tools, Settings), greeting by time of day with the author name, one row of recent files, open documents above them, eight PDF tools.
+- Palettes: Default, Earth, Berry and Study, chosen with the palette button next to the colours; the choice applies to every annotation tool and never changes existing annotations.
+- History panel: every change of the session, jump to any state, delete an annotation from the list.
+- Save as text PDF after text recognition: flowing text with headings, Inter or Tinos, optionally followed by the original page images.
+- Drawing: freehand arrow and freehand shape.
+- Source detection reads the imprint and the first pages: edition, publisher, place, ISBN, DOI and the document type (book, article, report, official text).
+
+### Changed
+- Smart links scan the whole document, recognise footnote markers in brackets, with asterisks and daggers, and merge the outline from the table of contents and headings.
+- Draw never straightens a stroke; straight shapes come from Shapes. The straighten setting is gone.
+- A new comment opens in the margin with the cursor in it; Enter saves, Esc discards. Hovering a bubble pulses its mark instead of drawing a line.
+- Crop: Enter applies and Esc cancels, also from the page.
+- "Some details are missing" appears once per document.
+
+### Fixed
+- The outline around a comment's mark follows scrolling and resizing.
+- Split tool buttons keep one outer contour on hover and when active.
+
 ## [2.0.0-rc.2] - 2026-10-08
 
 Release candidate 2: beta feedback F19 part 1 — comments from other editors, home, crop, redaction, selection, margin bubbles, headers and footers, shapes.

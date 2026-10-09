@@ -194,7 +194,7 @@ const session = async (ctx) => {
   async function openComments() {
     // rc.3: no top-bar toggle; a collapsed sidebar comes back through View > Left panel (F4) or a click on the splitter's grip.
     if (!(await exists('[role="tab"][data-value="comments"]'))) {
-      await menu('View', 'Left panel').catch(() => {});
+      await input.press('F4').catch(() => {});
       if (!(await exists('[role="tab"][data-value="comments"]')))
         await input.click({ selector: '[role="separator"][aria-label="Resize left panel"]' });
       await sleep(500);
@@ -377,7 +377,7 @@ const session = async (ctx) => {
       await fresh({ language: 'de' }).catch(() => {});
       await ev('document.documentElement.lang').then((l) => console.log('INFO lang', l));
       const de = await ev(`(() => { const g = document.querySelector('[data-home-tools]'); if (!g) return null;
-        const cols = getComputedStyle(g).gridTemplateColumns; const cut = [...g.querySelectorAll('*')].filter((e) => e.children.length === 0 && e.textContent.trim() && (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)).map((e) => e.textContent.trim().slice(0, 40));
+        const cols = getComputedStyle(g).gridTemplateColumns; const cut = [...g.querySelectorAll('*')].filter((e) => e.children.length === 0 && e.textContent.trim() && e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent.trim().slice(0, 40));
         return { cols: cols.split(' ').length, cut, bottom: g.getBoundingClientRect().bottom, vh: window.innerHeight }; })()`);
       await shot('f19-06-home-de-1280x800');
       C('F19.6 (de, 1280x800): tool descriptions not cut off', de !== null && de.cut.length === 0, JSON.stringify(de));
@@ -908,8 +908,8 @@ const session = async (ctx) => {
       let cards = await cardsNow();
       await shot('f19-13-arrow');
       C(
-        'F19.13: a drawn arrow becomes an arrow shape',
-        cards.length === n0 + 1 && /arrow/i.test(cards.join(' | ')),
+        'F19.13 (superseded by F19.26): a freehand arrow stays an ink drawing',
+        cards.length === n0 + 1 && !/arrow/i.test(cards.join(' | ')),
         cards.join(' | ').slice(0, 200),
       );
       // Open circles: 85 % (the brief), and 83 % and 80 % (F19.13 says "from 80 %").
@@ -934,8 +934,8 @@ const session = async (ctx) => {
         const nth = [0.85, 0.83, 0.8].indexOf(share) + 1;
         if (brief) await shot('f19-13-ellipse');
         C(
-          `F19.13: an open circle of ${Math.round(share * 100)} % becomes an ellipse`,
-          ellipses === nth,
+          `F19.13: an open circle of ${Math.round(share * 100)} % stays an ink drawing (not an ellipse)`,
+          ellipses === 0 && cards.length === n0 + nth + 1,
           cards.join(' | ').slice(0, 240),
         );
       }
@@ -952,7 +952,7 @@ const session = async (ctx) => {
       }
       await setViewport(960, 640);
       await menu('File', 'Document Properties');
-      await input.waitFor(`!!document.querySelector('[role="dialog"] [role="tabpanel"]')`, {
+      await input.waitFor(`!!document.querySelector('[role="dialog"] .overflow-y-auto')`, {
         timeoutMs: 6000,
         what: 'properties dialog',
       });
@@ -963,13 +963,13 @@ const session = async (ctx) => {
         await input.press('Tab');
         await sleep(150);
         inPanel = await ev(
-          `!!document.activeElement?.closest?.('[role="tabpanel"]') && document.activeElement.matches('input, textarea')`,
+          `!!document.activeElement?.closest?.('.overflow-y-auto') && document.activeElement.matches('input, textarea')`,
         );
       }
       C('F19.15: keyboard focus reaches a field in the scrolling panel', inPanel);
       const measure = () =>
         ev(`(() => {
-          const el = document.activeElement; const panel = el.closest('[role="tabpanel"]'); const ring = document.querySelector('[data-focus-ring]');
+          const el = document.activeElement; const panel = el.closest('.overflow-y-auto'); const ring = document.querySelector('[data-focus-ring]');
           if (!ring) return { noRing: true };
           const rr = ring.getBoundingClientRect(); const er = el.getBoundingClientRect(); const pr = panel.getBoundingClientRect();
           const clip = ring.style.clipPath; const m = clip.match(/inset\\(([^)]*)\\)/);
@@ -982,7 +982,7 @@ const session = async (ctx) => {
           return { clip, ring: [rr.top, rr.bottom].map(Math.round), el: [er.top, er.bottom].map(Math.round), panel: [pr.top, pr.bottom].map(Math.round), hidden, within, aligned, scrollTop: panel.scrollTop, canScroll: panel.scrollHeight > panel.clientHeight + 1, elInView: er.top >= pr.top && er.bottom <= pr.bottom };
         })()`);
       const scrollBy = async (dy) => {
-        await ev(`(() => { const p = document.activeElement.closest('[role="tabpanel"]'); p.scrollTop += ${dy}; })()`);
+        await ev(`(() => { const p = document.activeElement.closest('.overflow-y-auto'); p.scrollTop += ${dy}; })()`);
         await sleep(450);
       };
       const m0 = await measure();
@@ -1049,7 +1049,7 @@ const session = async (ctx) => {
       await input.click({ selector: sep });
       await sleep(900);
       const afterGrip = await left();
-      await menu('View', 'Left panel');
+      await input.press('F4');
       await sleep(900);
       const afterMenu = await left();
       C(

@@ -290,7 +290,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     if (changed) autoCentre.current = true;
     const wanted = anchor ?? (changed ? pageTopAnchor(layout, pageIndex, centeredScroll(layout)) : null);
     if (wanted !== null) {
-      const target = scrollFor(layout, wanted);
+      const target = scrollFor(layout, wanted, canvasPadding());
       const jump = anchor !== null && consumeJump();
       scrollAnim.current?.stop();
       scrollAnim.current = null;

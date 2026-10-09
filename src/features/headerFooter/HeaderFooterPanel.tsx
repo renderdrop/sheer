@@ -39,7 +39,7 @@ function Trigger({ current, ...rest }: { current?: boolean } & ComponentProps<'b
       type="button"
       {...rest}
       className={cx(
-        't-body flex h-control-md w-full min-w-0 cursor-pointer items-center justify-between gap-1 rounded-button border bg-surface px-2 text-text',
+        't-body flex min-h-control-md w-full min-w-0 cursor-pointer items-center justify-between gap-1 rounded-button border bg-surface px-2 py-1 text-text',
         'hover:border-b-text transition-colors [transition-duration:var(--motion-fast)]',
         current === true ? 'border-text' : 'border-border-subtle border-b-control-border',
         rest.className,
@@ -151,8 +151,11 @@ function Panel({ request }: { request: HfDialogState }) {
             data-hf-slot={slot}
             onFocus={() => patch({ current: slot })}
           >
-            <span className="min-w-0 truncate">{shown}</span>
-            <Icon icon={ChevronDown} />
+            <span className="flex min-w-0 flex-col items-start text-start" data-hf-slot-text="">
+              <span className="t-caption text-text-muted">{t(`hf.${columnOf(slot)}`)}</span>
+              <span className="min-w-0 break-words">{shown}</span>
+            </span>
+            <Icon icon={ChevronDown} className="shrink-0" />
           </Trigger>
         )}
       />

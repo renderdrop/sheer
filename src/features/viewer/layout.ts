@@ -437,14 +437,16 @@ export function anchorAt(
 }
 
 /** Where the region has to be scrolled for `anchor` to appear where it says, in `layout`; kept inside what can be scrolled. */
-export function scrollFor(layout: PageLayout, anchor: ScrollAnchor): ScrollPosition {
+export function scrollFor(layout: PageLayout, anchor: ScrollAnchor, padding = 0): ScrollPosition {
   const box = layout.box(anchor.page);
   if (box === null) return { left: 0, top: 0 };
   const left = box.left + anchor.xPt * layout.scale - anchor.viewX;
   const top = box.top + anchor.yPt * layout.scale - anchor.viewY;
+  // The real scroller is `padding` px larger than the content on each side: its scrollable extent includes them.
+  const extra = 2 * Math.max(0, padding);
   return {
-    left: Math.min(Math.max(0, layout.width - layout.viewport.width), Math.max(0, left)),
-    top: Math.min(Math.max(0, layout.height - layout.viewport.height), Math.max(0, top)),
+    left: Math.min(Math.max(0, layout.width - layout.viewport.width + extra), Math.max(0, left)),
+    top: Math.min(Math.max(0, layout.height - layout.viewport.height + extra), Math.max(0, top)),
   };
 }
 

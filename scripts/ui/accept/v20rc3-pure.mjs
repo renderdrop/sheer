@@ -141,10 +141,10 @@ export function imagePdf(jpeg, w, h) {
 }
 
 // ---- verdicts ------------------------------------------------------------------------------------------------------------
-/** Expected editor grid rows (DESIGN 3.18 E1) at a window height: menu 28 (Windows), tabs 42, gutter 12, card 104, gutter 12, body, status 30. */
+/** Expected editor grid rows (DESIGN 3.18 E1) at a window height: menu 28 (Windows), tabs 42, gutter 12, card 106, gutter 12, body, status 30. */
 export function expectedRows(height, menu = true) {
-  const fixed = [28, 42, 12, 104, 12, 30];
-  const sum = (menu ? 28 : 0) + 42 + 12 + 104 + 12 + 30;
+  const fixed = [28, 42, 12, 106, 12, 30];
+  const sum = (menu ? 28 : 0) + 42 + 12 + 106 + 12 + 30;
   const rows = menu ? fixed : fixed.slice(1);
   return { rows, body: height - sum };
 }

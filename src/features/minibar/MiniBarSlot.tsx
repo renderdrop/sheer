@@ -163,11 +163,20 @@ function MiniBarHost({ docId, objects }: { docId: number; objects: readonly Mini
     const box = selectionBox(elements);
     const wrapBox = wrap.getBoundingClientRect();
     const canvas = document.querySelector(CANVAS);
-    const bounds = (canvas === null ? null : boxOf(canvas)) ?? {
+    const canvasBounds = (canvas === null ? null : boxOf(canvas)) ?? {
       left: wrapBox.left,
       top: wrapBox.top,
       right: wrapBox.right,
       bottom: wrapBox.bottom,
+    };
+    // Never beyond the window: the canvas may extend past a narrow viewport.
+    const bounds = {
+      ...canvasBounds,
+      right: Math.min(
+        canvasBounds.right,
+        wrapBox.right > 0 ? wrapBox.right : canvasBounds.right,
+        document.documentElement.clientWidth || canvasBounds.right,
+      ),
     };
     // Not on screen (scrolled away, or its page is not drawn): no bar.
     const visible =
@@ -181,7 +190,7 @@ function MiniBarHost({ docId, objects }: { docId: number; objects: readonly Mini
       return;
     }
     const size = bar.getBoundingClientRect();
-    const next = placeBar(box, { width: size.width, height: size.height }, bounds);
+    const next = placeBar(box, { width: Math.max(size.width, bar.scrollWidth), height: size.height }, bounds);
     const local: Placement =
       next.mode === 'dock' ? next : { mode: next.mode, left: next.left - wrapBox.left, top: next.top - wrapBox.top };
     setPlacement((old) => (same(old, local) ? old : local));
@@ -285,7 +294,9 @@ function MiniBarHost({ docId, objects }: { docId: number; objects: readonly Mini
       transition={spring(DURATION.fast)}
       inert={!visible}
       style={floating ? { position: 'absolute', ...style } : undefined}
-      className={cx(!visible && 'pointer-events-none')}
+      // max-content: the width of an absolutely placed bar must not depend on its own left (a bar near the right edge would be measured
+      // narrow, placed, and then grow past the edge).
+      className={cx(floating && 'w-max', !visible && 'pointer-events-none')}
     >
       <MiniBar ref={barRef} docId={docId} objects={objects} onReturn={returnToSelection} />
     </motion.div>

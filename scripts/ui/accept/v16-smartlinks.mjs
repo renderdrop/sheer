@@ -33,14 +33,14 @@ for (const [tag, file] of FILES) {
       ev(`(() => {
         const s = document.querySelector(${q(SCROLLER)});
         const p = document.querySelector('[data-page="${pageNo}"]');
-        return { top: s.scrollTop, left: s.scrollLeft,
+        return { top: s.scrollTop, left: s.scrollLeft, sw: s.scrollWidth, cw: s.clientWidth,
           w: p ? p.getBoundingClientRect().width : null,
           zoom: document.querySelector('[data-slot="statusbar"] [data-toolbar-item="zoom-in"]')?.value ?? null,
           save: document.querySelector('[data-save-status]')?.getAttribute('data-save-status') ?? null };
       })()`);
     const same = (a, b) =>
       a.top === b.top && a.left === b.left && a.zoom === b.zoom && (a.w === null || b.w === null || a.w === b.w);
-    const fmt = (s) => `top=${s.top} left=${s.left} zoom=${s.zoom} w=${s.w}`;
+    const fmt = (s) => `top=${s.top} left=${s.left} sw=${s.sw} cw=${s.cw} zoom=${s.zoom} w=${s.w}`;
     const links = () =>
       ev(`(() => { const sc = document.querySelector(${q(SCROLLER)}); return [...document.querySelectorAll(${q(LINK)})].map((e) => ({
         key: e.dataset.linkKey, kind: e.dataset.linkKind, label: e.getAttribute('aria-label'),
