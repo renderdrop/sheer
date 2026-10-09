@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-10-09
+
+Owner polish (F22): one calm, centred tool strip without modes, a warmer corner glow on the home screen, a fixed way back to recoverable documents, and icons with a motion of their own.
+
+### Changed
+- Home: the gradient is larger and sits in the top-right corner, fading from yellow to peach, at every window size.
+- Tool strip: the category names are plain captions; there are no modes to switch any more (keys 1–5 and the Tools-menu mode entries removed) and every tool is always one click away. The strip is centred and spread evenly over the card with thin divider lines, so it reads as one bar.
+- Narrow windows: tool buttons first shrink, then the strip wraps onto a second line instead of hiding tools behind "…".
+- Icons come alive when you point at a button, menu entry or tab: each has its own short motion (scissors snip, the trash lid lifts, arrows nudge, pens write, the lens looks around), played once per hover, and darkens slightly (colour change only with reduced motion).
+
+### Added
+- File → Restore… opens the list of recoverable documents at any time, including ones postponed with "Decide later".
+
 ## [2.1.0] - 2026-10-09
 
 Owner test of v2.0.0 (F21): a calmer tool card in one strip, a steady home gradient, full Recent and Tools views, recovery that asks only once, and sharper thumbnails.

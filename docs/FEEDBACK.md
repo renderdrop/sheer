@@ -339,9 +339,11 @@ Every item is checked in the acceptance build, including moving the window and r
 
 ## F22 — Owner polish v2.1.1 (owner, 2026-10-09; ADR-146)
 
-- [ ] F22.1 Home gradient larger and anchored further into the top right corner: centre at about 95 % / 0 % of the surface, radius at least 60 % of the window width, yellow to peach; same at 1280×800 and 1920×1080, screenshot at both.
-- [ ] F22.2 Tool strip: the categories are no switchable modes any more, only static captions under the groups; no tab logic, no keys 1–5, every tool always reachable. Group distance down to 20 px, separator a 1 px line in `#E5E5E1`, so it reads as one strip, not five blocks.
-- [ ] F22.3 Narrow window: instead of "…" first icons to 32 px, then a wrap to two lines.
-- [ ] F22.4 "File → Restore…" as a fixed entry to postponed recovery records.
-- [ ] F22.5 Acceptance scripts that still expect mode tabs: switch to the strip, only so far that they run.
-- [ ] F22.6 Icon hover app-wide in the shared Icon component: on hover entry the icon path draws itself once in 200 ms ease-out (stroke-dasharray/dashoffset over the path length) while the colour goes from Ink 60 to Ink. No scale, shadow or glow; not on leave; not on disabled icons; with prefers-reduced-motion only the colour change. Everything that uses the Icon component; icons rendered past it are switched over. Proven once in the acceptance build by a recording at three places.
+- [x] F22.1 Home gradient larger and anchored further into the top right corner: centre at about 95 % / 0 % of the surface, radius at least 60 % of the window width, yellow to peach; same at 1280×800 and 1920×1080, screenshot at both.
+- [x] F22.2 Tool strip: the categories are no switchable modes any more, only static captions under the groups; no tab logic, no keys 1–5, every tool always reachable. Group distance down to 20 px, separator a 1 px line in `#E5E5E1`, so it reads as one strip, not five blocks.
+- [x] F22.3 Narrow window: instead of "…" first icons to 32 px, then a wrap to two lines.
+- [x] F22.4 "File → Restore…" as a fixed entry to postponed recovery records.
+- [x] F22.5 Acceptance scripts that still expect mode tabs: switch to the strip, only so far that they run.
+- [x] F22.6 Icon hover app-wide in the shared Icon component: on hover entry the icon path draws itself once in 200 ms ease-out (stroke-dasharray/dashoffset over the path length) while the colour goes from Ink 60 to Ink. No scale, shadow or glow; not on leave; not on disabled icons; with prefers-reduced-motion only the colour change. Everything that uses the Icon component; icons rendered past it are switched over. Proven once in the acceptance build by a recording at three places.
+- Owner live feedback during the session: strip centred and spread (gaps 20–48 px); icon hover became a motion per icon (0.8–1.1 s, once per entry) after "too fast, alike, half drawn" (ADR-146 addenda).
+- Acceptance (2026-10-09, acceptance build, Windows 11, CDP + window.ps1, minimal by owner instruction): v211 38/38 (glow 1280×800 and 1920×1080, strip at 1280/1480/1500/1900 incl. visible separators and centring, File → Restore…, hover clips at strip, home and menu); v20final ink/colour/inspector/comments 26/26; v20rc3 39/39; v21 toolbar/home/glow all but one capture step (1600×1000 move path past the screen edge). macOS via CI only.

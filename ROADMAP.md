@@ -438,7 +438,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 
 ## F22 "Owner polish" (v2.1.1, ADR-146)
 
-- [ ] F22 — six points of docs/FEEDBACK.md F22
+- [x] F22 — six points of docs/FEEDBACK.md F22 (2026-10-09: acceptance build v211 38/38, affected v20final/v20rc3/v21 phases green; owner live fixes: centred strip, motion per icon)
 
 ## Politur v2.1 (minors after the v2.0 sweep)
 
@@ -453,4 +453,4 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - (F21 B2 review) owner thumbnail test only asserts dark_after <= dark_before (not that pixels changed); thumbnails above ~1000×1000 px fall back to factor 1 (no supersampling)
   - (security v2.1, low) hf_detect.rs:368 x1 - x0 without max guard (unreachable today); list_recoveries writes shown.json (consider an acknowledge command); v21.mjs builds a -Command string from the exe path (use -File)
   - (F21 FX review/security) recovery Undo can race the fire-and-forget discard (chain or reload); failed move_to_trash deletes instead (undo then not_found); discard/undo rename under the state mutex; gate does not assert the editor banner sits below the menu row; trash dir and record dir created with recursive builder — check symlink_metadata before renaming into them (low, same-user attacker)
-  - (F21.9) acceptance scripts still assume mode tabs (v20rc3 rows, v20final tabs, v21 toolbar/home "mode tab selected"), adapt to data-mode-group; v16-smartlinks hover preview flaky under load (p1/p6); ToolItem sets size-44 and h-tool-item (56 wins) — pick one
+  - (F22) Windows home has no menu bar, so File → Restore… needs an open document (banner remains on home); at 1280 px the strip wraps to two lines (one line needs ≈ 1500 px at 32 px squares); v21 glow 1600×1000 move path leaves the screen (capture null); icon motion origins rely on transform-box in WAAPI keyframes — check on WKWebView; v16-smartlinks hover preview flaky under load (p1/p6)

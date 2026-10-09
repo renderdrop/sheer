@@ -1,12 +1,11 @@
 # STATE
-phase: session "v2.1 — owner test v2.0.0 (F21)" (ADR-145, tempo level 4, model policy ADR-142) closed: v2.1.0 released (stable)
-version: 2.1.0 (tag v2.1.0, stable)
-current_item: none — next session: owner decides (proposal: Politur v2.1 — acceptance scripts on the one-strip tool card, minors, security lows — plus a macOS visual check)
-  final: v21 173/174 before F21.9 (both defects fixed in 5a1ef54), regressions v20final/v20rc3/v20rc2/v19/v17-ocr/v16-range green, v16-smartlinks hover flake; F21.9 screenshot-only (owner instruction); security audit PASS + FX targeted PASS
+phase: session "v2.1.1 — owner polish (F22)" (ADR-146) closed: v2.1.1 released (stable)
+version: 2.1.1 (tag v2.1.1, stable)
+current_item: none — next session: owner decides (proposal: Politur v2.1 + macOS visual check of strip and icon motions; open owner questions in docs/reports/2026-10-09-v2.1.1-f22.md)
 packages:
-  B1 F21.2 recovery (98f6348) + FX trash/undo + caption-safe banners (5a1ef54); B2 F21.7/F21.8 (0d71e5d); FC F21.5 (08819f7); FA+FB+FD F21.1/.3/.4/.6 (39cf943); FE F21.9 one strip (see release); reviews B1/B2/FX PASS
-last_completed: v2.1.0 — F21.1–F21.9; report docs/reports/2026-10-09-v2.1.0-f21.md
-loop_count_this_session: 3 (session closed, STOP set)
+  e1ffedf A strip, B glow, C restore, D icon hover, FX mode menu items; 053a0e2 FO centred strip + FI icon motion catalogue (Opus) + gain/overflow; 3248ca7 E acceptance scripts + v211 (38/38)
+last_completed: v2.1.1 — F22.1–F22.6 + owner live fixes; report docs/reports/2026-10-09-v2.1.1-f22.md
+loop_count_this_session: 0 (session closed, STOP set)
 open_blockers: 3 (B-002, B-005, B-008, human-only)
 notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
   ADR-120: every push starts with `bash scripts/ci-status.sh`; red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs`; real input only `smoke-real.mjs` (≤ 5 min, announced).
@@ -15,6 +14,7 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
   ADR-142: model per package named in the brief (Opus: audits, engine-critical Rust, 2nd fix round; Haiku: mechanic). Briefs that start a dev/acceptance window must say: stop it only by process path (incident 2026-10-08: an agent killed sheer.exe by name).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - e1ffedf..release v2.1.1 (F22 strip, glow, restore, icon motion, scripts) → run pending at push (read next session)
   - ffe3707 jobs test deflake → run #162 (37961935627) GREEN (Windows, macOS, web)
   - 5a1ef54..b03ca87 FX, v20 script adaptations, F21.9 one strip, release v2.1.0 → run #161 (37959918611) red: Windows flake in jobs test a_panic_is_an_internal_failure_and_frees_the_place (pre-existing race, place freed after the event) → deflaked next commit; release run #25 (37959919056) success (stable)
   - fd79c76..bf8832e ADR-145, F21.2 recovery, F21.7/.8 render+HF, F21.5 freehand, F21.1/.3/.4/.6 UI, v21 script → run #160 (37935814056) GREEN

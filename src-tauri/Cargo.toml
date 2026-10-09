@@ -1,6 +1,6 @@
 [package]
 name = "sheer"
-version = "2.1.0"
+version = "2.1.1"
 description = "Sheer, a local-only desktop PDF app"
 authors = ["Sheer contributors"]
 license = "AGPL-3.0-or-later"
