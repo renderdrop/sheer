@@ -35,6 +35,10 @@ const MANIFEST_MAX: u64 = 64 * 1024;
 const MANIFEST_VERSION: u32 = 1;
 /// A session directory without a lock file is dead only when it is older than this (a session that is starting has not made it yet).
 const NO_LOCK_GRACE: Duration = Duration::from_secs(60);
+/// The ledger of records the banner already showed (`<store>/shown.json`); a file next to the session directories, which `scan` skips.
+const LEDGER_NAME: &str = "shown.json";
+/// The most keys the ledger keeps (it is also pruned to the records that exist).
+const LEDGER_MAX: usize = 256;
 
 /// Whether a document is covered by autosave right now (`DocumentInfo.autosave`, shown in the status bar).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -97,6 +101,38 @@ pub struct RecoveryView {
     pub saved_at: u64,
     pub page_count: u32,
     pub original: OriginalState,
+    /// Not yet in the ledger of shown records: the banner is worth showing for it.
+    pub fresh: bool,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Ledger {
+    #[serde(default)]
+    shown: Vec<String>,
+}
+
+/// A record's identity across app starts: its session directory, its number and its stamp.
+fn ledger_key(record: &Dead) -> String {
+    let session = record
+        .dir
+        .file_name()
+        .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+    format!("{session}/{}/{}", record.n, record.manifest.saved_at)
+}
+
+fn read_ledger(root: &Path) -> HashSet<String> {
+    use std::io::Read;
+    let Ok(file) = File::open(root.join(LEDGER_NAME)) else {
+        return HashSet::new();
+    };
+    let mut text = Vec::new();
+    if file.take(MANIFEST_MAX * 8).read_to_end(&mut text).is_err() {
+        return HashSet::new();
+    }
+    serde_json::from_slice::<Ledger>(&text)
+        .map(|ledger| ledger.shown.into_iter().collect())
+        .unwrap_or_default()
 }
 
 /// A record copied into this session and ready to open (`Autosave::stage_restore`).
@@ -454,6 +490,12 @@ impl Autosave {
 
     /// Releases the session lock and removes the session directory: the normal quit. What is still in it is gone.
     pub fn shutdown(&self) {
+        // A record that was restored and is still open belongs to a document the user has just settled (the UI asked about unsaved
+        // changes before the quit): it must not come back as news at the next start.
+        let restored: Vec<u32> = self.lock().restored.values().map(|r| r.rec_id).collect();
+        for id in restored {
+            self.drop_dead(id);
+        }
         let _ = self.lock.unlock();
         let _ = fs::remove_dir_all(&self.dir);
     }
@@ -725,11 +767,13 @@ impl Autosave {
     pub fn list(&self) -> Vec<RecoveryView> {
         let inner = self.lock();
         let open: HashSet<u32> = inner.restored.values().map(|r| r.rec_id).collect();
+        let shown = read_ledger(&self.root);
         inner
             .dead
             .iter()
             .filter(|record| !open.contains(&record.id))
             .map(|record| RecoveryView {
+                fresh: !shown.contains(&ledger_key(record)),
                 id: record.id,
                 display_name: record.manifest.display_name.clone(),
                 saved_at: record.manifest.saved_at,
@@ -737,6 +781,21 @@ impl Autosave {
                 original: original_state(record.manifest.original.as_ref()),
             })
             .collect()
+    }
+
+    /// Writes the ledger: the records that exist now count as shown, keys of records that are gone are dropped, and the ledger stays
+    /// within `LEDGER_MAX`. Best effort: a failure only means the banner may show again.
+    pub fn mark_shown(&self) {
+        let mut keys: Vec<String> = self.lock().dead.iter().map(ledger_key).collect();
+        keys.sort_unstable();
+        keys.dedup();
+        let skip = keys.len().saturating_sub(LEDGER_MAX);
+        let ledger = Ledger {
+            shown: keys.into_iter().skip(skip).collect(),
+        };
+        if let Ok(json) = serde_json::to_vec(&ledger) {
+            let _ = write_atomic(&self.root.join(LEDGER_NAME), &json);
+        }
     }
 
     fn drop_dead(&self, id: u32) -> bool {
@@ -1024,6 +1083,114 @@ mod tests {
         let late = stamp + retention + Duration::from_secs(1);
         let purged = Autosave::start_at(dir.path(), late).unwrap();
         assert!(purged.list().is_empty());
+    }
+
+    fn crash(dir: &TempDir) {
+        let auto = Autosave::start(dir.path()).unwrap();
+        auto.write(&snapshot(id(1), b"%PDF-1.4 crash")).unwrap();
+        drop(auto);
+    }
+
+    fn files_of_dead_sessions(dir: &TempDir) -> usize {
+        let mut count = 0;
+        for session in fs::read_dir(dir.path().join(DIR_NAME)).unwrap().flatten() {
+            if session.path().is_dir() {
+                count += fs::read_dir(session.path())
+                    .unwrap()
+                    .flatten()
+                    .filter(|e| e.file_name() != LOCK_NAME)
+                    .count();
+            }
+        }
+        count
+    }
+
+    #[test]
+    fn lifecycle_crash_is_listed_and_discard_deletes_at_once_for_good() {
+        let dir = TempDir::new();
+        crash(&dir);
+        let next = Autosave::start(dir.path()).unwrap();
+        let listed = next.list();
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].fresh);
+        next.discard(listed[0].id).unwrap();
+        assert_eq!(files_of_dead_sessions(&dir), 0, "files are gone at once");
+        assert!(next.list().is_empty());
+        next.shutdown();
+        drop(next);
+        assert!(Autosave::start(dir.path()).unwrap().list().is_empty());
+    }
+
+    #[test]
+    fn lifecycle_restore_then_close_or_exit_leaves_nothing() {
+        // Closed: forget() takes the record with it.
+        let dir = TempDir::new();
+        crash(&dir);
+        let next = Autosave::start(dir.path()).unwrap();
+        let staged = next.stage_restore(next.list()[0].id).unwrap();
+        next.adopt(id(5), &staged);
+        assert!(next.list().is_empty(), "open as a recovered document");
+        next.forget(id(5));
+        assert_eq!(files_of_dead_sessions(&dir), 0);
+        next.shutdown();
+        drop(next);
+        assert!(Autosave::start(dir.path()).unwrap().list().is_empty());
+
+        // Quit with the recovered document still open: shutdown drops the dead record too.
+        let dir = TempDir::new();
+        crash(&dir);
+        let next = Autosave::start(dir.path()).unwrap();
+        let staged = next.stage_restore(next.list()[0].id).unwrap();
+        next.adopt(id(5), &staged);
+        next.shutdown();
+        drop(next);
+        assert!(Autosave::start(dir.path()).unwrap().list().is_empty());
+    }
+
+    #[test]
+    fn lifecycle_clean_close_and_exit_leave_nothing() {
+        let dir = TempDir::new();
+        let auto = Autosave::start(dir.path()).unwrap();
+        auto.write(&snapshot(id(1), b"%PDF-1.4 a")).unwrap();
+        auto.write(&snapshot(id(2), b"%PDF-1.4 b")).unwrap();
+        auto.forget(id(1));
+        auto.shutdown();
+        drop(auto);
+        let next = Autosave::start(dir.path()).unwrap();
+        assert!(next.list().is_empty());
+        assert_eq!(files_of_dead_sessions(&dir), 0);
+        next.shutdown();
+        drop(next);
+        assert!(Autosave::start(dir.path()).unwrap().list().is_empty());
+    }
+
+    #[test]
+    fn the_ledger_marks_shown_records_keeps_them_and_is_pruned() {
+        let dir = TempDir::new();
+        crash(&dir);
+        let first = Autosave::start(dir.path()).unwrap();
+        assert!(first.list()[0].fresh);
+        first.mark_shown();
+        assert!(!first.list()[0].fresh);
+        // Decide later: the process ends without a clean shutdown, the record stays and is no longer news.
+        drop(first);
+        let second = Autosave::start(dir.path()).unwrap();
+        let listed = second.list();
+        assert_eq!(listed.len(), 1);
+        assert!(!listed[0].fresh);
+        // A newer crash is fresh again.
+        let again = Autosave::start(dir.path()).unwrap();
+        again.write(&snapshot(id(9), b"%PDF-1.4 new")).unwrap();
+        drop(again);
+        drop(second);
+        let third = Autosave::start(dir.path()).unwrap();
+        let views = third.list();
+        assert_eq!(views.len(), 2);
+        assert_eq!(views.iter().filter(|view| view.fresh).count(), 1);
+        // Discarding everything prunes the ledger to nothing.
+        third.discard_all();
+        third.mark_shown();
+        assert!(read_ledger(&dir.path().join(DIR_NAME)).is_empty());
     }
 
     #[test]

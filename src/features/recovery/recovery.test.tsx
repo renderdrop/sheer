@@ -8,7 +8,7 @@ import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { handleAppEvent } from '../viewer/appEvents';
-import { resetPending } from './actions';
+import { flushPendingDiscards, loadRecoveries, resetPending } from './actions';
 import { RecoveryBanner } from './RecoveryBanner';
 import { useRecovery } from './store';
 
@@ -153,6 +153,29 @@ describe('the recovery banner (DESIGN 3.50)', () => {
     act(() => useUi.getState().dismissToast());
     expect(api.discardRecovery).toHaveBeenCalledWith(2);
     expect(api.discardRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  it('flushes a pending discard when the window closes (F21.2)', async () => {
+    api.listRecoveries.mockResolvedValue([entry(1), entry(2)]);
+    const { user } = setup(<RecoveryBanner />);
+    await user.click((await screen.findAllByRole('button', { name: 'Discard' }))[0] as HTMLElement);
+    expect(api.discardRecovery).not.toHaveBeenCalled();
+    await flushPendingDiscards();
+    expect(api.discardRecovery).toHaveBeenCalledWith(1);
+    await flushPendingDiscards();
+    expect(api.discardRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the banner only when a record is new to the persisted ledger (F21.2)', async () => {
+    api.listRecoveries.mockResolvedValue([entry(1, { fresh: false }), entry(2, { fresh: false })]);
+    setup(<RecoveryBanner />);
+    await waitFor(() => expect(api.listRecoveries).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(screen.queryByRole('region')).toBeNull();
+    api.listRecoveries.mockResolvedValue([entry(1, { fresh: false }), entry(3, { fresh: true })]);
+    await act(async () => loadRecoveries());
+    expect(await screen.findByRole('region')).toBeTruthy();
+    expect(useRecovery.getState().entries).toHaveLength(2);
   });
 
   it('discards all as one undoable step', async () => {

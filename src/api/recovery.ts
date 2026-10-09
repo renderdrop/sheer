@@ -21,6 +21,8 @@ export interface RecoveryEntry {
   savedAt: string;
   pageCount: number;
   original: OriginState;
+  /** Not shown by an earlier start (the persisted ledger); the banner needs at least one. Absent means fresh. */
+  fresh?: boolean;
 }
 
 export { AUTOSAVE_STATUSES, type AutosaveStatus };
@@ -35,7 +37,7 @@ const count = (value: unknown, max = 0xffff_ffff): value is number =>
 /** One entry from an answer; `null` if it is not one. Extra keys are dropped. */
 export function parseRecoveryEntry(value: unknown): RecoveryEntry | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { id, displayName, savedAt, pageCount, original } = value as Record<string, unknown>;
+  const { id, displayName, savedAt, pageCount, original, fresh } = value as Record<string, unknown>;
   if (
     !count(id) ||
     typeof displayName !== 'string' ||
@@ -48,7 +50,14 @@ export function parseRecoveryEntry(value: unknown): RecoveryEntry | null {
   ) {
     return null;
   }
-  return { id, displayName, savedAt, pageCount, original: original as OriginState };
+  return {
+    id,
+    displayName,
+    savedAt,
+    pageCount,
+    original: original as OriginState,
+    ...(typeof fresh === 'boolean' ? { fresh } : {}),
+  };
 }
 
 /** The documents a crashed session left behind, newest first. Empty when there are none. */

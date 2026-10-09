@@ -54,6 +54,8 @@ export interface Settings {
   pageSidebarCollapsed?: boolean;
   /** First-use tips are shown at all (ADR-138). Absent until the backend knows the field; absent means on. */
   tipsEnabled?: boolean;
+  /** The tool card shows labels next to its icons (F21.6). Absent until the backend knows the field; absent means off. */
+  showToolLabels?: boolean;
   /** The tag definitions, shared by all documents (ADR-119; at most `TAGS_MAX`). Absent until the backend knows the field. */
   tags?: readonly TagDef[];
 }
@@ -143,6 +145,7 @@ export function parseSettings(value: unknown): Settings | null {
     skippedVersion,
     pageSidebarCollapsed,
     tipsEnabled,
+    showToolLabels,
     tags,
   } = value as {
     language?: unknown;
@@ -156,6 +159,7 @@ export function parseSettings(value: unknown): Settings | null {
     skippedVersion?: unknown;
     pageSidebarCollapsed?: unknown;
     tipsEnabled?: unknown;
+    showToolLabels?: unknown;
     tags?: unknown;
   };
   const parsedTags = parseTagDefs(tags);
@@ -193,6 +197,7 @@ export function parseSettings(value: unknown): Settings | null {
     ...(parsedSkipped === undefined ? {} : { skippedVersion: parsedSkipped }),
     ...(typeof pageSidebarCollapsed === 'boolean' ? { pageSidebarCollapsed } : {}),
     ...(typeof tipsEnabled === 'boolean' ? { tipsEnabled } : {}),
+    ...(typeof showToolLabels === 'boolean' ? { showToolLabels } : {}),
     ...(parsedTags === null ? {} : { tags: parsedTags }),
   };
 }

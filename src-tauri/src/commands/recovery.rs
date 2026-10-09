@@ -42,6 +42,8 @@ pub struct RecoveryEntry {
     pub saved_at: String,
     pub page_count: u32,
     pub original: OriginalState,
+    /// Not shown by an earlier start: the banner appears only when at least one entry is fresh.
+    pub fresh: bool,
 }
 
 impl AppState {
@@ -209,10 +211,13 @@ impl AppState {
         let Some(autosave) = self.autosave.get() else {
             return Ok(Vec::new());
         };
-        Ok(autosave
-            .list()
+        let views = autosave.list();
+        // Showing marks them: the next start lists the records again (Decide later keeps them) but without a banner of its own.
+        autosave.mark_shown();
+        Ok(views
             .into_iter()
             .map(|view| RecoveryEntry {
+                fresh: view.fresh,
                 id: view.id,
                 display_name: view.display_name,
                 saved_at: super::annotations::iso8601_utc(view.saved_at),
@@ -422,10 +427,11 @@ mod tests {
             saved_at: "2026-10-04T10:00:00Z".into(),
             page_count: 2,
             original: OriginalState::Changed,
+            fresh: true,
         };
         assert_eq!(
             serde_json::to_value(entry).unwrap(),
-            json!({ "id": 3, "displayName": "a.pdf", "savedAt": "2026-10-04T10:00:00Z", "pageCount": 2, "original": "changed" })
+            json!({ "id": 3, "displayName": "a.pdf", "savedAt": "2026-10-04T10:00:00Z", "pageCount": 2, "original": "changed", "fresh": true })
         );
     }
 }

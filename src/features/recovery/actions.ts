@@ -16,10 +16,20 @@ const tr = () => translators[useLocaleStore.getState().locale];
 /** How long a discard can be undone (DESIGN 3.50, ADR-054 section 5): the toast's lifetime with an action. */
 export const UNDO_MS = 8000;
 
-/** Reads the records a crashed session left. Never throws and never blocks: a failure means no banner. */
+/** Ids the banner showed during this session: a later load keeps them even though the backend no longer calls them fresh. */
+const shownThisSession = new Set<RecoveryId>();
+
+/**
+ * Reads the records a crashed session left. Never throws and never blocks: a failure means no banner. The banner appears only when
+ * at least one record is new (not shown by an earlier start, F21.2); records that were shown before stay on disk, unlisted.
+ */
 export async function loadRecoveries(): Promise<void> {
   try {
-    useRecovery.getState().setEntries(await listRecoveries());
+    const entries = await listRecoveries();
+    const news = entries.some((entry) => entry.fresh !== false);
+    if (news) for (const entry of entries) shownThisSession.add(entry.id);
+    const visible = entries.filter((entry) => shownThisSession.has(entry.id));
+    useRecovery.getState().setEntries(visible);
   } catch {
     useRecovery.getState().setEntries([]);
   }
@@ -56,19 +66,28 @@ export async function restoreAll(): Promise<void> {
 const pending = new Map<number, readonly RecoveryEntry[]>();
 let watching = false;
 
-function finish(rows: readonly RecoveryEntry[]): void {
-  for (const row of rows) discardRecovery(row.id).catch(() => undefined);
+function finish(rows: readonly RecoveryEntry[]): Promise<unknown> {
+  return Promise.all(rows.map((row) => discardRecovery(row.id).catch(() => undefined)));
+}
+
+/** The window is closing: discards still inside their undo window become final now (F21.2). Resolves when the backend answered. */
+export async function flushPendingDiscards(): Promise<void> {
+  const all = [...pending.values()];
+  pending.clear();
+  await Promise.all(all.map(finish));
 }
 
 /** A discard becomes final when its toast is gone: ended, replaced by another, or dismissed. */
 function watchToasts(): void {
   if (watching) return;
   watching = true;
+  // A window that goes away without the quit walk (no document open) still sends the deletes.
+  if (typeof window !== 'undefined') window.addEventListener('pagehide', () => void flushPendingDiscards());
   useUi.subscribe((state) => {
     for (const [toastId, rows] of pending) {
       if (state.toast?.id !== toastId) {
         pending.delete(toastId);
-        finish(rows);
+        void finish(rows);
       }
     }
   });
@@ -109,4 +128,5 @@ export const discardEverything = (): void => discardRows(useRecovery.getState().
 /** Test helper: forget pending discards. */
 export function resetPending(): void {
   pending.clear();
+  shownThisSession.clear();
 }

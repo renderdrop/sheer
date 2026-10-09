@@ -92,8 +92,10 @@ fn manifest(saved_at: u64, name: &str) -> String {
 fn sessions(app_data: &Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(app_data.join("autosave"))
         .map(|entries| {
+            // Session directories only: the shown-records ledger (shown.json) sits beside them (F21.2).
             entries
                 .flatten()
+                .filter(|e| e.path().is_dir())
                 .map(|e| e.file_name().to_string_lossy().into_owned())
                 .collect()
         })

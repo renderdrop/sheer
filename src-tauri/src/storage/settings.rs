@@ -392,6 +392,8 @@ pub struct Settings {
     pub page_sidebar_collapsed: bool,
     /// First-use tips are shown at all (ADR-138); default true.
     pub tips_enabled: bool,
+    /// The tool card shows labels next to its icons (F21.6); default false.
+    pub show_tool_labels: bool,
     /// The tag definitions (ADR-119), shared by all documents. Validated by [`validate_tags`] (patch) and `stored_tags` (file).
     pub tags: Vec<TagDef>,
 }
@@ -410,6 +412,7 @@ impl Default for Settings {
             tips_seen: TipsSeen::default(),
             page_sidebar_collapsed: false,
             tips_enabled: true,
+            show_tool_labels: false,
             tags: Vec::new(),
         }
     }
@@ -467,6 +470,10 @@ impl Settings {
                 .get("tipsEnabled")
                 .and_then(Value::as_bool)
                 .unwrap_or(true),
+            show_tool_labels: map
+                .get("showToolLabels")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             tags: map.get("tags").map(stored_tags).unwrap_or_default(),
         }
     }
@@ -487,6 +494,7 @@ impl Settings {
                 .page_sidebar_collapsed
                 .unwrap_or(self.page_sidebar_collapsed),
             tips_enabled: patch.tips_enabled.unwrap_or(self.tips_enabled),
+            show_tool_labels: patch.show_tool_labels.unwrap_or(self.show_tool_labels),
             tags: patch.tags.unwrap_or(self.tags),
         }
     }
@@ -519,6 +527,8 @@ pub struct SettingsPatch {
     pub page_sidebar_collapsed: Option<bool>,
     #[serde(default, deserialize_with = "present")]
     pub tips_enabled: Option<bool>,
+    #[serde(default, deserialize_with = "present")]
+    pub show_tool_labels: Option<bool>,
     /// Replaces the tag list (ADR-119).
     #[serde(default, deserialize_with = "tags_present")]
     pub tags: Option<Vec<TagDef>>,
@@ -714,7 +724,7 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "language": "system", "leftPanelWidth": 220, "inspectorWidth": 300, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
+            json!({ "language": "system", "leftPanelWidth": 220, "inspectorWidth": 300, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "showToolLabels": false, "tags": [] })
         );
         let settings = Settings {
             language: Language::De,
@@ -728,11 +738,12 @@ mod tests {
             tips_seen: TipsSeen::new(&["textBox".to_owned()]).unwrap(),
             page_sidebar_collapsed: true,
             tips_enabled: false,
+            show_tool_labels: true,
             tags: Vec::new(),
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "language": "de", "leftPanelWidth": 320, "inspectorWidth": 360, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"], "pageSidebarCollapsed": true, "tipsEnabled": false, "tags": [] })
+            json!({ "language": "de", "leftPanelWidth": 320, "inspectorWidth": 360, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"], "pageSidebarCollapsed": true, "tipsEnabled": false, "showToolLabels": true, "tags": [] })
         );
     }
 
@@ -905,6 +916,7 @@ mod tests {
                 tips_seen: None,
                 page_sidebar_collapsed: None,
                 tips_enabled: None,
+                show_tool_labels: None,
                 tags: None,
             }
         );
@@ -920,6 +932,19 @@ mod tests {
         assert!(patch(json!({ "tipsEnabled": 0 })).is_err());
         let off = Settings::default().apply(patch(json!({ "tipsEnabled": false })).unwrap());
         assert!(!off.tips_enabled);
+    }
+
+    #[test]
+    fn tool_labels_are_off_by_default_and_the_flag_must_be_a_boolean() {
+        assert!(!Settings::default().show_tool_labels);
+        assert!(!Settings::from_stored(br#"{"language":"de"}"#).show_tool_labels);
+        assert!(!Settings::from_stored(br#"{"showToolLabels":"yes"}"#).show_tool_labels);
+        assert!(Settings::from_stored(br#"{"showToolLabels":true}"#).show_tool_labels);
+        assert!(patch(json!({ "showToolLabels": null })).is_err());
+        assert!(patch(json!({ "showToolLabels": 1 })).is_err());
+        let on = Settings::default().apply(patch(json!({ "showToolLabels": true })).unwrap());
+        assert!(on.show_tool_labels);
+        assert!(on.apply(SettingsPatch::default()).show_tool_labels);
     }
 
     #[test]
@@ -1453,6 +1478,7 @@ mod tests {
                 tips_seen: TipsSeen::default(),
                 page_sidebar_collapsed: false,
                 tips_enabled: true,
+                show_tool_labels: false,
                 tags: Vec::new(),
             }
         );
@@ -1463,7 +1489,7 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "de", "leftPanelWidth": 280, "inspectorWidth": 300, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
+            json!({ "language": "de", "leftPanelWidth": 280, "inspectorWidth": 300, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "showToolLabels": false, "tags": [] })
         );
     }
 
@@ -1653,7 +1679,7 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "system", "leftPanelWidth": 220, "inspectorWidth": 300, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
+            json!({ "language": "system", "leftPanelWidth": 220, "inspectorWidth": 300, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "showToolLabels": false, "tags": [] })
         );
     }
 

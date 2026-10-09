@@ -1,5 +1,6 @@
 import { closeWindow } from '../../api/window';
 import { useDocuments } from '../../stores/documents';
+import { flushPendingDiscards } from '../recovery/actions';
 import { forceCloseTab } from '../tabs/nav';
 import { needsSavePrompt, saveNow } from './commands';
 import { useSave, type PromptAnswer } from './state';
@@ -24,6 +25,8 @@ function ask(docId: number, i: number, n: number): Promise<PromptAnswer> {
 /** Closes the documents (so the backend has none open) and then the window, which the backend lets through now. */
 async function closeEverything(): Promise<void> {
   for (const id of [...useDocuments.getState().order]) forceCloseTab(id);
+  // A recovery discard still inside its undo window is final now (F21.2).
+  await flushPendingDiscards();
   try {
     await closeWindow();
   } catch {
