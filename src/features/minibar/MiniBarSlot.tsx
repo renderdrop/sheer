@@ -145,6 +145,11 @@ function MiniBarHost({ docId, objects }: { docId: number; objects: readonly Mini
   const wrapRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const shown = useRef(false);
+  // The bar's own width, read while it floats at max-content: docked, the dock row squeezes it, and a squeezed width would let it
+  // float again at once and grow past the edge (it would flip between the two every frame).
+  const natural = useRef({ key: '', width: 0 });
+  // Other kinds of object bring other controls, so another width.
+  const kindKey = objects.map((object) => barKindOf(object) ?? '').join(',');
   const [placement, setPlacement] = useState<Placement | null>(null);
   const target = useMiniBarDock((s) => s.target);
   const setDocked = useMiniBarDock((s) => s.setDocked);
@@ -190,11 +195,14 @@ function MiniBarHost({ docId, objects }: { docId: number; objects: readonly Mini
       return;
     }
     const size = bar.getBoundingClientRect();
-    const next = placeBar(box, { width: Math.max(size.width, bar.scrollWidth), height: size.height }, bounds);
+    const measured = Math.max(size.width, bar.scrollWidth);
+    if (natural.current.key !== kindKey) natural.current = { key: kindKey, width: 0 };
+    if (bar.closest('[data-minibar-dock]') === null) natural.current.width = measured;
+    const next = placeBar(box, { width: Math.max(measured, natural.current.width), height: size.height }, bounds);
     const local: Placement =
       next.mode === 'dock' ? next : { mode: next.mode, left: next.left - wrapBox.left, top: next.top - wrapBox.top };
     setPlacement((old) => (same(old, local) ? old : local));
-  }, [objects, hintId]);
+  }, [objects, hintId, kindKey]);
 
   // Placed before paint, then kept with the page: scroll and window resize, size changes of the canvas or the selection and
   // new or removed nodes in the canvas re-measure (coalesced to one read per frame, unanimated); a drag ends with the release.

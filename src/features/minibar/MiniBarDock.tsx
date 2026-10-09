@@ -11,7 +11,7 @@ export function MiniBarDock() {
     <div
       ref={setTarget}
       data-minibar-dock=""
-      className={docked ? 'flex h-control-lg min-w-0 shrink-0 items-center px-4' : 'hidden'}
+      className={docked ? 'flex min-h-control-lg min-w-0 shrink-0 items-center px-4' : 'hidden'}
     />
   );
 }

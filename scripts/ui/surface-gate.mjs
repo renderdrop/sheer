@@ -188,7 +188,8 @@ const PAGE = `(() => {
       const wraps = [...el.querySelectorAll(${JSON.stringify(LABEL_SELECTOR)})].filter((c) => visible(c)).flatMap((c) => {
         const out = [];
         for (const e of [c, ...c.querySelectorAll('*')]) {
-          if (e instanceof SVGElement || !hasText(e, c)) continue;
+          // The header/footer slot value may take two lines: three columns in the 300 px column (HeaderFooterPanel.test: never truncated).
+          if (e instanceof SVGElement || !hasText(e, c) || e.closest('[data-hf-slot]')) continue;
           const range = document.createRange();
           range.selectNodeContents(e);
           const box = range.getBoundingClientRect();
@@ -358,6 +359,16 @@ async function sweepTextEdit() {
       rect: { x: r.left + b.x * k, y: r.top + b.y * k, w: b.w * k, h: b.h * k },
     };
   };
+  // The page sweeps (Rotate) leave the pages turned; the click position below assumes the page as the file has it.
+  await ev(
+    `(async()=>{const id=${stores('stores/documents.ts')}.useDocuments.getState().activeId; const turn=(await ${store('features/organize/commands.ts')}).rotatePages; const org=${stores('features/organize/store.ts')}.useOrganize;
+      for (const s of ${stores('stores/pages.ts')}.readSlots(id).filter((s) => s.rotation !== 0)) {
+        org.getState().setSelection(id, { selected: [s.id], anchor: null, focus: s.id });
+        await turn(id, s.rotation === 90 ? -1 : s.rotation === 270 ? 1 : 2);
+      }
+      ${stores('stores/view.ts')}.useView.getState().setRotation(id, 0);
+    })()`,
+  ).catch(() => undefined);
   await ev(`(async()=>{${stores('stores/ui.ts')}.useUi.getState().setMode('edit')})()`);
   await sleep(400);
   const openLine = async () => {

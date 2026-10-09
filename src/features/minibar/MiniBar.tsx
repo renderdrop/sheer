@@ -281,7 +281,7 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
         const item = event.target instanceof Element ? event.target.closest<HTMLElement>(ITEMS) : null;
         if (item !== null) stop.current = item;
       }}
-      className="pointer-events-auto flex h-control-lg max-w-[calc(100vw-var(--space-4))] items-center gap-1 rounded-md border border-border-subtle bg-surface p-1 shadow-floating"
+      className="pointer-events-auto flex min-h-control-lg max-w-[calc(100vw-var(--space-4))] flex-wrap items-center gap-1 rounded-md border border-border-subtle bg-surface p-1 shadow-floating"
     >
       {nodes.flatMap((node, index) =>
         index === 0 || joined.has(index) ? [node] : [<Divider key={`d${index}`} />, node],
