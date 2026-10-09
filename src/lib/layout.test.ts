@@ -27,7 +27,7 @@ const base: LayoutInput = {
 const layout = (overrides: Partial<LayoutInput> = {}) => computeShellLayout({ ...base, ...overrides });
 
 describe('the editor columns of DESIGN v2 3.2', () => {
-  it('page sidebar | splitter 8 | canvas, as tracks of tokens, with no tool column', () => {
+  it('page sidebar | splitter 6 | canvas, as tracks of tokens, with no tool column', () => {
     const wide = layout();
     expect(wide.mode).toBe('document');
     expect(wide.tracks).toEqual([
@@ -45,10 +45,10 @@ describe('the editor columns of DESIGN v2 3.2', () => {
     expect(open.inspector).toBe(true);
     expect(open.tracks[3]).toEqual({ slot: 'inspector', size: 'var(--inspector-width)' });
     expect(open.canvasWidth).toBe(layout().canvasWidth - 300);
-    // 960 - 220 - 8 - 300 = 432 fits at the minimum window
+    // 960 - 220 - 6 - 300 = 434 fits at the minimum window
     const small = layout({ inspectorOpen: true, windowWidth: 960 });
     expect(small.leftCollapsed).toBe(false);
-    expect(small.canvasWidth).toBe(432);
+    expect(small.canvasWidth).toBe(434);
   });
 
   it('the left panel gives way when the open inspector would squeeze the canvas below 360', () => {
@@ -58,11 +58,11 @@ describe('the editor columns of DESIGN v2 3.2', () => {
   });
 
   it('the canvas width is what is left of the window after the other tracks, at every width', () => {
-    // 1280 - 220 - 8
-    expect(layout().canvasWidth).toBe(1052);
-    expect(layout({ windowWidth: 1000 }).canvasWidth).toBe(772);
-    // A collapsed page sidebar: 1280 - 8
-    expect(layout({ panelCollapsed: true }).canvasWidth).toBe(1272);
+    // 1280 - 220 - 6
+    expect(layout().canvasWidth).toBe(1054);
+    expect(layout({ windowWidth: 1000 }).canvasWidth).toBe(774);
+    // A collapsed page sidebar: 1280 - 6
+    expect(layout({ panelCollapsed: true }).canvasWidth).toBe(1274);
   });
 
   it('Home has one slot, the window, whatever the state says', () => {
@@ -78,7 +78,7 @@ describe('the editor columns of DESIGN v2 3.2', () => {
 });
 
 describe('the editor rows of DESIGN 3.18 E1', () => {
-  it('Windows: menu 28 | tabs 42 | gutter 12 | mode card 106 | gutter 12 | body | status 30', () => {
+  it('Windows: menu 28 | tabs 42 | gutter 12 | mode card 98 | gutter 12 | body | status 30', () => {
     const windows = layout({ menuRow: true });
     expect(windows.menuRow).toBe(true);
     expect(windows.rowTracks.map((track) => track.row)).toEqual([
@@ -105,9 +105,9 @@ describe('the editor rows of DESIGN 3.18 E1', () => {
     expect(mac.row).toEqual({ tabs: 1, 'gutter-top': 2, mode: 3, 'gutter-mode': 4, body: 5, status: 6 });
   });
 
-  it('the body at 960 x 640 is 410 on Windows and 438 on macOS (mode card 106)', () => {
-    expect(bodyHeight(shellStructure({ ...base, menuRow: true }), LAYOUT.minWindowHeight)).toBe(410);
-    expect(bodyHeight(shellStructure(base), LAYOUT.minWindowHeight)).toBe(438);
+  it('the body at 960 x 640 is 418 on Windows and 446 on macOS (mode card 98)', () => {
+    expect(bodyHeight(shellStructure({ ...base, menuRow: true }), LAYOUT.minWindowHeight)).toBe(418);
+    expect(bodyHeight(shellStructure(base), LAYOUT.minWindowHeight)).toBe(446);
     expect(bodyHeight(shellStructure({ ...base, hasDocument: false }), 640)).toBe(640);
   });
 });
@@ -154,11 +154,11 @@ describe('the page sidebar', () => {
 });
 
 describe('the window minimum', () => {
-  it('the spec numbers: 960 x 640, page sidebar collapse below 860, rows 28, 42, 12, 106, 30', () => {
+  it('the spec numbers: 960 x 640, page sidebar collapse below 860, rows 28, 42, 12, 98 (106 with labels), 30', () => {
     expect(LAYOUT.minWindowWidth).toBe(960);
     expect(LAYOUT.minWindowHeight).toBe(640);
     expect([LAYOUT.menubar, LAYOUT.tabstrip, LAYOUT.gutter, LAYOUT.modeCard, LAYOUT.statusbar]).toEqual([
-      28, 42, 12, 106, 30,
+      28, 42, 12, 98, 30,
     ]);
     expect(LAYOUT.leftCollapseBelow).toBe(860);
     expect(LAYOUT.leftCollapseBelow).toBeLessThan(LAYOUT.minWindowWidth);

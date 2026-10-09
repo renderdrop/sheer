@@ -204,6 +204,32 @@ function SmartLinksRow() {
   );
 }
 
+/** "Show labels" (F21.6): the tool card shows the names under its icons; off by default, the tooltip carries them. */
+function ToolLabelsRow() {
+  const t = useT();
+  const on = useSettings((state) => state.showToolLabels === true);
+  const update = useSettings((state) => state.update);
+  const labelId = useId();
+  const descId = useId();
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-3">
+        <span id={labelId} className="t-label text-text">
+          {t('settings.toolLabels')}
+        </span>
+        <Toggle
+          checked={on}
+          onCheckedChange={(checked) => void update({ showToolLabels: checked })}
+          aria-labelledby={`${labelId} ${descId}`}
+        />
+      </div>
+      <p id={descId} className="t-caption m-0 text-text-muted">
+        {t('settings.toolLabels.hint')}
+      </p>
+    </div>
+  );
+}
+
 /** The About group, after a divider: name and version, and the button that opens the About dialog (it closes this popover). */
 function AboutRow() {
   const t = useT();
@@ -257,6 +283,7 @@ function SettingsForm() {
       </Setting>
       <AuthorRow />
       <SmartLinksRow />
+      <ToolLabelsRow />
       {updaterReady && (
         <Setting label={t('settings.updates')} hint={t('settings.updates.hint')}>
           {(labelId) => <UpdateRow labelId={labelId} />}

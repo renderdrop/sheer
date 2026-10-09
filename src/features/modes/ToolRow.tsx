@@ -15,6 +15,7 @@ import { cx } from '../../components/cx';
 import { useGlidePill } from '../../components/glide';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { useT } from '../../i18n';
+import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { COMPACT_BELOW, FIT_START, fitOnResize, hiddenIds, MODE_LABEL, tighter, type Fit, type SlotDef } from './model';
 import { TOOL_ROW_ID } from './ModeRow';
@@ -66,6 +67,7 @@ function Separator({ compact }: { compact: boolean }) {
 export const ToolRow = memo(function ToolRow() {
   const t = useT();
   const mode = useUi((state) => state.mode);
+  const showLabels = useSettings((state) => state.showToolLabels === true);
   const slots = useModeSlots(mode);
   const row = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -76,7 +78,7 @@ export const ToolRow = memo(function ToolRow() {
   const signature = slots.map((slot) => `${slot.id}:${slot.label}:${slot.on ? 1 : 0}`).join('|');
   // A font that loads late changes the widths of the labels: the fit starts over then, too.
   const [fonts, setFonts] = useState(0);
-  const key = `${mode}|${fonts}|${signature}`;
+  const key = `${mode}|${fonts}|${signature}|${showLabels ? 1 : 0}`;
   // `need`: the row's measured width at step 1, the basis of the 8 px hysteresis (DESIGN Q6).
   const [fit, setFit] = useState<{ value: Fit; key: string; need: number | null; width: number }>({
     value: FIT_START,
@@ -141,7 +143,7 @@ export const ToolRow = memo(function ToolRow() {
         )
       : new Set<string>();
   const visible = slots.filter((slot) => !left.has(slot.id));
-  const icons = narrow || current.step >= 2;
+  const icons = narrow || !showLabels || current.step >= 2;
   const gone = slots.filter((slot) => left.has(slot.id));
 
   const keys = visible.flatMap((slot) =>
@@ -181,6 +183,7 @@ export const ToolRow = memo(function ToolRow() {
       aria-label={t(MODE_LABEL[mode])}
       data-slot="tool-row"
       data-fit={current.step}
+      data-labels={showLabels ? 'on' : 'off'}
       onKeyDown={onKeyDown}
       onFocus={onFocus}
       className={cx(

@@ -6,6 +6,7 @@ import type { SigningIdentityInfo } from '../../api/signing';
 import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
+import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { useIdentities } from '../signatures/sign/identities';
@@ -58,6 +59,7 @@ const Rows = () => (
 const item = (label: string | RegExp) => within(screen.getByRole('toolbar')).getByRole('button', { name: label });
 
 beforeEach(() => {
+  useSettings.setState({ showToolLabels: true });
   mockItems = [];
   openManager.mockClear();
   useUi.setState({ ...uiInitial }, true);

@@ -7,6 +7,7 @@ import { useSettingsPopover } from '../settings/state';
 import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
+import { CATALOGUE } from '../hub/catalogue';
 import { Home } from './Home';
 import { filterByName, formatAge, visibleRecents, withoutOpen } from './recents';
 import { gridTarget } from './roving';
@@ -21,7 +22,7 @@ const api = vi.hoisted(() => ({
   revealRecent: vi.fn(),
   getRecentThumbnail: vi.fn(),
 }));
-const hub = vi.hoisted(() => ({ runHubCard: vi.fn() }));
+const hub = vi.hoisted(() => ({ launchTool: vi.fn() }));
 const dispatch = vi.hoisted(() => ({ runAction: vi.fn() }));
 vi.mock('../../api/recents', () => api);
 vi.mock('../hub/run', () => hub);
@@ -50,7 +51,7 @@ beforeEach(() => {
   api.revealRecent.mockReset().mockResolvedValue(undefined);
   api.openRecent.mockReset().mockResolvedValue({ type: 'openFailed' });
   api.getRecentThumbnail.mockReset().mockRejectedValue({ code: 'not_found' });
-  hub.runHubCard.mockReset();
+  hub.launchTool.mockReset();
   dispatch.runAction.mockReset();
   useUi.setState({ toast: null, banner: null, view: 'home' });
   useDocuments.setState({ byId: {}, order: [], activeId: null });
@@ -146,8 +147,19 @@ describe('Home', () => {
     expect(screen.queryByRole('button', { name: /^Alpha\.pdf/ })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Tools' }));
     await user.click(screen.getByRole('button', { name: /Merge/ }));
-    expect(hub.runHubCard).toHaveBeenCalledWith('merge');
+    expect(hub.launchTool).toHaveBeenCalledWith('merge');
     expect(screen.getByRole('button', { name: /Export as images/ })).toBeTruthy();
+    expect(document.querySelectorAll('[data-tool-tile]')).toHaveLength(CATALOGUE.length);
+  });
+
+  it('the Recent view lists every stored file, not only the first row', async () => {
+    api.listRecents.mockResolvedValue(
+      Array.from({ length: 24 }, (_, index) => entry(index + 1, `File${index + 1}.pdf`)),
+    );
+    const { user } = setup(<Home platform="windows" />);
+    await screen.findByRole('button', { name: /^File1\.pdf/ });
+    await user.click(screen.getByRole('button', { name: 'Recent' }));
+    expect(document.querySelectorAll('[data-recent-card]')).toHaveLength(24);
   });
 
   it('Settings opens the settings popover; arrows move between the nav rows', async () => {

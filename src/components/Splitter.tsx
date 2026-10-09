@@ -45,7 +45,7 @@ const CLICK_SLOP = 4;
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
 /**
- * Window splitter (DESIGN 3.8, WAI-ARIA window splitter pattern): the 8 px gutter beside a panel. `role=separator`, one
+ * Window splitter (DESIGN 3.8, WAI-ARIA window splitter pattern): the 6 px transparent hit area beside a panel. `role=separator`, one
  * tab stop. Left and Right resize by `step` (Shift: `largeStep`), Home and End jump to the ends of the range, Enter
  * collapses or restores, double click resets to `defaultValue`. A drag snaps to `step` and collapses the pane when
  * released narrower than `collapseBelow`. `aria-valuenow` is 0 while collapsed. The component only reports values;
@@ -182,16 +182,18 @@ export function Splitter({
         onValueChange(defaultValue);
       }}
       className={cx(
-        'group relative flex w-splitter shrink-0 cursor-col-resize touch-none items-center justify-center self-stretch',
+        'group relative flex w-splitter outline-none shrink-0 cursor-col-resize touch-none items-center justify-center self-stretch',
         className,
       )}
     >
-      {/* The 4 x 32 px grip: always there (border colour), control border on hover, accent while dragging or focused. */}
+      {/* No grip: transparent at rest; a centred 1 px line on hover or drag, a 2 px accent line when focused (F21.4). */}
       <span
         aria-hidden="true"
         className={cx(
-          'h-8 w-grip rounded-pill transition-[background-color]',
-          dragging ? 'bg-control-border' : 'bg-border group-hover:bg-control-border group-focus-visible:bg-accent',
+          'h-full transition-[background-color] [transition-duration:var(--motion-fast)]',
+          dragging
+            ? 'w-hairline bg-control-border'
+            : 'w-hairline bg-transparent group-hover:bg-control-border group-focus-visible:w-splitter-focus group-focus-visible:bg-accent',
         )}
       />
     </div>

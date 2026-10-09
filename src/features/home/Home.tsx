@@ -15,6 +15,7 @@ import { useUi } from '../../stores/ui';
 import { closeTab } from '../tabs/nav';
 import { useViewer } from '../viewer/useViewer';
 import { DropOverlay, useHomeDrop } from './DropOverlay';
+import { HomeGlow } from './HomeGlow';
 import { Hero, useSearchShortcut } from './Hero';
 import { homeFit, nextFit, overflows, type FitLevel } from './homeLayout';
 import { HomeNav, type HomeSection } from './HomeNav';
@@ -23,6 +24,7 @@ import { RecentCard } from './RecentCard';
 import { filterByName, useHomeRecents, visibleRecents, withoutOpen, type HomeRecents } from './recents';
 import { useRovingGroup } from './roving';
 import { ToolRows } from './ToolRows';
+import { ToolsView } from './ToolsView';
 import './home.css';
 
 interface CardsProps {
@@ -255,7 +257,7 @@ export function Home({ platform }: HomeProps) {
   const plain = homeFit(height, openTabs.length > 0, bannerHeight);
   const { tier } = plain;
   // Measured fit (F20.1): a short body drops the title and the tall cards, then the thumbnails and the tall tiles, then four tiles.
-  const fit = useMeasuredFit(
+  const measuredFit = useMeasuredFit(
     mainRef,
     [
       section,
@@ -271,8 +273,10 @@ export function Home({ platform }: HomeProps) {
       bannerHeight,
     ].join('|'),
   );
+  // Only Start squeezes to fit; Recent, Starred and Tools are lists that scroll on their own, with full cards and thumbnails (F21.3).
+  const fit: FitLevel = section === 'home' ? measuredFit : 0;
   const hideTitle = plain.hideTitle || fit >= 1;
-  const card = fit >= 1 ? 'short' : plain.card;
+  const card = section !== 'home' ? 'full' : fit >= 1 ? 'short' : plain.card;
   const squeeze = plain.squeeze || fit >= 1;
   useEffect(() => watchAmbient(), []);
 
@@ -347,7 +351,7 @@ export function Home({ platform }: HomeProps) {
               : t('home.nav.recent')}
         </h1>
         {section === 'tools' ? (
-          <ToolRows all />
+          <ToolsView />
         ) : list.length > 0 ? (
           <CardGrid entries={list} recents={recents} platform={platform} label={t('home.recentList')} />
         ) : (
@@ -372,7 +376,7 @@ export function Home({ platform }: HomeProps) {
         data-open-row={openRow || undefined}
         className="home-main relative min-w-0 flex-auto overflow-hidden bg-app"
       >
-        {!showEmpty && <div aria-hidden="true" data-glow="home" data-home-glow="" className="home-glow" />}
+        {!showEmpty && <HomeGlow />}
         <div data-home-scroller="" className="home-scroller">
           <div
             className={cx(

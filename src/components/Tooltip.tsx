@@ -12,6 +12,8 @@ import { useFloatingPosition } from './useFloatingPosition';
 
 /** MOTION spell 16: `--tooltip-delay` before the first tooltip, `--tooltip-leave` after the pointer left (WCAG 1.4.13 hoverable). */
 const delayMs = () => tokenMs('--tooltip-delay', 400);
+/** Inside the mode card (tools and mode tabs) the tooltip comes sooner (F21.6). */
+const cardDelayMs = () => tokenMs('--tooltip-delay-card', 150);
 const leaveMs = () => tokenMs('--tooltip-leave', 100);
 /** A tooltip of the same group closed this recently: the next one opens at once, so sweeping along a toolbar does not stutter. */
 const WARM_WINDOW = 300;
@@ -56,7 +58,7 @@ export interface TooltipProps {
 }
 
 /**
- * Solid tooltip (DESIGN 3.4, MOTION spell 16). Opens after 400 ms of hover or keyboard focus; within a group (the same
+ * Solid tooltip (DESIGN 3.4, MOTION spell 16). Opens after 400 ms (150 ms inside the mode card) of hover or keyboard focus; within a group (the same
  * toolbar, tab list or region) a neighbour's tooltip is there at once and the previous one goes without a fade. Stays
  * while the pointer is on the anchor or the tooltip, leaves 100 ms after the pointer has left, hides on blur, click,
  * pointer down, window blur and Esc. Esc closes only a shown tooltip and is not seen by anything below it.
@@ -113,7 +115,11 @@ export function Tooltip({ label, shortcut, note, side = 'bottom', disabled = fal
       ((group.openId !== null && group.openGroup === mine) ||
         (group.closedGroup === mine && Date.now() - group.closedAt < WARM_WINDOW));
     if (warm) showNow(true);
-    else showTimer.current = window.setTimeout(() => showNow(false), delayMs());
+    else
+      showTimer.current = window.setTimeout(
+        () => showNow(false),
+        wrapper.current?.closest('[data-slot="mode-card"]') ? cardDelayMs() : delayMs(),
+      );
   }, [id, showNow]);
 
   const scheduleHide = useCallback(() => {

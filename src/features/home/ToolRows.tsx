@@ -3,7 +3,6 @@ import {
   Ellipsis,
   Eraser,
   FileArchive,
-  FileImage,
   Image,
   PenTool,
   Scissors,
@@ -13,14 +12,14 @@ import {
 
 import { Icon } from '../../components';
 import { useT, type PlainKey } from '../../i18n';
-import type { HubCardId } from '../hub/cards';
-import { runHubCard } from '../hub/run';
+import type { CatalogueId } from '../hub/catalogue';
+import { launchTool } from '../hub/run';
 import { useHub } from '../hub/intent';
 import { useViewer } from '../viewer/useViewer';
 import { ROVING_ATTR, useRovingGroup } from './roving';
 
 interface Tile {
-  id: HubCardId | 'more';
+  id: CatalogueId | 'more';
   icon: LucideIcon;
   titleKey: PlainKey;
   hintKey: PlainKey;
@@ -31,8 +30,8 @@ const HOME_TILES: readonly Tile[] = [
   { id: 'merge', icon: Combine, titleKey: 'hub.merge', hintKey: 'home.tile.merge' },
   { id: 'split', icon: Scissors, titleKey: 'hub.split', hintKey: 'home.tile.split' },
   { id: 'compress', icon: FileArchive, titleKey: 'hub.compress', hintKey: 'home.tile.compress' },
-  { id: 'fill', icon: SquarePen, titleKey: 'hub.fill', hintKey: 'home.tile.fill' },
-  { id: 'sign', icon: PenTool, titleKey: 'hub.sign', hintKey: 'home.tile.sign' },
+  { id: 'form', icon: SquarePen, titleKey: 'hub.fill', hintKey: 'home.tile.fill' },
+  { id: 'signature', icon: PenTool, titleKey: 'hub.sign', hintKey: 'home.tile.sign' },
   { id: 'redact', icon: Eraser, titleKey: 'hub.redact', hintKey: 'home.tile.redact' },
   { id: 'images', icon: Image, titleKey: 'hub.images', hintKey: 'home.tile.images' },
   { id: 'more', icon: Ellipsis, titleKey: 'home.tool.more', hintKey: 'home.tile.more' },
@@ -41,15 +40,7 @@ const HOME_TILES: readonly Tile[] = [
 /** The tightest fit (F20.1, level 3): the first three tiles and "More tools", so two rows of two fit 960 x 640 with the Open row. */
 const FEW_TILES: readonly Tile[] = [...HOME_TILES.slice(0, 3), ...HOME_TILES.slice(-1)];
 
-/** The Werkzeuge view lists every tool: the tiles above without "More tools", plus the export. */
-const ALL_TILES: readonly Tile[] = [
-  ...HOME_TILES.slice(0, -1),
-  { id: 'export', icon: FileImage, titleKey: 'home.tool.export', hintKey: 'home.tool.exportHint' },
-];
-
 export interface ToolRowsProps {
-  /** The Werkzeuge view: every tool, no "More tools" tile. */
-  all?: boolean;
   /** Home's tightest fit: three tiles and "More tools". */
   few?: boolean;
   /** "More tools" leads to the Werkzeuge view. */
@@ -62,11 +53,11 @@ export interface ToolRowsProps {
  * subtitle 14/20 Text-secondary. A tile runs the hub card: the file dialog, then the editor in the matching mode. While one runs (or a
  * document is being opened) the others are `aria-disabled`; arrows move through the grid.
  */
-export function ToolRows({ all = false, few = false, onMore }: ToolRowsProps) {
+export function ToolRows({ few = false, onMore }: ToolRowsProps) {
   const t = useT();
   const busy = useHub((state) => state.busy);
   const opening = useViewer((state) => state.opening);
-  const tiles = all ? ALL_TILES : few ? FEW_TILES : HOME_TILES;
+  const tiles = few ? FEW_TILES : HOME_TILES;
   const roving = useRovingGroup(tiles.map((tile) => tile.id));
   const locked = busy !== null || opening;
   return (
@@ -85,10 +76,11 @@ export function ToolRows({ all = false, few = false, onMore }: ToolRowsProps) {
               tabIndex={roving.tabIndexOf(tile.id)}
               aria-disabled={(tile.id !== 'more' && locked) || undefined}
               aria-busy={busy === tile.id || undefined}
+              data-tool-tile={tile.id === 'more' ? undefined : tile.id}
               aria-describedby={`home-tile-${tile.id}-sub`}
               onClick={() => {
                 if (tile.id === 'more') onMore?.();
-                else if (!locked) void runHubCard(tile.id);
+                else if (!locked) void launchTool(tile.id);
               }}
               className="home-tile group/tool flex size-full cursor-pointer items-center rounded-md border border-border-subtle bg-surface text-start transition-colors [transition-duration:var(--motion-fast)] not-aria-disabled:hover:bg-subtle not-aria-disabled:active:scale-(--scale-press) aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled)"
             >

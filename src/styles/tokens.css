@@ -438,7 +438,9 @@
   --panel-default: 220px;
   --panel-max: 480px;
   --panel-collapse-below: 144px;
-  --splitter-width: 8px;
+  --splitter-width: 6px; /* F21.4: the hit area; the line inside is 1 px (2 px focused) */
+  --splitter-focus-line: 2px;
+  --spacing-splitter-focus: var(--splitter-focus-line);
   --outline-indent: 16px; /* outline tree: indent per level, capped at --outline-indent-max */
   --outline-indent-max: 64px;
   --search-row-height: 48px; /* search panel: a hit row; the page header row is --control-sm */
@@ -466,9 +468,9 @@
   --tab-gap: calc(var(--space-1) / 2); /* 2 between tabs */
   --tabs-n: 1; /* tabs that share the strip: min(open documents, 5); the strip sets it */
   --chrome-gutter: 12px;
-  --mode-card-height: 106px; /* 32 header + 72 tool area + 2 card border */
+  --mode-card-height: 98px; /* icons only (F21.6): 32 header + 64 tool area + 2 card border; with labels 106, see below */
   --mode-tab-height: 32px;
-  --tool-area-height: 72px;
+  --tool-area-height: calc(var(--mode-card-height) - var(--mode-tab-height) - 2px);
   --tool-item-height: 56px;
   --tool-item-radius: 8px;
   --kbd-compact: 16px;
@@ -488,9 +490,20 @@
   --home-tool-tile-height-compact: 72px;
   --card-starred: rgba(255, 248, 77, 0.22);
   --star-fill: var(--accent);
+  /* F21.1: geometry in px from the surface size (--glow-w/--glow-h, set by HomeGlow's ResizeObserver), no percentages of a moving box. */
   --glow-home:
-    radial-gradient(ellipse 38% 45% at 72% 4%, rgba(255, 248, 77, 0.95), transparent 70%),
-    radial-gradient(ellipse 36% 50% at 92% 24%, rgba(255, 65, 3, 0.28), transparent 72%);
+    radial-gradient(
+      ellipse calc(var(--glow-w, 1000px) * 0.38) calc(var(--glow-h, 700px) * 0.45) at calc(var(--glow-w, 1000px) * 0.72)
+        calc(var(--glow-h, 700px) * 0.04),
+      rgba(255, 248, 77, 0.95),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse calc(var(--glow-w, 1000px) * 0.36) calc(var(--glow-h, 700px) * 0.5) at calc(var(--glow-w, 1000px) * 0.92)
+        calc(var(--glow-h, 700px) * 0.24),
+      rgba(255, 65, 3, 0.28),
+      transparent 72%
+    );
   --type-hero-size: 96px;
   --type-hero-line: 76px;
   --type-hero-weight: 500;
@@ -549,6 +562,7 @@
   --motion-check: 240ms; /* spell 6 */
   --motion-scroll-max: 300ms; /* spell 8 */
   --tooltip-delay: 400ms; /* spell 16 */
+  --tooltip-delay-card: 150ms; /* spell 16 inside the mode card (F21.6) */
   --stagger: 20ms; /* spell 3 */
   --shimmer: 1200ms; /* spell 15 */
   --breathe: 2000ms; /* spell 10 */
@@ -919,6 +933,11 @@
 
 @utility z-modal-popover {
   z-index: var(--z-modal-popover);
+}
+
+/* "Show labels" on (F21.6): the icon-over-label card, 72 tool area. */
+:root[data-tool-labels="on"] {
+  --mode-card-height: 106px;
 }
 
 @utility z-tooltip {

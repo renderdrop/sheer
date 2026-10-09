@@ -92,7 +92,15 @@ describe('the settings panel (DESIGN 3.6)', () => {
   it('has the groups in order and nothing else', () => {
     setup(<Fixture />);
     act(() => openSettings());
-    expect(labels()).toEqual(['Language', 'Author name', 'Smart links', 'Updates', 'Tour & tips', 'About']);
+    expect(labels()).toEqual([
+      'Language',
+      'Author name',
+      'Smart links',
+      'Show labels',
+      'Updates',
+      'Tour & tips',
+      'About',
+    ]);
     expect(within(popover()).queryByText('Signatures')).toBeNull();
     expect(within(popover()).queryByRole('button', { name: /default PDF app/ })).toBeNull();
   });
@@ -116,7 +124,7 @@ describe('the settings panel (DESIGN 3.6)', () => {
     useUpdate.setState({ configured: null });
     setup(<Fixture />);
     act(() => openSettings());
-    expect(labels()).toEqual(['Language', 'Author name', 'Smart links', 'Tour & tips', 'About']);
+    expect(labels()).toEqual(['Language', 'Author name', 'Smart links', 'Show labels', 'Tour & tips', 'About']);
     await waitFor(() => expect(labels()).toContain('Updates'));
     expect(within(popover()).getByRole('switch', { name: 'Updates' }).getAttribute('aria-checked')).toBe('false');
   });
@@ -125,7 +133,7 @@ describe('the settings panel (DESIGN 3.6)', () => {
     useUpdate.setState({ check: 'unconfigured', configured: false });
     setup(<Fixture />);
     act(() => openSettings());
-    expect(labels()).toEqual(['Language', 'Author name', 'Smart links', 'Tour & tips', 'About']);
+    expect(labels()).toEqual(['Language', 'Author name', 'Smart links', 'Show labels', 'Tour & tips', 'About']);
     expect(within(popover()).queryByRole('switch', { name: 'Updates' })).toBeNull();
     useUpdate.setState({ check: 'idle' });
   });
@@ -246,6 +254,7 @@ describe('the settings popover', () => {
     };
     expect(await tab()).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
     expect(await tab()).toBe(within(popover()).getByRole('switch', { name: /Smart links/ }));
+    expect(await tab()).toBe(within(popover()).getByRole('switch', { name: /Show labels/ }));
     expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Updates' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
     expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Show tips' }));

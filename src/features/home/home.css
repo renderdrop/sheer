@@ -112,6 +112,14 @@
   z-index: 0;
   pointer-events: none;
   background: var(--glow-home);
+  /* Own compositing layer, static (no drift), anchored to the surface: no vw/vh, no fixed, no negative inset. */
+  isolation: isolate;
+  will-change: transform;
+  transform: translateZ(0);
+}
+.home-main {
+  overflow: hidden;
+  contain: paint;
 }
 
 /* Greeting row with the round plus at its end; the title and the search follow. */
@@ -271,6 +279,24 @@
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
 }
+/* The Tools view (F21.3): every tool as a tile, grouped by mode; wider tiles than Home's, subtitles on up to two lines, titles whole. */
+.home-catalogue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--home-tile-min-width) + var(--space-12)), 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+.home-catalogue-grid > li {
+  min-width: 0;
+  height: var(--home-tool-tile-height-compact);
+}
+.home-catalogue-grid .home-tile-sub {
+  -webkit-line-clamp: 2;
+}
+.home-catalogue-grid .home-tile {
+  padding-inline: var(--space-4);
+  gap: var(--space-3);
+}
+
 /* After the base rule: the subtitle is hidden in two columns (F20.2); same specificity, so order decides. */
 @container home-tools (max-width: 783.98px) {
   .home-tile-sub {

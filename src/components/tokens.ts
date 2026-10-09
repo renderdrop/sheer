@@ -34,12 +34,14 @@ export function overlayOffset(): number {
  * smallest window, and `tauri.conf.json` has the minimum (tested).
  */
 export const LAYOUT = {
-  splitter: 8,
+  splitter: 6,
   canvasMin: 360,
   menubar: 28,
   tabstrip: 42,
   gutter: 12,
-  modeCard: 106,
+  /** Icons only (default, F21.6); with labels it is `modeCardLabels`. */
+  modeCard: 98,
+  modeCardLabels: 106,
   statusbar: 30,
   inspector: 300,
   minibar: 40,

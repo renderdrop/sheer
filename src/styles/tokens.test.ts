@@ -373,7 +373,7 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     '--panel-default': '220px',
     '--panel-max': '480px',
     '--panel-collapse-below': '144px',
-    '--splitter-width': '8px',
+    '--splitter-width': '6px',
     '--outline-indent': '16px',
     '--outline-indent-max': '64px',
     '--doc-tab-min': '120px',
@@ -386,7 +386,7 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     '--tabstrip-height': '42px',
     '--doc-tab-height': '36px',
     '--chrome-gutter': '12px',
-    '--mode-card-height': '106px',
+    '--mode-card-height': '98px',
     '--statusbar-height': '30px',
     '--status-control-height': '24px',
     '--inspector-width': '300px',
@@ -439,7 +439,6 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     // The arrow keys move by a spacing step (8) and Shift by five of them (40).
     expect(`${PANEL.step}px`).toBe(root.get('--space-2'));
     expect(`${PANEL.largeStep}px`).toBe(root.get('--space-10'));
-    expect(`${PANEL.step}px`).toBe(root.get('--splitter-width'));
     expect(`${LAYOUT.splitter}px`).toBe(root.get('--splitter-width'));
     expect(`${LAYOUT.canvasMin}px`).toBe(root.get('--canvas-min'));
     expect(`${LAYOUT.menubar}px`).toBe(root.get('--menubar-height'));
@@ -538,6 +537,7 @@ describe('motion (DESIGN 1.2, MOTION 1)', () => {
       '--motion-check': '240ms',
       '--motion-scroll-max': '300ms',
       '--tooltip-delay': '400ms',
+      '--tooltip-delay-card': '150ms',
       '--stagger': '20ms',
       '--shimmer': '1200ms',
       '--breathe': '2000ms',
@@ -745,6 +745,8 @@ describe('Tailwind theme', () => {
       '--form-text',
       '--canvas-extra-scroll',
       '--cite-fill',
+      '--glow-w',
+      '--glow-h',
       // Set per size class on `.home` (home.css) from the home tokens.
       ...['pad-top', 'pad-x', 'pad-bottom', 'greeting-row', 'plus-top', 'title-gap', 'title-size', 'title-line'].map(
         (n) => `--${n}`,

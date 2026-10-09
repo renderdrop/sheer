@@ -7,6 +7,7 @@ import en from '../../i18n/locales/en.json';
 import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
+import { useSettings } from '../../stores/settings';
 import { useRecentColours } from '../../stores/recentColours';
 import { useTools } from '../../stores/tools';
 import { useUi } from '../../stores/ui';
@@ -46,6 +47,8 @@ function openDocument(id = 1, kind?: 'welcome') {
 beforeEach(() => {
   // Wide enough for the labelled tool area (DESIGN 3.18 E4: icon-only below 1100).
   window.innerWidth = 1440;
+  // These tests cover the labelled layout; icons only is the default and has its own file (toolLabels.test.tsx).
+  useSettings.setState({ showToolLabels: true });
   useToolInspector.setState({ open: null });
   useUi.setState({ ...uiInitial }, true);
   useTools.setState({ ...toolsInitial }, true);
@@ -59,6 +62,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  useSettings.setState({ showToolLabels: false });
   resetDocuments();
   useUi.setState({ ...uiInitial }, true);
 });

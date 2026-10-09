@@ -35,10 +35,7 @@ export function InspectorSlot({ open, style, children }: InspectorSlotProps) {
       data-open={open ? '' : undefined}
       inert={!open}
       style={style}
-      className={cx(
-        'bg-chrome relative flex min-h-0 min-w-0 flex-row overflow-hidden',
-        open && 'border-s border-border-subtle',
-      )}
+      className={cx('bg-chrome relative flex min-h-0 min-w-0 flex-row overflow-hidden')}
     >
       {open && (
         <>

@@ -1,49 +1,39 @@
 import { create } from 'zustand';
 
+import { listSignatures } from '../../api/library';
 import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
-import { useUi } from '../../stores/ui';
+import { useTools } from '../../stores/tools';
+import { useUi, modeOfTool, type ToolId } from '../../stores/ui';
+import { armStamp } from '../annotations/stamps/store';
 import { focusFirstEmpty } from '../forms/focus';
 import { useForms } from '../forms/store';
-import { focusToolItem } from '../modes/switch';
+import { useToolInspector, type ToolInspectorId } from '../inspector/toolInspector';
 import { openCompress, openSplit } from '../jobs/state';
+import { switchMode } from '../modes/switch';
 import { enterRedactMode } from '../redact/actions';
-import type { HubCardId } from './cards';
-
-/**
- * What a hub card does once its document is open (DESIGN 3.54, "Then" column). Cards whose mode needs a document set an intent
- * after the file is open; `consumeIntent` runs it once and forgets it. Merge and Images to PDF need no document and have none.
- */
-export type HubIntent = 'split' | 'compress' | 'sign' | 'redact' | 'fill' | 'export';
-
-interface Pending {
-  intent: HubIntent;
-  docId: number;
-}
+import { armItem, createAndArm } from '../signatures/place/menu';
+import { catalogueEntry, type CatalogueId } from './catalogue';
 
 interface HubState {
-  /** The card whose file dialog or open is running (`aria-busy`; the other cards are `aria-disabled`). */
-  busy: HubCardId | null;
-  pending: Pending | null;
-  setBusy: (busy: HubCardId | null) => void;
-  setPending: (pending: Pending | null) => void;
+  /** The tool whose file dialog or open is running (`aria-busy`; the other tiles are `aria-disabled`). */
+  busy: CatalogueId | null;
+  setBusy: (busy: CatalogueId | null) => void;
 }
 
 export const useHub = create<HubState>()((set) => ({
   busy: null,
-  pending: null,
   setBusy: (busy) => set({ busy }),
-  setPending: (pending) => set({ pending }),
 }));
 
-/** Lands in Ausfüllen & Signieren with the focus on the Signatur item. */
-async function landOnSignature(): Promise<void> {
-  useUi.getState().setMode('fill');
-  await focusToolItem('signature');
+/** Makes a tool the active one without ever toggling it off. */
+function choose(tool: ToolId): void {
+  const ui = useUi.getState();
+  if (ui.activeTool !== tool) ui.selectTool(tool);
 }
 
 async function fillForm(docId: number): Promise<void> {
-  useUi.getState().setMode('fill');
+  switchMode('fill');
   const forms = useForms.getState();
   await forms.load(docId);
   const form = useForms.getState().byDoc[docId];
@@ -56,38 +46,86 @@ async function fillForm(docId: number): Promise<void> {
   useUi.getState().showToast({ message: translators[useLocaleStore.getState().locale]('hub.noFields') });
 }
 
-/** Runs the intent on the document, which must be the active one by now. */
-export async function applyIntent(intent: HubIntent, docId: number): Promise<void> {
-  switch (intent) {
-    // Each intent lands in its mode (DESIGN v2 3.2): Split and Compress in Seiten, Redact in Bearbeiten.
+/** Signature: the first saved signature is armed for the first click; with none, the creation sheet opens and arms what it makes. */
+async function armSignature(): Promise<void> {
+  switchMode('fill');
+  try {
+    const library = await listSignatures();
+    const first = library.status === 'locked' ? undefined : library.items.find((item) => item.role === 'signature');
+    if (first !== undefined) {
+      armItem({ type: 'signature', role: 'signature', ref: { type: 'library', id: first.id }, aspect: first.aspect });
+      return;
+    }
+  } catch {
+    // The creation sheet reports what is wrong with the library.
+  }
+  await createAndArm('signature');
+}
+
+function withInspector(id: ToolInspectorId): void {
+  useToolInspector.getState().openToolInspector(id);
+}
+
+/**
+ * What a tool does once its document is open and active (F21.3, ADR-145): it lands in the tool's mode, activates the tool and opens the
+ * inspector or dialog the tool has, so the first drag or click works at once. Merge and Images to PDF are not here: they need no
+ * single document (`launchTool`).
+ */
+export async function applyLaunch(id: CatalogueId, docId: number): Promise<void> {
+  const mode = catalogueEntry(id)?.mode ?? null;
+  switch (id) {
     case 'split':
-      useUi.getState().setMode('pages');
+      switchMode('pages');
       openSplit('every');
       return;
     case 'compress':
-      useUi.getState().setMode('pages');
+      switchMode('pages');
       openCompress();
       return;
-    case 'redact':
-      useUi.getState().setMode('edit');
-      enterRedactMode();
-      return;
     case 'export':
+      switchMode('pages');
       useUi.getState().setExportImagesOpen(true);
       return;
-    case 'sign':
-      await landOnSignature();
+    case 'redact':
+      switchMode('edit');
+      enterRedactMode();
       return;
-    case 'fill':
+    case 'protect':
+      switchMode('edit');
+      useUi.getState().setProtectOpen(true);
+      return;
+    case 'form':
       await fillForm(docId);
       return;
+    case 'signature':
+      await armSignature();
+      return;
+    case 'stamp':
+      switchMode('edit');
+      armStamp();
+      withInspector('stamp');
+      return;
+    case 'crop':
+      switchMode('edit');
+      choose('crop');
+      withInspector('crop');
+      return;
+    case 'headerFooter':
+    case 'ocr':
+      switchMode('edit');
+      withInspector(id);
+      return;
+    case 'highlight':
+      switchMode('comment');
+      useTools.getState().setMarkup('highlight');
+      choose('highlight');
+      return;
+    case 'merge':
+    case 'images':
+      return;
+    default:
+      switchMode(mode ?? modeOfTool(id) ?? 'read');
+      // The page grid is Seiten's idle tool.
+      if (id !== 'pages') choose(id);
   }
-}
-
-/** Runs the pending intent, if any, and forgets it. */
-export async function consumeIntent(): Promise<void> {
-  const { pending, setPending } = useHub.getState();
-  if (pending === null) return;
-  setPending(null);
-  await applyIntent(pending.intent, pending.docId);
 }

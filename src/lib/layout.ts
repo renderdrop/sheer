@@ -4,7 +4,7 @@
  * track lists for `grid-template-columns` and `grid-template-rows`.
  *
  * Rows of the editor (DESIGN 3.18 E1): `menu 28 (Windows only) | tab strip 42 | gutter 12 | mode card 106 | gutter 12 | body | status bar 30`.
- * macOS has the native menu bar, so its list has no menu track. Columns of the body: `left panel 220 (200-480) | splitter 8 |
+ * macOS has the native menu bar, so its list has no menu track. Columns of the body: `left panel 220 (200-480) | splitter 6 |
  * canvas minmax(360, 1fr) | inspector 300 (0 when closed)`. The properties of a selection are the mini bar, an overlay of the canvas.
  * - Collapsed page sidebar: its track goes (size 0, still in the list, so the list has the same tracks in the same places
  *   whether the panel is there or not: the browser can animate the change and no slot moves to another column). The
@@ -211,9 +211,13 @@ export function computeShellLayout(input: LayoutInput): ShellLayout {
 }
 
 /** The height of the body (the canvas column) in a window of `windowHeight`: what is left under the header rows. */
-export function bodyHeight(structure: ShellStructure, windowHeight: number): number {
+export function bodyHeight(structure: ShellStructure, windowHeight: number, labels = false): number {
   if (structure.mode === 'empty') return windowHeight;
   const header =
-    LAYOUT.tabstrip + 2 * LAYOUT.gutter + LAYOUT.modeCard + LAYOUT.statusbar + (structure.menuRow ? LAYOUT.menubar : 0);
+    LAYOUT.tabstrip +
+    2 * LAYOUT.gutter +
+    (labels ? LAYOUT.modeCardLabels : LAYOUT.modeCard) +
+    LAYOUT.statusbar +
+    (structure.menuRow ? LAYOUT.menubar : 0);
   return windowHeight - header;
 }

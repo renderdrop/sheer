@@ -1,6 +1,7 @@
-import { memo } from 'react';
+import { memo, useLayoutEffect } from 'react';
 
 import { useT } from '../../i18n';
+import { useSettings } from '../../stores/settings';
 import { ModeRow } from './ModeRow';
 import { ToolRow } from './ToolRow';
 
@@ -12,6 +13,15 @@ import { ToolRow } from './ToolRow';
  */
 export const ModeCard = memo(function ModeCard() {
   const t = useT();
+  const labels = useSettings((state) => state.showToolLabels === true);
+  // The one token `--mode-card-height` has two values; the root attribute picks one, so the grid follows at once.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.dataset.toolLabels = labels ? 'on' : 'off';
+    return () => {
+      delete root.dataset.toolLabels;
+    };
+  }, [labels]);
   return (
     <div
       role="region"
