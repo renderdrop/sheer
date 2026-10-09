@@ -33,6 +33,8 @@ describe('v2.1 acceptance helpers', () => {
     expect(v.toolReady('draw', { doc: false, modeSelected: true, pressed: true }).ok).toBe(false);
     expect(v.toolReady('crop', { doc: true, modeSelected: true }).ok).toBe(false);
     expect(v.toolReady('redact', { doc: true, modeSelected: true, inspector: true }).ok).toBe(true);
+    expect(v.toolReady('pages', { doc: true, modeSelected: true }).ok).toBe(true);
+    expect(v.toolReady('pages', { doc: true, modeSelected: false }).ok).toBe(false);
     expect(v.toolReady('images', { dialog: true }).ok).toBe(true);
     expect(v.toolReady('merge', { dialog: true }).ok).toBe(true);
   });

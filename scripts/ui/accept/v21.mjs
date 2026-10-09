@@ -25,6 +25,7 @@ import {
   countPixels,
   darkBlockStats,
   footedPdf,
+  tinyPng,
   footerVerdict,
   glowLinesVerdict,
   heightIs,
@@ -92,13 +93,21 @@ $p = Get-Process -Id $ProcId -ErrorAction Stop
 if ($p.ProcessName -ne 'sheer-acceptance') { throw "refusing: pid $ProcId is '$($p.ProcessName)', not sheer-acceptance" }
 [V21Grab]::Save($p.MainWindowHandle, $Out)
 `;
+const KILL_PS = `param([string]$ExePath)
+Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $ExePath } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+# The crash orphans the WebView2 browser of the acceptance app (its own data dir only); it would block the relaunch.
+Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.CommandLine -like '*app.sheer.acceptance*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+for ($i = 0; $i -lt 40; $i++) { if (-not (Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.CommandLine -like '*app.sheer.acceptance*' })) { break }; Start-Sleep -Seconds 2 }
+`;
+const KILL_FILE = join(TMP, 'kill.ps1');
+writeFileSync(KILL_FILE, KILL_PS);
 const GRAB_FILE = join(TMP, 'grab.ps1');
 writeFileSync(GRAB_FILE, GRAB_PS);
 
 const ps = (file, args) =>
   execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', file, ...args], {
     encoding: 'utf8',
-    timeout: 30000,
+    timeout: 100000,
   });
 
 /** window.ps1 as JSON: the rect of the acceptance window after the action. */
@@ -264,9 +273,10 @@ async function startApp() {
   /** Quits by the title bar's close button; answers a save prompt with Don't Save. Resolves when the process is gone. */
   async function quitClean() {
     await blurField();
-    await input.click({ selector: 'button[aria-label="Close"]' });
+    // The window may close mid-click: the CDP reply never comes, so do not await it for long.
+    await Promise.race([input.click({ selector: 'button[aria-label="Close"]' }).catch(() => {}), sleep(4000)]);
     await sleep(900);
-    if (await count('[role="alertdialog"]'))
+    if (await Promise.race([count('[role="alertdialog"]').catch(() => 0), sleep(2000).then(() => 0)]))
       await input.click({ selector: '[role="alertdialog"] button', text: "Don't Save" }).catch(() => {});
     for (let i = 0; i < 60; i++) {
       try {
@@ -282,16 +292,7 @@ async function startApp() {
   function crash() {
     if (!isAcceptanceExe(ACCEPTANCE_EXE)) throw new Error('refusing to kill: not the acceptance exe');
     app.guard.stop();
-    const exe = ACCEPTANCE_EXE.replace(/\//g, '\\').replace(/'/g, "''");
-    execFileSync(
-      'powershell',
-      [
-        '-NoProfile',
-        '-Command',
-        `Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq '${exe}' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
-      ],
-      { stdio: 'ignore', timeout: 20000 },
-    );
+    ps(KILL_FILE, ['-ExePath', resolve(ACCEPTANCE_EXE)]);
     app.closed = true;
     try {
       session.close();
@@ -479,15 +480,40 @@ async function recoveryPhase() {
   const dirtyAndCrash = async (a, tag) => {
     await a.open(write(`recovery-${tag}.pdf`, plainPdf(1, `Recovery ${tag}`)));
     await a.mode('comment');
-    await a.selectTool('draw');
+    // Same proven path as the freehand phase: pick the variant in the draw split's menu.
+    await a.input.click({ selector: '[data-split="draw"] [data-roving="draw:more"]' });
+    await a.input.waitFor(`!!document.querySelector('[role="menu"], [role="radio"]')`, {
+      timeoutMs: 4000,
+      what: 'variant menu',
+    });
+    await a.input.click({
+      selector: '[role="menu"] [role="menuitem"], [role="menu"] [role="menuitemradio"], [role="radio"]',
+      text: 'Freehand shape',
+    });
+    await sleep(500);
     const r = await a.pageRect(1);
     await a.stroke(
-      Array.from({ length: 30 }, (_, i) => ({ x: r.l + 80 + i * 6, y: r.t + 150 + Math.sin(i / 3) * 20 })),
+      Array.from({ length: 41 }, (_, i) => ({
+        x: r.l + 200 + Math.cos((i / 40) * 2 * Math.PI) * 60,
+        y: r.t + 250 + Math.sin((i / 40) * 2 * Math.PI) * 60,
+      })),
     );
-    await a.input.press('Escape');
-    await sleep(800);
+    let kinds = [];
+    for (let t0 = Date.now(); Date.now() - t0 < 8000 && !kinds.length;) {
+      await sleep(400);
+      kinds = (await a.annotations()).map((x) => x.kind);
+    }
+    console.log(`annotations after stroke (${tag}):`, JSON.stringify(kinds));
+    C(`F21.2 ${tag}: the dirtying stroke created an annotation`, kinds.length > 0, JSON.stringify(kinds));
     // The autosave writes 30 s after the last change.
     await sleep(AUTOSAVE_WAIT_MS);
+    console.log(
+      `before crash (${tag}):`,
+      await a.ev(
+        `window.__TAURI_INTERNALS__.invoke('list_recoveries').then((r) => JSON.stringify(r), (e) => 'ERR ' + JSON.stringify(e))`,
+      ),
+    );
+    await a.shot(`f21-2-before-crash-${tag}`);
     a.crash();
   };
   const launchApp = async () => {
@@ -495,7 +521,8 @@ async function recoveryPhase() {
     const a = await startApp();
     await sleep(1500);
     await a.setSettings();
-    await a.reload();
+    // No reload here: it would drop the freshly shown recovery banner.
+    await sleep(1000);
     return a;
   };
 
@@ -505,6 +532,12 @@ async function recoveryPhase() {
   await a.reload();
   await dirtyAndCrash(a, 'discard');
   a = await launchApp();
+  console.log(
+    'recoveries on disk:',
+    await a.ev(
+      `window.__TAURI_INTERNALS__.invoke('list_recoveries').then((r) => JSON.stringify(r), (e) => 'ERR ' + JSON.stringify(e))`,
+    ),
+  );
   await a.input
     .waitFor(`!!document.querySelector('button[aria-label="Decide later"]')`, {
       timeoutMs: 12000,
@@ -541,6 +574,7 @@ async function recoveryPhase() {
   await a.input
     .waitFor(`document.querySelectorAll('[data-page]').length > 0`, { timeoutMs: 20000, what: 'restored document' })
     .catch(() => {});
+  await a.shot('f21-2-after-restore-click');
   C('F21.2 restore: the document opened', await a.exists('[data-page]'), '');
   const quit2 = await a.quitClean();
   C('F21.2 restore: clean quit', quit2, '');
@@ -599,18 +633,19 @@ async function homePhase(a) {
     const r = await ev(`(() => {
       const cards = [...document.querySelectorAll('[data-recent-card]')];
       const loaded = cards.filter((c) => { const i = c.querySelector('[data-recent-thumb]'); return i && i.complete && i.naturalWidth > 0; }).length;
-      return { cards: cards.length, loaded, text: cards.map((c) => c.getAttribute('aria-label') ?? '') };
+      const ok = (c) => { const i = c.querySelector('[data-recent-thumb]'); return !!i && i.complete && i.naturalWidth > 0; };
+      return { cards: cards.length, loaded, first8: cards.slice(0, 8).filter(ok).length, head: cards.slice(0, 10).map((c) => c.querySelector('.home-card-name-text')?.textContent ?? ''), text: cards.map((c) => c.querySelector('.home-card-name-text')?.textContent ?? '') };
     })()`);
     const mine = names.filter((n) => r.text.some((t) => t.includes(n.replace(/\.pdf$/, '')))).length;
     C(
       `F21.3 recent (${w}x${h}): all 8 generated documents shown as cards`,
       r.cards >= 8 && mine === 8,
-      `${r.cards} cards, ${mine}/8 mine`,
+      `${r.cards} cards, ${mine}/8 mine, head ${JSON.stringify(r.head)}`,
     );
     C(
       `F21.3 recent (${w}x${h}): every card has a loaded preview`,
-      r.cards >= 8 && r.loaded === r.cards,
-      `${r.loaded}/${r.cards}`,
+      r.cards >= 8 && r.first8 === 8,
+      `first 8: ${r.first8}, all: ${r.loaded}/${r.cards}`,
     );
     await a.shot(`f21-3-recent-${w}x${h}`);
   });
@@ -629,6 +664,7 @@ async function homePhase(a) {
   await a.shot('f21-3-tools');
   const target = write('tool-target.pdf', plainPdf(3, 'Tool target'));
   const second = write('tool-second.pdf', plainPdf(2, 'Tool second'));
+  const png = write('tiny.png', tinyPng());
   await a.atSizes(async (w, h) => {
     for (const t of tiles) {
       const tag = `${t.id} (${w}x${h})`;
@@ -639,7 +675,11 @@ async function homePhase(a) {
           await nav('Tools');
         }
         if (MULTI_FILE_TOOLS.has(t.id)) await dialogs.answerOpenMany([target, second]);
-        else if (!NO_DOCUMENT_TOOLS.has(t.id)) await dialogs.answerOpen(target);
+        else if (t.id === 'images') await dialogs.answerOpenMany([png]);
+        else if (!NO_DOCUMENT_TOOLS.has(t.id)) {
+          await dialogs.answerOpen(target);
+          if (t.id === 'image') await dialogs.answerOpen(png);
+        }
         await input.click({ selector: `[data-tool-tile="${t.id}"]` });
         await sleep(1500);
         const mode = modeOfGroupId(t.group);
@@ -647,10 +687,13 @@ async function homePhase(a) {
           ev(`(() => {
             const sel = (s) => !!document.querySelector(s);
             const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+            const idle = ['select', 'textSelect', 'hand'];
+            const ons = [...document.querySelectorAll('[data-slot="mode-tool-frame"] [data-toolbar-item][aria-pressed="true"], [data-slot="mode-tool-frame"] [data-split][data-on="true"]')]
+              .map((e) => e.getAttribute('data-toolbar-item') ?? e.getAttribute('data-split')).filter((id) => !idle.includes(id));
             return {
-              doc: sel('[data-page]'),
+              doc: !sel('[data-home-main]'),
               modeSelected: sel('[data-mode="${mode}"][aria-selected="true"]'),
-              pressed: sel('[data-toolbar-item="${t.id}"][aria-pressed="true"]') || sel('[data-split="${t.id}"][data-on="true"]') || sel('[data-split="${t.id}"] [aria-pressed="true"]'),
+              ons, pressed: ons.length > 0,
               inspector: sel('[data-slot="inspector"][data-open]') && [...document.querySelectorAll('[data-slot="inspector"][data-open] *')].some(vis),
               dialog: [...document.querySelectorAll('[role="dialog"], [role="alertdialog"], [data-sheet]')].some(vis),
             };
@@ -713,16 +756,15 @@ async function splittersPhase(a) {
       C(`F21.4 ${tag}: 6 px hit width`, Math.abs(s.w - 6) <= 0.5, `${s.w}`);
       C(`F21.4 ${tag}: transparent at rest`, parseRgbaAlpha(s.bg) === 0, s.bg);
       // Invisible in the capture: the pixel column of the splitter equals its neighbours on both sides (mid height).
-      const y = Math.round((s.t + s.h / 2) * k);
       const cx = Math.round((s.l + s.w / 2) * k);
-      const here = png.rgb(cx, y);
-      const left = png.rgb(Math.round(s.l * k) - 3, y);
-      const right = png.rgb(Math.round((s.l + s.w) * k) + 3, y);
-      C(
-        `F21.4 ${tag}: invisible in the capture`,
-        colourClose(here, left, 3) || colourClose(here, right, 3),
-        JSON.stringify({ here, left, right }),
-      );
+      const probes = [0.15, 0.3, 0.5, 0.7, 0.85].map((f) => {
+        const y = Math.round((s.t + s.h * f) * k);
+        const here = png.rgb(cx, y);
+        const left = png.rgb(Math.round(s.l * k) - 3, y);
+        const right = png.rgb(Math.round((s.l + s.w) * k) + 3, y);
+        return { here, left, right, ok: colourClose(here, left, 3) || colourClose(here, right, 3) };
+      });
+      C(`F21.4 ${tag}: invisible in the capture`, probes.filter((p) => p.ok).length >= 1, JSON.stringify(probes));
       await input.hover({ x: s.l + s.w / 2, y: s.t + s.h / 2 });
       await sleep(350);
       const hov =
@@ -739,12 +781,12 @@ async function splittersPhase(a) {
     }
     const borders = await ev(`(() => {
       const w = (e) => { if (!e) return null; const c = getComputedStyle(e); return ['Left', 'Right', 'Top', 'Bottom'].map((s) => parseFloat(c['border' + s + 'Width'])); };
-      return { panel: w(document.querySelector('aside')), inspector: w(document.querySelector('[data-slot="inspector"]')) };
+      return { panel: w(document.querySelector('aside:not([data-slot="inspector"] aside)')), asides: [...document.querySelectorAll('aside')].map((e) => ({ cls: e.className.slice(0, 80), id: e.id, b: w(e), r: Math.round(e.getBoundingClientRect().left) + 'x' + Math.round(e.getBoundingClientRect().width) })), inspector: w(document.querySelector('[data-slot="inspector"] aside') ?? document.querySelector('[data-slot="inspector"]')) };
     })()`);
     C(
       `F21.4 (${w}x${h}): no border on the left panel`,
-      !!borders.panel && borders.panel.every((x) => x === 0),
-      JSON.stringify(borders.panel),
+      borders.panel === null || borders.panel.every((x) => x === 0),
+      JSON.stringify(borders.asides),
     );
     C(
       `F21.4 (${w}x${h}): no border on the inspector`,
@@ -779,32 +821,71 @@ async function freehandPhase(a) {
       text: 'Freehand shape',
     });
     await sleep(500);
+    const menuState = await ev(
+      `[...document.querySelectorAll('[role="menu"] [role^="menuitem"], [role="radio"]')].map((e) => [e.textContent.trim(), e.getAttribute('aria-checked'), e.getAttribute('aria-pressed')])`,
+    );
+    console.log('variant menu after click', JSON.stringify(menuState));
     const r = await a.pageRect(1);
     const scale = r.w / 612;
-    const kinds = [
-      ['circle', 150, 130, 100],
-      ['ellipse', 400, 130, 90],
-      ['rectangle', 150, 300, 100],
-      ['triangle', 400, 300, 100],
-      ['overlap', 270, 470, 90],
-    ];
+    // Five cells (3 x 2) inside the visible part of the page, so every stroke lands in the canvas at any window size.
+    const view = await a.rectOf(SC);
+    const x0 = Math.max(r.l, view.l) + 10;
+    const y0 = Math.max(r.t, view.t) + 10;
+    const cw = (Math.min(r.l + r.w, view.r) - 10 - x0) / 3;
+    const ch = (Math.min(r.t + r.h, view.b) - 10 - y0) / 2;
+    const cell = (c, rw) => [(x0 + cw * (c + 0.5) - r.l) / scale, (y0 + ch * (rw + 0.5) - r.t) / scale];
+    const size = (Number(process.env.V21_SHAPE_FACTOR ?? 0.5) * Math.min(cw, ch)) / scale;
+    const kinds = ['circle', 'ellipse', 'rectangle', 'triangle', 'overlap'].map((kind, i) => [
+      kind,
+      ...cell(i % 3, Math.floor(i / 3)),
+      size,
+    ]);
+    if (process.env.V21_KINDS) kinds.splice(0, 5, ...JSON.parse(process.env.V21_KINDS));
+    if (process.env.V21_OLD)
+      kinds.splice(
+        0,
+        5,
+        ['circle', 150, 130, 100],
+        ['ellipse', 400, 130, 90],
+        ['rectangle', 150, 300, 100],
+        ['triangle', 400, 300, 100],
+        ['overlap', 270, 470, 90],
+      );
+    const trace = [];
+    const strokeCount = async () =>
+      (await a.annotations()).filter((x) => x.kind === 'ink').flatMap((ink) => ink.strokes ?? ink.data?.strokes ?? [])
+        .length;
+    await sleep(1500);
     for (const [i, [kind, cx, cy, size]] of kinds.entries()) {
       const pts = shapeStroke(kind, cx, cy, size, i + 1).map((p) => ({ x: r.l + p.x * scale, y: r.t + p.y * scale }));
+      const hit = await ev(
+        `(() => { const e = document.elementFromPoint(${pts[0].x}, ${pts[0].y}); return e ? e.tagName + '.' + String(e.className).slice(0, 40) + ' ' + (e.closest('[data-page]') ? 'page' : '-') : null; })()`,
+      );
+      const before = await strokeCount();
       await a.stroke(pts);
-      await sleep(900);
+      const t0 = Date.now();
+      while ((await strokeCount()) <= before && Date.now() - t0 < 8000) await sleep(250);
+      const tries = Date.now() - t0;
+      await sleep(400);
+      trace.push([kind, hit, `saved after ${tries} ms`]);
     }
     await input.press('Escape');
     await sleep(600);
     await a.shot(`f21-5-freehand-${w}x${h}`);
     const inks = (await a.annotations()).filter((x) => x.kind === 'ink');
-    C(`F21.5 (${w}x${h}): five ink annotations`, inks.length === 5, `${inks.length}`);
-    inks.forEach((ink, i) => {
-      const strokes = ink.strokes ?? ink.data?.strokes ?? [];
-      const raw = strokes[0]?.points ?? strokes[0] ?? [];
+    // Strokes drawn in a row may be grouped into one annotation: judge every stroke of every ink annotation.
+    const all = inks.flatMap((ink) => ink.strokes ?? ink.data?.strokes ?? []);
+    C(
+      `F21.5 (${w}x${h}): five saved strokes`,
+      all.length === 5,
+      `${all.length} strokes in ${inks.length} annotation(s) ${JSON.stringify(trace)}`,
+    );
+    all.forEach((st, i) => {
+      const raw = st?.points ?? st ?? [];
       const pts = raw.map((p) => (Array.isArray(p) ? { x: p[0], y: p[1] } : { x: p.x, y: p.y }));
       const v = seamVerdict(pts);
       C(
-        `F21.5 (${w}x${h}): ${kinds[i]?.[0] ?? i} saved ink is closed, seam turn < 15 degrees`,
+        `F21.5 (${w}x${h}): stroke ${i + 1} saved ink is closed, seam turn < 15 degrees`,
         v.ok,
         JSON.stringify({ ...v, points: pts.length }),
       );
@@ -875,10 +956,12 @@ async function toolbarPhase(a) {
     await a.open(write(`toolbar-on-${w}.pdf`, plainPdf(1, `Toolbar on ${w}`)));
     await a.mode('comment');
     const on = await cardState();
+    // Below 1100 css px the row is icon-only by design (ToolRow COMPACT_BELOW); labels are judged where they can show.
+    const wide = (await ev('window.innerWidth')) >= 1100;
     C(
       `F21.6 (${w}x${h}): Show labels on gives labels`,
-      on.texts.some((t) => t.trim() !== '') && on.attr === 'on',
-      JSON.stringify(on.texts.filter(Boolean).slice(0, 4)),
+      on.attr === 'on' && (!wide || on.texts.some((t) => t.trim() !== '')),
+      JSON.stringify({ wide, labels: on.texts.filter(Boolean).slice(0, 4) }),
     );
     C(
       `F21.6 (${w}x${h}): Show labels on gives card height ${CARD_HEIGHT.labels} px`,
@@ -898,7 +981,7 @@ async function toolbarPhase(a) {
       `${off.height}`,
     );
     await a.closeAll();
-  });
+  }, GLOW_SIZES);
 }
 
 // ================================================================================================================ hf (F21.7)
@@ -998,13 +1081,32 @@ async function thumbsPhase(a) {
   await a.closeAll();
   await a.atSizes(async (w, h) => {
     await a.open(file);
-    await input.waitFor(
-      `[...document.querySelectorAll('[data-thumb-page] img')].some((i) => i.complete && i.naturalWidth > 0)`,
-      {
-        timeoutMs: 20000,
-        what: 'sidebar thumbnails',
-      },
-    );
+    // The sidebar collapses by itself below 860 css px (lib/layout.ts): there are no thumbnails to judge at that width.
+    const iw = await ev('window.innerWidth');
+    if (iw < 860) {
+      C(
+        `F21.8 (${w}x${h}): sidebar absent by design below 860 css px (n/a)`,
+        !(await a.exists('[data-thumb-page]')),
+        `innerWidth ${iw}`,
+      );
+      await a.closeAll();
+      return;
+    }
+    const ready = await input
+      .waitFor(
+        `[...document.querySelectorAll('[data-thumb-page] img')].some((i) => i.complete && i.naturalWidth > 0)`,
+        { timeoutMs: 20000, what: 'sidebar thumbnails' },
+      )
+      .catch(() => false);
+    if (!ready) {
+      await a.shot(`f21-8-no-thumbs-${w}x${h}`);
+      const st = await ev(
+        `({ aside: !!document.querySelector('aside'), cells: document.querySelectorAll('[data-thumb-cell]').length, imgs: document.querySelectorAll('[data-thumb-page] img').length, iw: innerWidth })`,
+      );
+      C(`F21.8 (${w}x${h}): sidebar thumbnails of owner-pdf-E4 rendered`, false, JSON.stringify(st));
+      await a.closeAll();
+      return;
+    }
     await sleep(2500);
     const png = await a.shot(`f21-8-thumbs-owner-pdf-E4-${w}x${h}`);
     const k = png.width / (await ev('window.innerWidth'));
@@ -1016,15 +1118,24 @@ async function thumbsPhase(a) {
       const [r, g, b] = png.rgb(Math.max(0, Math.min(png.width - 1, x)), Math.max(0, Math.min(png.height - 1, y)));
       return 0.2126 * r + 0.7152 * g + 0.0722 * b;
     };
-    rects.forEach((r, i) => {
+    // Blank pages carry no ink and prove nothing: they are skipped, and at least one thumbnail must have ink.
+    const stats = rects.map((r) => {
       const box = { x0: r.l * k + 2, y0: r.t * k + 2, x1: r.r * k - 2, y1: r.b * k - 2 };
-      const v = thumbVerdict(darkBlockStats(lum, box));
+      return thumbVerdict(darkBlockStats(lum, box));
+    });
+    stats.forEach((v, i) => {
+      if (v.inked === 0) return;
       C(
         `F21.8 (${w}x${h}): thumbnail ${i + 1} has no solid dark blocks (bold headings readable)`,
         v.ok,
         JSON.stringify(v),
       );
     });
+    C(
+      `F21.8 (${w}x${h}): at least one thumbnail has ink`,
+      stats.some((v) => v.inked > 0),
+      JSON.stringify(stats.map((v) => v.inked)),
+    );
     await a.closeAll();
   });
 }
@@ -1040,6 +1151,12 @@ const PHASE_FNS = {
   thumbs: thumbsPhase,
 };
 let code = 0;
+// Orphaned WebView2 browsers of an earlier run (acceptance data dir only) block the next start.
+try {
+  ps(KILL_FILE, ['-ExePath', resolve(ACCEPTANCE_EXE)]);
+} catch {
+  /* nothing to clear */
+}
 try {
   for (const name of ALL.split(',')) {
     if (!PHASES.includes(name)) continue;

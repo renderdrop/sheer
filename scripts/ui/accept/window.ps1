@@ -15,17 +15,17 @@ public static class Wn {
 [void][Wn]::SetProcessDPIAware()
 $p = Get-Process -Id $ProcId -ErrorAction Stop
 if ($p.ProcessName -ne 'sheer-acceptance') { throw "refusing: pid $ProcId is '$($p.ProcessName)', not sheer-acceptance" }
-$h = $p.MainWindowHandle
-if ($h -eq [IntPtr]::Zero) { throw 'no main window' }
-$r = New-Object Wn+R; [void][Wn]::GetWindowRect($h, [ref]$r)
+$hwnd = $p.MainWindowHandle
+if ($hwnd -eq [IntPtr]::Zero) { throw 'no main window' }
+$r = New-Object Wn+R; [void][Wn]::GetWindowRect($hwnd, [ref]$r)
 $flags = 0x0004 -bor 0x0010 # SWP_NOZORDER | SWP_NOACTIVATE
 if ($Action -eq 'bounds') {
-  if (-not [Wn]::SetWindowPos($h, [IntPtr]::Zero, $X, $Y, $W, $H, $flags)) { throw 'SetWindowPos failed' }
+  if (-not [Wn]::SetWindowPos($hwnd, [IntPtr]::Zero, $X, $Y, $W, $H, $flags)) { throw 'SetWindowPos failed' }
 } elseif ($Action -eq 'move') {
   for ($i = 1; $i -le $Steps; $i++) {
-    [void][Wn]::SetWindowPos($h, [IntPtr]::Zero, $r.L + $Dx * $i, $r.T + $Dy * $i, 0, 0, $flags -bor 0x0001) # SWP_NOSIZE
+    [void][Wn]::SetWindowPos($hwnd, [IntPtr]::Zero, $r.L + $Dx * $i, $r.T + $Dy * $i, 0, 0, $flags -bor 0x0001) # SWP_NOSIZE
     Start-Sleep -Milliseconds 16
   }
 } elseif ($Action -ne 'rect') { throw "unknown action '$Action'" }
-[void][Wn]::GetWindowRect($h, [ref]$r)
+[void][Wn]::GetWindowRect($hwnd, [ref]$r)
 "{`"x`":$($r.L),`"y`":$($r.T),`"w`":$($r.Rt - $r.L),`"h`":$($r.B - $r.T)}"

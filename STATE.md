@@ -7,8 +7,11 @@ packages:
           B2 F21.7 header/footer field + F21.8 thumbnail supersampling (backend-implementer, Opus; pdfwrite/header_footer.rs, model/header_footer.rs, engine/worker.rs, engine/downscale.rs, storage/thumbs.rs, src/features/headerFooter/*)
           FA F21.3 home Recent grid + Tools catalogue (implementer, Sonnet; src/features/home/* except the glow line, src/features/hub/*)
           FC F21.5 freehand shape fit (implementer, Opus; src/features/annotations/create/*)
-  B1 done (root causes: pending discard lost on close; restored record left at clean exit; ignored records re-listed) → review running; FA done (24-tool catalogue, launchTool, Recent full cards + lazy thumbs)
-  wave 2 (running): FB F21.1 glow + F21.4 splitters (Sonnet); FD F21.6 tool card icons only (Sonnet); next: AC v21 acceptance script (window.ps1 written by orchestrator)
+  all packages committed (98f6348 B1, 0d71e5d B2, 08819f7 FC, 39cf943 FA+FB+FD, bf8832e AC); reviews B1/B2 PASS (minors → Politur v2.1)
+  security audit v2.0.0..HEAD PASS (3 lows → Politur); CI #160 GREEN
+  acceptance v21 (run-final.log): 173/174 — glow 15/15, recovery 14/15, home 53/53, splitters 22/22, freehand 12/12, toolbar 42/42, hf 6/6, thumbs 9/9; inspector border-s found + fixed (uncommitted, build rebuilt)
+  running: FX (discard final on backend + undo command; banner caption safe area + gate check); REG step 2 (v20final/v20rc3/v20rc2/v19/v17/v16 + annot-smoke on acceptance build)
+  then: commit, rebuild, v21 recovery re-run, surface gate --wide, real smoke, release v2.1.0
 last_completed: v2.0.0 — F20.1–F20.11, F19.28, author detection, designer round, final audit; report docs/reports/2026-10-09-v2.0.0-final.md
 loop_count_this_session: 0
 open_blockers: 3 (B-002, B-005, B-008, human-only)
@@ -19,6 +22,7 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
   ADR-142: model per package named in the brief (Opus: audits, engine-critical Rust, 2nd fix round; Haiku: mechanic). Briefs that start a dev/acceptance window must say: stop it only by process path (incident 2026-10-08: an agent killed sheer.exe by name).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - fd79c76..bf8832e ADR-145, F21.2 recovery, F21.7/.8 render+HF, F21.5 freehand, F21.1/.3/.4/.6 UI, v21 script → run #160 (37935814056) GREEN
   - 8b76a2d..69e0553 F20.6 fix + release v2.0.0 → run #159 (37923883893) GREEN; release run #24 (37923883282) success (stable)
   - 20b6885..f9ac9b5 security fix groups, acceptance + designer fixes → run #158 (37917277747) GREEN
   - d50b084..e436c3b ADR-144, F20 A–D2, E authors, v20final + F19.28 harness → run #157 (37901107867) GREEN

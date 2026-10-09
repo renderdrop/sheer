@@ -1,5 +1,6 @@
 // Pure helpers of the v2.1 acceptance (scripts/ui/accept/v21.mjs, F21 in docs/FEEDBACK.md, ADR-145). No I/O; unit-tested in
 // ../v21.test.ts. Generated documents only (rule 13); the owner corpus is addressed by ID only (rule 16).
+import { deflateSync } from 'node:zlib';
 import { buildPdf, textOps } from './v20rc3-pure.mjs';
 
 export { plainPdf, parseRgb, colourClose, rgbIs, turnAngles, insideRect } from './v20final-pure.mjs';
@@ -45,6 +46,7 @@ export const modeOfGroupId = (id) => /^tools-group-([a-z]+)$/.exec(String(id))?.
 /** Tiles that open a dialog instead of a document with an active tool (images to PDF opens no file at all). */
 export const NO_DOCUMENT_TOOLS = new Set(['images']);
 /** Tiles that take several files from the picker. */
+export const IDLE_READY_TOOLS = new Set(['pages', 'form']);
 export const MULTI_FILE_TOOLS = new Set(['merge']);
 
 /**
@@ -54,7 +56,8 @@ export const MULTI_FILE_TOOLS = new Set(['merge']);
  */
 export function toolReady(id, s) {
   const needsDoc = !NO_DOCUMENT_TOOLS.has(id) && !MULTI_FILE_TOOLS.has(id);
-  const active = !!(s.pressed || s.inspector || s.dialog);
+  // The page grid is Pages' idle tool, and a form without fields only shows a note (hub.noFields): the mode switch is their readiness.
+  const active = !!(s.pressed || s.inspector || s.dialog) || IDLE_READY_TOOLS.has(id);
   const modeOk = NO_DOCUMENT_TOOLS.has(id) || MULTI_FILE_TOOLS.has(id) || !!s.modeSelected;
   return { ok: (!needsDoc || !!s.doc) && modeOk && active, needsDoc, active, modeOk };
 }
@@ -231,3 +234,38 @@ export const iconOnly = (texts) => texts.length > 0 && texts.every((t) => String
 /** The Show labels card height (106) and the icons-only one (98), with 1 px slack. */
 export const CARD_HEIGHT = { labels: 106, icons: 98 };
 export const heightIs = (h, want) => Math.abs(h - want) <= 1;
+
+/** A tiny valid PNG (16 x 16, grey) for the picker answers of the image tools. */
+export function tinyPng() {
+  const table = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf) => {
+    let c = 0xffffffff;
+    for (const b of buf) c = table[(c ^ b) & 255] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc(body), body.length + 4);
+    return out;
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(16, 0);
+  ihdr.writeUInt32BE(16, 4);
+  ihdr[8] = 8; // bit depth 8, colour type 0 = grey
+  const rows = Buffer.concat(
+    Array.from({ length: 16 }, () => Buffer.concat([Buffer.from([0]), Buffer.alloc(16, 128)])),
+  );
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(rows)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
