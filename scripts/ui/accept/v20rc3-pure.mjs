@@ -141,10 +141,10 @@ export function imagePdf(jpeg, w, h) {
 }
 
 // ---- verdicts ------------------------------------------------------------------------------------------------------------
-/** Expected editor grid rows (DESIGN 3.18 E1) at a window height: menu 28 (Windows), tabs 42, gutter 12, card 106, gutter 12, body, status 30. */
-export function expectedRows(height, menu = true) {
-  const fixed = [28, 42, 12, 106, 12, 30];
-  const sum = (menu ? 28 : 0) + 42 + 12 + 106 + 12 + 30;
+/** Expected editor grid rows (DESIGN 3.18 E1) at a window height: menu 28 (Windows), tabs 42, gutter 12, card 98 (F21.6 icons only; 106 with showToolLabels), gutter 12, body, status 30. */
+export function expectedRows(height, menu = true, card = 98) {
+  const fixed = [28, 42, 12, card, 12, 30];
+  const sum = (menu ? 28 : 0) + 42 + 12 + card + 12 + 30;
   const rows = menu ? fixed : fixed.slice(1);
   return { rows, body: height - sum };
 }
@@ -158,8 +158,8 @@ export const parseTracks = (value) =>
     .filter((x) => Number.isFinite(x));
 
 /** True if the computed tracks equal the expected fixed rows around a body track of the right size. */
-export function rowsMatch(tracks, height, menu = true, tolerance = 1) {
-  const { rows, body } = expectedRows(height, menu);
+export function rowsMatch(tracks, height, menu = true, tolerance = 1, card = 98) {
+  const { rows, body } = expectedRows(height, menu, card);
   const want = [...rows.slice(0, -1), body, rows[rows.length - 1]];
   if (tracks.length !== want.length) return false;
   return want.every((w, i) => Math.abs((tracks[i] ?? -1) - w) <= tolerance);

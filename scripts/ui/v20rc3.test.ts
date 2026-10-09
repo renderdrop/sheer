@@ -5,16 +5,16 @@ import * as v from './accept/v20rc3-pure.mjs';
 
 describe('rc.3 acceptance helpers', () => {
   it('expects the editor rows of DESIGN 3.18 E1', () => {
-    expect(v.expectedRows(900).body).toBe(670);
-    expect(v.expectedRows(640).body).toBe(410);
-    expect(v.expectedRows(640, false).body).toBe(438);
+    expect(v.expectedRows(900).body).toBe(678);
+    expect(v.expectedRows(640).body).toBe(418);
+    expect(v.expectedRows(640, false).body).toBe(446);
   });
 
   it('matches computed grid tracks', () => {
-    const tracks = v.parseTracks('28px 42px 12px 106px 12px 670px 30px');
+    const tracks = v.parseTracks('28px 42px 12px 98px 12px 678px 30px');
     expect(v.rowsMatch(tracks, 900)).toBe(true);
     expect(v.rowsMatch(tracks, 800)).toBe(false);
-    expect(v.rowsMatch(v.parseTracks('42px 12px 106px 12px 438px 30px'), 640, false)).toBe(true);
+    expect(v.rowsMatch(v.parseTracks('42px 12px 98px 12px 446px 30px'), 640, false)).toBe(true);
   });
 
   it('knows the separators per mode and parses colours', () => {

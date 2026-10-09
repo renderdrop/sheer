@@ -215,8 +215,8 @@ const session = async (ctx) => {
         const menu = g.menu !== null;
         await shot(`f19-16-editor-${w}x${h}`);
         C(
-          `F19.16 (${w}x${h}): editor rows 28/42/12/106/12/body/30`,
-          rowsMatch(tracks, h, menu) && g.tabs === 42 && g.card === 106 && g.status === 30 && (!menu || g.menu === 28),
+          `F19.16 (${w}x${h}): editor rows 28/42/12/98/12/body/30 (F21.6: icons only)`,
+          rowsMatch(tracks, h, menu) && g.tabs === 42 && g.card === 98 && g.status === 30 && (!menu || g.menu === 28),
           JSON.stringify({
             tracks,
             menu: g.menu,
@@ -313,8 +313,8 @@ const session = async (ctx) => {
         })()`);
         const tall = info.heights.filter((h) => h === 56).length;
         C(
-          `F19.16 (${m}): tools 56 high, ${SEPARATORS[m]} separators, no captions or hint texts`,
-          info.rowH === 72 &&
+          `F19.16 (${m}): tools 56 high (row 64 under F21.6), ${SEPARATORS[m]} separators, no captions or hint texts`,
+          info.rowH === 64 &&
             info.n >= 1 &&
             tall >= Math.ceil(info.n * 0.8) &&
             info.seps === SEPARATORS[m] &&
@@ -324,6 +324,7 @@ const session = async (ctx) => {
             rowH: info.rowH,
             n: info.n,
             tall,
+            heights: info.heights,
             seps: info.seps,
             extra: info.extra,
             captions: info.captions,

@@ -216,8 +216,8 @@ const session = async (ctx) => {
           }),
         );
         C(
-          `F20.1 (${tag}): glow and its parts inside the home surface or clipped by it (the glow drifts; the surface is overflow hidden)`,
-          g.hasGlow && (g.parts.every((p) => insideRect(p, g.main, 1)) || g.clip === 'hidden/hidden'),
+          `F20.1/F21.1 (${tag}): static glow layer anchored to the home surface (inside it, no drift, surface clips)`,
+          g.hasGlow && g.parts.every((p) => insideRect(p, g.main, 1)) && g.clip === 'hidden/hidden',
           `${g.parts.filter((p) => !insideRect(p, g.main, 1)).length} outside, clip ${g.clip} ` +
             JSON.stringify({ main: g.main, out: g.parts.filter((p) => !insideRect(p, g.main, 1)) }),
         );

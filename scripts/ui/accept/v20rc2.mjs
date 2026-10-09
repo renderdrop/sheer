@@ -192,7 +192,7 @@ const session = async (ctx) => {
     await sleep(1000);
   }
   async function openComments() {
-    // rc.3: no top-bar toggle; a collapsed sidebar comes back through View > Left panel (F4) or a click on the splitter's grip.
+    // rc.3: no top-bar toggle; a collapsed sidebar comes back through View > Left panel (F4) or a click on the splitter.
     if (!(await exists('[role="tab"][data-value="comments"]'))) {
       await input.press('F4').catch(() => {});
       if (!(await exists('[role="tab"][data-value="comments"]')))
@@ -1044,7 +1044,7 @@ const session = async (ctx) => {
         w0 < 480 && w1 === 480,
         `${w0} -> ${w1}, panel ${px} px`,
       );
-      // rc.3: the sidebar toggle is the splitter's grip (a click without movement) and View > Left panel; the top-bar toggle is gone.
+      // rc.3: the sidebar toggle is the splitter itself (a click without movement) and View > Left panel; the top-bar toggle is gone.
       const left = () => ev(`document.querySelector('[data-left]')?.getAttribute('data-left') ?? null`);
       await input.click({ selector: sep });
       await sleep(900);
@@ -1053,7 +1053,7 @@ const session = async (ctx) => {
       await sleep(900);
       const afterMenu = await left();
       C(
-        'F19.3 (rc.3): a click on the splitter grip collapses the sidebar, View > Left panel restores it',
+        'F19.3 (rc.3): a click on the splitter (no grip pill any more, F21.4) collapses the sidebar, View > Left panel restores it',
         afterGrip === 'collapsed' && afterMenu === 'open',
         `grip -> ${afterGrip}, menu -> ${afterMenu}`,
       );
