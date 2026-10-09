@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sharp thumbnails in "Recently opened" on high-density displays.
 - The status-bar zoom field fits four digits.
 - While the pointer is on a comment bubble its marked text stays highlighted.
+- Recent-card file names end before the ⋯ menu; the open button sits in the greeting row; tool-tile subtitles stay on one line.
+- "Smart links" shows as a toggle instead of a second selected tool; no horizontal scrollbar when the page fits.
+
+### Security
+- Comment groups from untrusted PDFs are resolved with bounded key attempts and depth, outside the shared cache lock (a crafted file could hang reading).
 
 ## [2.0.0-rc.3] - 2026-10-09
 

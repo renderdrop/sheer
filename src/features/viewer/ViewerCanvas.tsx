@@ -273,11 +273,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       if (paged) clearPageProgress();
       else {
         const middle = top + (height + 2 * pad) / 2;
-        const around = layout.currentPageAt(top, height + 2 * pad);
-        const box = layout.box(around);
-        if (box !== null && box.height > 0) {
-          publishPageProgress({ docId, progress: around + (middle - box.top) / box.height });
-        }
+        publishPageProgress({ docId, progress: layout.progressAt(middle) });
       }
       // Passing pages during an animated jump are not the page the user went to.
       if (paged || scrollAnim.current !== null) return;

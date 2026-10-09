@@ -146,6 +146,18 @@ describe('the layout of continuous scrolling', () => {
     expect(layout.currentPageAt(0, 700)).toBe(0);
   });
 
+  it('progressAt never steps backwards while the position rises, also over mixed page sizes (F20.6)', () => {
+    const layout = layoutOf([LETTER, LANDSCAPE, A5, LANDSCAPE, LETTER, A5]);
+    let previous = layout.progressAt(0);
+    for (let y = 0; y <= layout.height; y += 3) {
+      const progress = layout.progressAt(y);
+      expect(progress).toBeGreaterThanOrEqual(previous - 1e-9);
+      previous = progress;
+    }
+    expect(previous).toBeGreaterThan(5);
+    expect(layoutOf([]).progressAt(10)).toBe(0);
+  });
+
   it('survives hostile input: a zoom or gap that is not a number, a viewport that is negative', () => {
     const layout = layoutOf(pages(2), 'continuous', {
       zoom: Number.NaN,

@@ -305,6 +305,18 @@ export class PageLayout {
   }
 
   /**
+   * The continuous reading position at content height `y`: the page that holds `y` (the nearer one inside a gap) plus how far
+   * through it, clamped to the page. Non-decreasing in `y`, which the thumbnail list's follow relies on (F20.6).
+   */
+  progressAt(y: number): number {
+    if (this.isEmpty) return 0;
+    const page = pagesOfRow(this.metrics, this.rowAt(y)).first;
+    const box = this.box(page);
+    if (box === null || box.height <= 0) return page;
+    return page + Math.min(1, Math.max(0, (y - box.top) / box.height));
+  }
+
+  /**
    * The page the status bar shows for the viewport at `scrollTop`: the first page of the row that most of the viewport is
    * on (the lower one when two share it equally), the way a reader names where they are. In a paged mode the row that is shown.
    */

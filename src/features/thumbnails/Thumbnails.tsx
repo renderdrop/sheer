@@ -235,6 +235,9 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
     const unsubscribe = subscribePageProgress(() => {
       frame ??= requestAnimationFrame(step);
     });
+    // Once at the start: a list placed by the step-wise reveal (page 1 at the inset) joins the continuous position now, not with
+    // a backward step at the canvas's first scroll.
+    if (readPageProgress()?.docId === docId) frame = requestAnimationFrame(step);
     return () => {
       unsubscribe();
       if (frame !== null) cancelAnimationFrame(frame);
