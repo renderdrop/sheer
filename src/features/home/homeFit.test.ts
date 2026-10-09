@@ -4,12 +4,13 @@ import {
   TILE_GAP,
   TILE_MIN_WIDTH,
   TILES_WIDE_MIN_WIDTH,
+  MAX_FIT,
   cardSize,
-  fitLevel,
-  fitNeeds,
   greetingPart,
   homeFit,
   homeTier,
+  nextFit,
+  overflows,
   stackHeight,
   tileColumns,
   titleHidden,
@@ -91,27 +92,29 @@ describe('Home fits the window without a vertical scrollbar (DESIGN 3.18 H4)', (
     expect(measures('b').greetingRow).toBeGreaterThanOrEqual(num('home-plus'));
   });
 });
-describe('Home fits by the measured body height (F20.1)', () => {
-  it('fits 960 x 640 (about 570 of body, two tile columns, four rows) with and without the Open row', () => {
-    for (const openRow of [false, true]) {
-      const level = fitLevel(570, 'b', openRow, 2);
-      expect(level).toBe(2);
-      expect(fitNeeds(level, openRow, 4)).toBeLessThanOrEqual(570);
-    }
+describe('Home fits by measuring its scroller (F20.1)', () => {
+  it('steps up one level per overflowing layout and stops at the last', () => {
+    expect(nextFit(0, true)).toBe(1);
+    expect(nextFit(1, true)).toBe(2);
+    expect(nextFit(2, true)).toBe(3);
+    expect(nextFit(MAX_FIT, true)).toBe(MAX_FIT);
+    expect(nextFit(2, false)).toBe(2);
+    expect(nextFit(0, false)).toBe(0);
   });
-  it('keeps level 0 where the plain stack fits, and ignores tier A and unmeasured bodies', () => {
-    expect(fitLevel(748, 'b', false, 4)).toBe(0);
-    expect(fitLevel(747, 'b', false, 4)).toBe(1);
-    expect(fitLevel(0, 'b', true, 2)).toBe(0);
-    expect(fitLevel(300, 'a', false, 4)).toBe(0);
-    expect(fitLevel(100, 'b', true, 2)).toBe(2);
+  it('counts overflow past 1 px of slack, and not without layout', () => {
+    expect(overflows(544, 486)).toBe(true);
+    expect(overflows(487, 486)).toBe(false);
+    expect(overflows(0, 0)).toBe(false);
+    expect(overflows(100, 0)).toBe(false);
   });
-  it('gets smaller with every level', () => {
-    for (const openRow of [false, true])
-      for (const rows of [2, 4] as const) {
-        expect(fitNeeds(1, openRow, rows)).toBeLessThan(fitNeeds(0, openRow, rows));
-        expect(fitNeeds(2, openRow, rows)).toBeLessThan(fitNeeds(1, openRow, rows));
-      }
+  it('has CSS for every level, and the plus stays in the greeting row when squeezed', () => {
+    const css = readFileSync('src/features/home/home.css', 'utf8');
+    for (let level = 2; level <= MAX_FIT; level++) expect(css).toContain(`.home-main[data-fit="${level}"] .home-thumb`);
+    expect(/\.home-main\[data-squeeze\] {[^}]*--plus-top: var\(--pad-top\)/.test(css)).toBe(true);
+  });
+  it('clamps tile subtitles to one line', () => {
+    const css = readFileSync('src/features/home/home.css', 'utf8');
+    expect(/\.home-tile-sub {[^}]*-webkit-line-clamp: 1;[^}]*text-overflow: ellipsis/.test(css)).toBe(true);
   });
 });
 describe('Tool tiles by the width of their area (F20.2)', () => {
@@ -131,6 +134,11 @@ describe('Tool tiles by the width of their area (F20.2)', () => {
     expect(title).toContain('overflow-wrap: normal');
     expect(title).toContain('word-break: keep-all');
     expect(title).not.toContain('anywhere');
+  });
+  it('reserves the space of the menu button in the card name in every card tier', () => {
+    const css = readFileSync('src/features/home/home.css', 'utf8');
+    expect(/\.home-card-name {[^}]*padding-inline-end: calc\(var\(--control-sm\)/.test(css)).toBe(true);
+    expect(/data-card="full"\] \.home-card-name {[^}]*padding-inline-end/.test(css)).toBe(false);
   });
 });
 describe('the greeting by time of day', () => {

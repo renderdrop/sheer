@@ -749,15 +749,36 @@ async function sweepHover(label) {
 /** F20.1: Home (with and without the fixture open) must not scroll at this size. */
 async function sweepHome() {
   const ui = store('stores/ui.ts');
+  const docs = store('stores/documents.ts');
   await ev(`(async()=>{(await ${ui}).useUi.getState().setView('home')})()`);
   await sleep(600);
-  const els = await ev(`(()=>{
+  const measure = () =>
+    ev(`(()=>{
     const m = (name, e) => e && { name, scrollWidth: e.scrollWidth, clientWidth: e.clientWidth, scrollHeight: e.scrollHeight, clientHeight: e.clientHeight };
     return [m('home scroller', document.querySelector('[data-home-scroller]')), m('home main', document.querySelector('[data-home-main]')),
       m('document', document.documentElement)].filter(Boolean);
   })()`);
-  const tag = `${lang} home @${current.w}x${current.h}`;
-  rows.push(...rowsFor(tag, { 'home does not scroll': els.length === 0 ? ['home is not shown'] : checkNoScroll(els) }));
+  const check = async (state) => {
+    const els = await measure();
+    const tag = `${lang} home (${state}) @${current.w}x${current.h}`;
+    rows.push(
+      ...rowsFor(tag, { 'home does not scroll': els.length === 0 ? ['home is not shown'] : checkNoScroll(els) }),
+    );
+  };
+  // Both states (F20.1): with the fixture open (the Open row) and without open documents (the order is hidden from Home, then put back).
+  await check('open row');
+  await ev(
+    `(async()=>{const d=(await ${docs}).useDocuments; window.__gateOrder=d.getState().order; d.setState({order: []})})()`,
+  );
+  await sleep(500);
+  try {
+    await check('no documents');
+  } finally {
+    await ev(
+      `(async()=>{(await ${docs}).useDocuments.setState({order: window.__gateOrder}); delete window.__gateOrder})()`,
+    );
+    await sleep(400);
+  }
   await ev(`(async()=>{(await ${ui}).useUi.getState().setView('editor')})()`);
   await sleep(400);
 }

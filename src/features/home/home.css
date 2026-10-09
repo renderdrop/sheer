@@ -72,23 +72,32 @@
 /* A banner above and a short window: less top padding and section gap (homeFit, F19.17). */
 .home-main[data-squeeze] {
   --pad-top: var(--space-4);
+  /* The "+" stays in the greeting row (H4: top = the row's top), not 24 below it over the search. */
+  --plus-top: var(--pad-top);
   --section-gap: var(--space-4);
   --search-gap: var(--space-3);
   --head-gap: var(--space-2);
   --pad-bottom: var(--space-2);
 }
-/* Measured fit (homeLayout fitLevel): level 2 drops the card thumbnails and uses the small tool tiles. */
-.home-main[data-fit="2"] {
+/* Measured fit (Home useMeasuredFit): level 2 drops the card thumbnails and uses the small tool tiles; level 3 also shows four tiles
+   (ToolRows few) and the tightest section gaps. */
+.home-main[data-fit="2"],
+.home-main[data-fit="3"] {
   --section-gap: var(--space-3);
   --head-gap: var(--space-1);
   --card-h: calc(2 * var(--card-pad) + var(--control-sm));
   --tile-h: var(--home-tool-tile-height-tight);
   --tile-h-mini: var(--home-tool-tile-height-tight);
 }
-.home-main[data-fit="2"] .home-thumb {
+.home-main[data-fit="3"] {
+  --section-gap: var(--space-2);
+}
+.home-main[data-fit="2"] .home-thumb,
+.home-main[data-fit="3"] .home-thumb {
   display: none;
 }
-.home-main[data-fit="2"] .home-card-body {
+.home-main[data-fit="2"] .home-card-body,
+.home-main[data-fit="3"] .home-card-body {
   justify-content: center;
 }
 .home-content {
@@ -190,7 +199,6 @@
 }
 .home-main[data-card="full"] .home-card-name {
   min-height: 0;
-  padding-inline-end: 0;
 }
 .home-card-star {
   top: calc(var(--card-pad) + var(--space-1));
@@ -228,12 +236,8 @@
   height: var(--tile-h-eff);
   min-width: var(--home-tile-min-width);
 }
-@container home-tools (max-width: 783.98px) {
-  .home-tile-sub {
-    display: none;
-  }
-}
-/* Compact tier: tight padding and icon gap, subtitle 13/18 up to two lines (20 + 36 fits the 72 tile); never an ellipsis at 1280 (en, de). */
+/* Compact tier: tight padding and icon gap. The subtitle is one line with an ellipsis (designer round v2.0.0: a two-line subtitle in
+   one tile misaligned the titles across the row); the full text stays the tile's description (aria-describedby). */
 .home-tile {
   padding-inline: var(--space-4);
   gap: var(--space-3);
@@ -256,8 +260,9 @@
   line-height: var(--type-label-line);
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   overflow: hidden;
+  text-overflow: ellipsis;
   overflow-wrap: normal;
   word-break: keep-all;
   hyphens: none;
@@ -265,6 +270,12 @@
 .home-main[data-tier="a"] .home-tile-sub {
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
+}
+/* After the base rule: the subtitle is hidden in two columns (F20.2); same specificity, so order decides. */
+@container home-tools (max-width: 783.98px) {
+  .home-tile-sub {
+    display: none;
+  }
 }
 
 /* Nav: word mark at x 40, top 80; rows from top 144; Settings at x 36, bottom 48. */

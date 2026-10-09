@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 
 import { runAction } from '../../actions/dispatch';
 import { shortcutFor } from '../../actions/registry';
@@ -9,14 +9,14 @@ import type { RecentEntry } from '../../api/recents';
 import { Button, Icon, SolarGlow } from '../../components';
 import { watchAmbient } from '../../components/ambient';
 import { cx } from '../../components/cx';
-import { useT } from '../../i18n';
+import { useLocale, useT } from '../../i18n';
 import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { closeTab } from '../tabs/nav';
 import { useViewer } from '../viewer/useViewer';
 import { DropOverlay, useHomeDrop } from './DropOverlay';
 import { Hero, useSearchShortcut } from './Hero';
-import { fitLevel, homeFit, tileColumns } from './homeLayout';
+import { homeFit, nextFit, overflows, type FitLevel } from './homeLayout';
 import { HomeNav, type HomeSection } from './HomeNav';
 import { OpenCard } from './OpenCard';
 import { RecentCard } from './RecentCard';
@@ -64,24 +64,37 @@ function useBannerHeight(): number {
   return height;
 }
 
-/** The measured height of Home's body and width of its tool area (0 without layout), kept current (F20.1, F20.2). */
-function useHomeBox(ref: RefObject<HTMLElement | null>): { height: number; toolsWidth: number } {
-  const [box, setBox] = useState({ height: 0, toolsWidth: 0 });
+/**
+ * The measured fit of Home's column (F20.1): after each layout the scroller is read and the level steps up while it overflows (no
+ * hand-summed stack heights, so every state counts: Open row, recents empty or not, favourites, en and de). A change of `key` (the
+ * content) or of the main box's size starts again from 0; a ResizeObserver on the box and the content re-checks when something
+ * grows without a render (fonts, thumbnails). Layout effects run before paint, so the steps never show.
+ */
+function useMeasuredFit(ref: RefObject<HTMLElement | null>, key: string): FitLevel {
+  const [size, setSize] = useState('');
+  const [tick, setTick] = useState(0);
+  const [state, setState] = useState<{ key: string; level: FitLevel }>({ key: '', level: 0 });
+  const fullKey = `${key}|${size}`;
+  const level = state.key === fullKey ? state.level : 0;
   useEffect(() => {
     const element = ref.current;
-    if (element === null) return;
-    const measure = () => {
-      const tools = element.querySelector<HTMLElement>('[data-home-tools]');
-      const next = { height: Math.round(element.clientHeight), toolsWidth: Math.round(tools?.clientWidth ?? 0) };
-      setBox((old) => (old.height === next.height && old.toolsWidth === next.toolsWidth ? old : next));
-    };
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
+    if (element === null || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      setSize(`${Math.round(element.clientWidth)}x${Math.round(element.clientHeight)}`);
+      setTick((count) => count + 1);
+    });
     observer.observe(element);
+    const content = element.querySelector('[data-home-scroller]')?.firstElementChild;
+    if (content) observer.observe(content);
     return () => observer.disconnect();
-  });
-  return box;
+  }, [ref]);
+  useLayoutEffect(() => {
+    const scroller = ref.current?.querySelector<HTMLElement>('[data-home-scroller]');
+    if (!scroller) return;
+    const next = nextFit(level, overflows(scroller.scrollHeight, scroller.clientHeight));
+    if (state.key !== fullKey || next !== state.level) setState({ key: fullKey, level: next });
+  }, [ref, fullKey, level, state, tick]);
+  return level;
 }
 
 function useColumns(ref: RefObject<HTMLElement | null>, fallback: number, active: boolean): number {
@@ -238,12 +251,26 @@ export function Home({ platform }: HomeProps) {
   const openRow = section === 'home' && openShown.length > 0;
   const bannerHeight = useBannerHeight();
   const mainRef = useRef<HTMLElement>(null);
-  const box = useHomeBox(mainRef);
+  const locale = useLocale();
   const plain = homeFit(height, openTabs.length > 0, bannerHeight);
   const { tier } = plain;
-  // Measured fit (F20.1): a short body drops the title and the tall cards, then the thumbnails and the tall tiles.
-  const columns4 = box.toolsWidth === 0 ? 4 : tileColumns(box.toolsWidth);
-  const fit = fitLevel(box.height, tier, openRow, columns4);
+  // Measured fit (F20.1): a short body drops the title and the tall cards, then the thumbnails and the tall tiles, then four tiles.
+  const fit = useMeasuredFit(
+    mainRef,
+    [
+      section,
+      showEmpty,
+      openRow,
+      recents.loaded,
+      matches.length,
+      locale,
+      tier,
+      plain.card,
+      plain.hideTitle,
+      plain.squeeze,
+      bannerHeight,
+    ].join('|'),
+  );
   const hideTitle = plain.hideTitle || fit >= 1;
   const card = fit >= 1 ? 'short' : plain.card;
   const squeeze = plain.squeeze || fit >= 1;
@@ -304,7 +331,7 @@ export function Home({ platform }: HomeProps) {
         )}
         <section aria-labelledby={ids.tools} className="home-section">
           <SectionHead id={ids.tools}>{t('home.tools.title')}</SectionHead>
-          <ToolRows onMore={() => setSection('tools')} />
+          <ToolRows few={fit >= 3} onMore={() => setSection('tools')} />
         </section>
       </>
     );

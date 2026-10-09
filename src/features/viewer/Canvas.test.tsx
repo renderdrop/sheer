@@ -460,3 +460,12 @@ describe('Canvas (DESIGN 2)', () => {
     });
   });
 });
+
+describe('contentFits', () => {
+  it('tolerates one pixel, shows the bar beyond', async () => {
+    const { contentFits } = await import('./Canvas');
+    expect(contentFits(1000, 1000)).toBe(true);
+    expect(contentFits(1001, 1000)).toBe(true);
+    expect(contentFits(1002, 1000)).toBe(false);
+  });
+});

@@ -641,7 +641,10 @@ const session = async (ctx) => {
       }
 
       await openHf();
-      const slotText = (slot) => ev(`document.querySelector('[data-hf-slot="${slot}"]')?.textContent.trim() ?? null`);
+      const slotText = (slot) =>
+        ev(
+          `(document.querySelector('[data-hf-slot="${slot}"] [data-hf-slot-text]')?.lastElementChild ?? document.querySelector('[data-hf-slot="${slot}"]'))?.textContent.trim() ?? null`,
+        );
       const defaults = [await slotText('footerRight'), await slotText('footerLeft'), await slotText('headerCenter')];
       C(
         'HF-AC 2: defaults are Seitenzahl bottom right and Datum bottom left',

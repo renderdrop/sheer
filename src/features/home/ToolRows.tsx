@@ -38,6 +38,9 @@ const HOME_TILES: readonly Tile[] = [
   { id: 'more', icon: Ellipsis, titleKey: 'home.tool.more', hintKey: 'home.tile.more' },
 ];
 
+/** The tightest fit (F20.1, level 3): the first three tiles and "More tools", so two rows of two fit 960 x 640 with the Open row. */
+const FEW_TILES: readonly Tile[] = [...HOME_TILES.slice(0, 3), ...HOME_TILES.slice(-1)];
+
 /** The Werkzeuge view lists every tool: the tiles above without "More tools", plus the export. */
 const ALL_TILES: readonly Tile[] = [
   ...HOME_TILES.slice(0, -1),
@@ -47,6 +50,8 @@ const ALL_TILES: readonly Tile[] = [
 export interface ToolRowsProps {
   /** The Werkzeuge view: every tool, no "More tools" tile. */
   all?: boolean;
+  /** Home's tightest fit: three tiles and "More tools". */
+  few?: boolean;
   /** "More tools" leads to the Werkzeuge view. */
   onMore?: () => void;
 }
@@ -57,11 +62,11 @@ export interface ToolRowsProps {
  * subtitle 14/20 Text-secondary. A tile runs the hub card: the file dialog, then the editor in the matching mode. While one runs (or a
  * document is being opened) the others are `aria-disabled`; arrows move through the grid.
  */
-export function ToolRows({ all = false, onMore }: ToolRowsProps) {
+export function ToolRows({ all = false, few = false, onMore }: ToolRowsProps) {
   const t = useT();
   const busy = useHub((state) => state.busy);
   const opening = useViewer((state) => state.opening);
-  const tiles = all ? ALL_TILES : HOME_TILES;
+  const tiles = all ? ALL_TILES : few ? FEW_TILES : HOME_TILES;
   const roving = useRovingGroup(tiles.map((tile) => tile.id));
   const locked = busy !== null || opening;
   return (

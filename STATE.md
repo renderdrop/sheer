@@ -1,13 +1,15 @@
 # STATE
 phase: session "v2.0.0 final — owner test rc.3 (F20)" (ADR-144, tempo level 4, model policy ADR-142) in progress
 version: 2.0.0-rc.3 (tag v2.0.0-rc.3, pre-release; latest stable v1.9.0)
-current_item: F20 — A, B, B2, C, D, F, G done in tree (uncommitted); running: D2 group perf/security lows, review E; E done
+current_item: J done (smoke = rotation left by gate, script fix; card name ellipsis fix; designer shots review/v200/designer2-*); running: K (Opus) home scroll with open row 960x640 + gate hover fails + F20.3 check; designer round
   queued: commit wave · acceptance v20final + all scripts · designer round · security audit · release v2.0.0
 packages:
   review A PASS; minors (polish): gate home sweep only one state (with/without open row), 784px literal in container query, FIT_NEEDS hand-synced, long de tile title could overflow
   review D PASS; minors: foreign.rs:507 Groups::of per page read (O(pages×annots), full parse — check perf on 500 pages), group text edit skips locked members silently, multi-range drag untested end-to-end
   security D/A PASS; lows 1–4 → package D2 (memoise Groups::of + HashSet, cache per doc for read_page, /NM identity + object number, cap imported groups at MAX_GROUP_MEMBERS) + SECURITY.md MAX_THUMB_BYTES 512 KiB
   E author detection: authors 15/8/8/0 → 15/14/14/0 (truth/found/correct/wrong), year 19/17/14/3 → 19/19/15/4 (corpus-03 deck no year in truth), kind 15/12/11/1 unchanged, others unchanged; corpus-21 letter-spaced not found
+  final security audit: FAIL (high Groups::of loop) → S1 fixed (bounded key attempts, scan outside CACHE lock) → verification PASS; deny 0, npm audit 0
+  designer round: PASS (no blocker); majors: home 960 "+" misaligned, Smart links toggle filled Solar → K (home) + L (editor: toggle style, tab gaps, separator, h-scrollbar at 100 %)
 last_completed: v2.0.0-rc.3 — F19.16–F19.27; report docs/reports/2026-10-09-v2.0.0-rc.3-f19-teil2.md
 loop_count_this_session: 0
 open_blockers: 3 (B-002, B-005, B-008, human-only)
@@ -18,6 +20,7 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
   ADR-142: model per package named in the brief (Opus: audits, engine-critical Rust, 2nd fix round; Haiku: mechanic). Briefs that start a dev/acceptance window must say: stop it only by process path (incident 2026-10-08: an agent killed sheer.exe by name).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - d50b084..e436c3b ADR-144, F20 A–D2, E authors, v20final + F19.28 harness → run #157 (37901107867) GREEN
   - ef915aa..282b0a4 mini bar fix + release v2.0.0-rc.3 → run #156 (37883414883) GREEN; release run #23 (37883414919) success (pre-release)
   - fa3c247 acceptance round 2 fixes + changelog → run #155 (37874555467) GREEN
   - 70313f8 acceptance round 1 fixes → run #154 (37868472036) GREEN

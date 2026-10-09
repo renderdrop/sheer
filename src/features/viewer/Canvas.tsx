@@ -18,6 +18,11 @@ interface GestureEvent extends UIEvent {
   clientY: number;
 }
 
+/** The content fits the region's content box when it is at most one pixel wider (the viewport is floored; layout.ts has the same slack). */
+export function contentFits(contentWidth: number, boxWidth: number): boolean {
+  return contentWidth - boxWidth <= 1;
+}
+
 /** Where a zoom gesture is centred: a position in the scroll region's content box, in px. */
 export interface CanvasZoomFocus {
   x: number;
@@ -328,6 +333,11 @@ export function Canvas({
   // After every layout of the content: is the size the layout was made for still the region's?
   useEffect(() => {
     syncRef.current?.();
+    // The horizontal bar shows only when the content really is wider than the region's content box (a fraction of a pixel is not).
+    const region = regionRef.current;
+    const box = contentRef.current;
+    if (region === null || box === null) return;
+    region.style.overflowX = contentFits(box.offsetWidth, region.clientWidth - 2 * canvasPadding()) ? 'hidden' : '';
   });
 
   const setRegion = useCallback(

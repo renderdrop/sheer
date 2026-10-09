@@ -155,6 +155,11 @@ async function clearAnnotations() {
 
 async function suite(doc) {
   await clearAnnotations();
+  // The surface gate (run before) turns the view of a document; the click points below assume the page upright.
+  await ev(
+    `(async()=>{const d=(await ${S.docs}).useDocuments.getState();(await ${mod('stores/view.ts')}).useView.getState().setRotation(d.activeId,0)})()`,
+  );
+  await sleep(400);
   let box = await pageBox();
   // Fractions of the part of the page that is on screen: CDP mouse events outside the viewport hit nothing.
   let visible = Math.min(box.height, (await ev('window.innerHeight')) - box.top - 24);

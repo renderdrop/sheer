@@ -114,7 +114,9 @@ export function RecentCard({
         )}
       >
         <RecentThumb id={entry.id} missing={entry.missing} />
-        <span className="home-card-name t-nav min-w-0 truncate">{name}</span>
+        <span className="home-card-name t-nav min-w-0">
+          <span className="home-card-name-text min-w-0 truncate">{name}</span>
+        </span>
       </button>
       <span
         className={cx(

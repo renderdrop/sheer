@@ -118,24 +118,21 @@ export function tileColumns(width: number): 2 | 4 {
 }
 
 /**
- * How much Home gives up so its column fits without scrolling (F20.1), by the measured height of the body: 0 = the plain tiers,
- * 1 = no title, short cards, tight paddings, 2 = no card thumbnails, small tool tiles. The numbers are the stack sums of
- * `homeFit.test.ts` (tier B, cards per level, tools in `rows` lines of tiles: 2 for four columns, 4 for two).
+ * How much Home gives up so its column fits without scrolling (F20.1): 0 = the plain tiers, 1 = no title, short cards, tight paddings,
+ * 2 = no card thumbnails, small tool tiles, 3 = three tool tiles plus "More tools" and the tightest section gaps. The level is not
+ * derived from hand-summed constants: Home measures its scroller after each layout and steps up while it overflows (`nextFit`),
+ * and starts again from 0 whenever the window or the content changes (useMeasuredFit in Home.tsx).
  */
-export type FitLevel = 0 | 1 | 2;
-const FIT_NEEDS: Record<FitLevel, { closed: Record<2 | 4, number>; open: Record<2 | 4, number> }> = {
-  0: { closed: { 2: 748, 4: 820 }, open: { 2: 792, 4: 864 } },
-  1: { closed: { 2: 524, 4: 596 }, open: { 2: 712, 4: 784 } },
-  2: { closed: { 2: 348, 4: 412 }, open: { 2: 444, 4: 508 } },
-};
-export function fitNeeds(level: FitLevel, openRow: boolean, rows: 2 | 4): number {
-  return FIT_NEEDS[level][openRow ? 'open' : 'closed'][rows];
+export type FitLevel = 0 | 1 | 2 | 3;
+export const MAX_FIT: FitLevel = 3;
+
+/** One step of the measured fit: up one level while the column overflows (until MAX_FIT), else the level holds. */
+export function nextFit(level: FitLevel, overflows: boolean): FitLevel {
+  if (!overflows || level >= MAX_FIT) return level;
+  return (level + 1) as FitLevel;
 }
 
-/** The lowest level whose stack fits `bodyHeight`; 0 where nothing is measured (`bodyHeight` 0) or the window is tall (tier A). */
-export function fitLevel(bodyHeight: number, tier: HomeTier, openRow: boolean, columns: 2 | 4): FitLevel {
-  if (bodyHeight <= 0 || tier === 'a') return 0;
-  const rows = columns === 4 ? 2 : 4;
-  if (bodyHeight >= fitNeeds(0, openRow, rows)) return 0;
-  return bodyHeight >= fitNeeds(1, openRow, rows) ? 1 : 2;
+/** The scroller overflows when its content is taller than its box (1 px of sub-pixel slack, as the surface gate). */
+export function overflows(scrollHeight: number, clientHeight: number): boolean {
+  return clientHeight > 0 && scrollHeight > clientHeight + 1;
 }

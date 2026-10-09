@@ -44,6 +44,10 @@ export const SPLIT_OUTER =
   'data-[on=true]:after:pointer-events-none data-[on=true]:after:absolute data-[on=true]:after:inset-0 ' +
   'data-[on=true]:after:rounded-(--tool-item-radius) data-[on=true]:after:shadow-(--tool-active-edge)';
 
+/** A toggle (Smart links, DESIGN 3.18 E4): White, Stone border, Ink label and icon while pressed; never the Solar fill, which is the active tool's alone. It has no `data-on`, so the glide pill skips it. */
+const TOGGLE =
+  'border border-transparent aria-pressed:border-border-control aria-pressed:bg-card aria-pressed:font-semibold aria-pressed:text-ink';
+
 /** Icon only: 44 x 44 (space 10 + 4), vertically centred in the 72 high area. */
 const ICON_ONLY = 'size-[calc(var(--space-10)+var(--space-1))] p-0';
 
@@ -116,7 +120,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
       data-toolbar-item={slot.id}
       data-testid={slot.testId}
       data-roving={slot.id}
-      data-on={slot.on}
+      data-on={slot.kind === 'toggle' ? undefined : slot.on}
       aria-pressed={slot.kind === 'action' ? undefined : slot.on}
       aria-disabled={off ? true : undefined}
       aria-keyshortcuts={found?.aria}
@@ -138,6 +142,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
         MAIN,
         iconOnly ? ICON_ONLY : 'px-[calc(var(--space-2)+var(--spacing-half))]',
         split ? SPLIT_PART : ACTIVE,
+        slot.kind === 'toggle' && TOGGLE,
       )}
     >
       <Icon icon={slot.icon} size={18} />

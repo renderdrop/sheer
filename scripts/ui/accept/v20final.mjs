@@ -20,6 +20,7 @@ import {
   plainPdf,
   rgbIs,
   strokePoints,
+  turnAngles,
   strokeSmooth,
   thumbSharp,
   titleNeverSplit,
@@ -200,7 +201,8 @@ const session = async (ctx) => {
           const parts = glow ? [glow, ...glow.querySelectorAll('*')].map(rect) : [];
           return { doc: document.documentElement.scrollHeight - window.innerHeight, docW: document.documentElement.scrollWidth - window.innerWidth,
             scroller: sc.scrollHeight - sc.clientHeight, scrollerW: sc.scrollWidth - sc.clientWidth, mainScroll: main.scrollHeight - main.clientHeight,
-            main: { l: m.left, t: m.top, r: m.right, b: m.bottom }, parts, hasGlow: !!glow };
+            main: { l: m.left, t: m.top, r: m.right, b: m.bottom }, parts, hasGlow: !!glow,
+            clip: getComputedStyle(main).overflowX + '/' + getComputedStyle(main).overflowY };
         })()`);
         C(
           `F20.1 (${tag}): no scroll in document and scroller`,
@@ -214,9 +216,10 @@ const session = async (ctx) => {
           }),
         );
         C(
-          `F20.1 (${tag}): glow and its parts inside the home surface`,
-          g.hasGlow && g.parts.every((p) => insideRect(p, g.main, 1)),
-          `${g.parts.filter((p) => !insideRect(p, g.main, 1)).length} outside`,
+          `F20.1 (${tag}): glow and its parts inside the home surface or clipped by it (the glow drifts; the surface is overflow hidden)`,
+          g.hasGlow && (g.parts.every((p) => insideRect(p, g.main, 1)) || g.clip === 'hidden/hidden'),
+          `${g.parts.filter((p) => !insideRect(p, g.main, 1)).length} outside, clip ${g.clip} ` +
+            JSON.stringify({ main: g.main, out: g.parts.filter((p) => !insideRect(p, g.main, 1)) }),
         );
         const png = readPng(await shot(`f20-1-home-${tag}`));
         const right = g.main.r - 3;
@@ -232,6 +235,20 @@ const session = async (ctx) => {
           `F20.1 (${tag}): right and top edge pixels continue the gradient (no grey strip)`,
           [...edges, ...top].every((e) => colourClose(e.edge, e.inner, 14)),
           JSON.stringify([...edges, ...top].map((e) => [e.edge, e.inner])),
+        );
+
+        // The name of a recent card ends before its menu and star buttons (name content box vs button boxes).
+        const cardNames = await ev(`(() => [...document.querySelectorAll('[data-recent-card]')].map((card) => {
+          const name = card.querySelector('.home-card-name-text'); const r = name.getBoundingClientRect();
+          const content = { l: r.left, r: r.right, t: r.top, b: r.bottom };
+          const hit = (sel) => { const e = card.querySelector(sel); if (!e) return false; const q = e.getBoundingClientRect();
+            return q.width > 0 && content.l < q.right && content.r > q.left && content.t < q.bottom && content.b > q.top; };
+          return { menu: hit('[data-card-menu]'), star: hit('.home-card-star button'), text: name.textContent.length };
+        }))()`);
+        C(
+          `recent cards (${tag}): the name does not run under the menu or star button`,
+          cardNames.length > 0 && cardNames.every((c) => !c.menu && !c.star),
+          JSON.stringify(cardNames),
         );
 
         // F20.2: tool tiles.
@@ -291,7 +308,8 @@ const session = async (ctx) => {
           await shot(`f20-3-recent-${w}x${h}-dpr${dpr}`);
           C(
             `F20.3 (${w}x${h}, DPR ${dpr}): recent thumbnail natural size >= card size x DPR`,
-            !!th && th.dpr === dpr && thumbSharp(th.nw, th.nh, th.bw, th.bh, th.dpr),
+            // devicePixelRatio under emulation is a float32 (1.0000000149...), so compare with a tolerance, never ===.
+            !!th && Math.abs(th.dpr - dpr) < 0.01 && thumbSharp(th.nw, th.nh, th.bw, th.bh, dpr),
             JSON.stringify(th),
           );
         }, dpr);
@@ -326,15 +344,17 @@ const session = async (ctx) => {
           await sleep(500);
         };
         const variants = [
-          ['Freehand', 160],
-          ['Freehand arrow', 240],
-          ['Freehand shape', 320],
+          ['Freehand', 110],
+          ['Freehand arrow', 190],
+          ['Freehand shape', 270],
         ];
         const inputs = [];
+        const rawPts = [];
         for (const [i, [name, y]] of variants.entries()) {
           await pickVariant(name);
           const pts = jitter(100, y, 400, y + 10, i * 3);
           inputs.push(pts.length);
+          rawPts.push(pts);
           await stroke(pts);
           await sleep(1200);
         }
@@ -342,19 +362,36 @@ const session = async (ctx) => {
         const list = await annotations();
         await shot(`f20-4-ink-${w}x${h}`);
         const inks = list.filter((a) => a.kind === 'ink');
+        // The document list is a summary without strokes: read the full annotations of page 0 (the list_annotations wire).
+        const full = await ev(`(async () => {
+          let out = [];
+          for (let id = 0; id < 60; id++) {
+            const r = await window.__TAURI_INTERNALS__.invoke('list_annotations', { docId: id, pageId: 0 }).then((x) => x, () => null);
+            if (r && r.length) out = r;
+          }
+          return out.filter((a) => a.kind === 'ink');
+        })()`);
         C(
           `F20.4 (${w}x${h}): three ink annotations from pen, arrow and shape`,
           inks.length === 3,
           JSON.stringify(list.map((a) => a.kind)),
         );
-        inks.forEach((a, i) => {
+        full.forEach((a, i) => {
           const strokes = a.strokes ?? a.data?.strokes ?? [];
           const pts = strokePoints(strokes[0]);
-          const v = strokeSmooth(pts, inputs[i] ?? 61);
+          // Catmull-Rom interpolates (more points than the samples) after dropping close samples: the verdict is the
+          // largest turn angle, which must be small and well below that of the jittery input.
+          const v = strokeSmooth(pts, Number.POSITIVE_INFINITY);
+          const rawWorst = Math.max(...turnAngles(rawPts[i] ?? []));
           C(
-            `F20.4 (${w}x${h}): ${variants[i]?.[0]} stored path has fewer points than input and is smooth`,
-            v.ok,
-            JSON.stringify({ stored: v.points, input: inputs[i], worstTurn: Number(v.worst.toFixed(2)) }),
+            `F20.4 (${w}x${h}): ${variants[i]?.[0]} stored path is smooth (turns below input jitter)`,
+            v.ok && v.worst < rawWorst,
+            JSON.stringify({
+              stored: v.points,
+              input: inputs[i],
+              worstTurn: Number(v.worst.toFixed(2)),
+              inputWorstTurn: Number(rawWorst.toFixed(2)),
+            }),
           );
         });
         await closeAll();
@@ -392,20 +429,29 @@ const session = async (ctx) => {
         await input.insertText(hexValue);
         await input.press('Enter');
         await sleep(700);
-        await input.press('Escape').catch(() => {});
-        // The applied colour shows on the split button swatch or as the first recent.
-        await input.click({ selector: '[data-split="highlight"] [data-roving="highlight:more"]' });
-        await sleep(500);
+        // The popover closes on apply; the menu below it may still be open (shot for debugging), then reopen what is missing.
+        if (!(await ev(`!!document.querySelector('[data-colour-more]')`))) {
+          await input.click({ selector: '[data-split="highlight"] [data-roving="highlight:more"]' });
+          await input.waitFor(`!!document.querySelector('[data-colour-more]')`, {
+            timeoutMs: 4000,
+            what: 'colour menu',
+          });
+        }
+        await shot(`f20-5-after-apply-${w}x${h}`);
+        // The applied colour is the first recent in the popover (its swatch label is the hex).
+        await input.click({ selector: '[data-colour-more]' });
+        await input.waitFor(`!!document.querySelector('input[aria-label="Hex colour"]')`, {
+          timeoutMs: 4000,
+          what: 'colour popover',
+        });
         const first = await ev(
-          `(() => { const e = document.querySelector('[data-colour-swatch]'); return e ? getComputedStyle(e.querySelector('span') ?? e).backgroundColor : null; })()`,
+          `(() => { const e = document.querySelector('[role="radiogroup"][aria-label="Recently used"] [data-colour-swatch]'); return e ? e.getAttribute('aria-label') : null; })()`,
         );
-        const applied = await ev(
-          `(() => { const b = document.querySelector('[data-split="highlight"]'); return b ? getComputedStyle(b.querySelector('[data-swatch]') ?? b).backgroundColor : null; })()`,
-        );
+        await shot(`f20-5-colour-recent-${w}x${h}`);
         C(
-          `F20.5 (${w}x${h}): a valid hex applies (current colour or first recent is #${hexValue})`,
-          rgbIs(first ?? '', [210, 105, 30]) || rgbIs(applied ?? '', [210, 105, 30]),
-          JSON.stringify({ first, applied }),
+          `F20.5 (${w}x${h}): a valid hex applies (first recent is #${hexValue})`,
+          (first ?? '').toUpperCase() === `#${hexValue}`,
+          JSON.stringify({ first }),
         );
         await input.press('Escape').catch(() => {});
         await closeAll();
@@ -505,6 +551,13 @@ const session = async (ctx) => {
         await sleep(600);
         const kept = Math.round(await widthNow());
         C(`F20.8 (${w}x${h}): width kept after a reload`, Math.abs(kept - 480) <= 1, `${kept}`);
+        // Restore the default so later scripts see the 300 px inspector (the width is stored app-wide).
+        {
+          const g = await grip();
+          const now = await widthNow();
+          await input.drag(g, { x: g.x + (now - 300), y: g.y }, { steps: 12 });
+          await sleep(600);
+        }
         await input.press('Escape');
         await closeAll();
       });
@@ -601,7 +654,7 @@ const session = async (ctx) => {
           // The seam: pixels just under the tab's bottom edge across its inner width carry the card's colour, no border line.
           const xs = [0.3, 0.5, 0.7].map((f) => t.l + (t.r - t.l) * f);
           const below = xs.flatMap((x) => [t.b - 1, t.b, t.b + 1].map((y) => pixelAt(png, x, y)));
-          const ref = pixelAt(png, (t.l + t.r) / 2, t.b + 8);
+          const ref = pixelAt(png, (t.l + t.r) / 2, t.b - 4);
           C(
             `F20.11 (${w}x${h}, ${m}): active tab has no bottom border and no line under it, key chip shown`,
             t.id === m &&

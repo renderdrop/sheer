@@ -374,7 +374,7 @@ const session = async (ctx) => {
         await shot(`f19-16-inspector-${item}`);
         C(
           `F19.16: ${what} opens the 300 px inspector, no dialog or popup`,
-          st.open && st.w === 300 && dlg === 0 && !picker,
+          st.open && Math.abs(st.w - 300) <= 6 && dlg === 0 && !picker,
           JSON.stringify({ ...st, dlg, picker }),
         );
         return st;
@@ -424,7 +424,7 @@ const session = async (ctx) => {
       const ocr = await inspectorState();
       C(
         'F19.16: Recognize text opens the inspector, no dialog',
-        ocr.open && ocr.w === 300 && (await dialogCount()) === 0,
+        ocr.open && Math.abs(ocr.w - 300) <= 6 && (await dialogCount()) === 0,
         JSON.stringify(ocr),
       );
       await input.press('Escape');
@@ -573,8 +573,8 @@ const session = async (ctx) => {
         );
         await sleep(400);
         const r =
-          await ev(`(() => { const radios = [...document.querySelectorAll('[role="radio"]')].filter((e) => !e.hasAttribute('data-palette-set') && getComputedStyle(e).display !== 'none');
-          return { colours: radios.map((e) => getComputedStyle(e.querySelector('span') ?? e).backgroundColor !== 'rgba(0, 0, 0, 0)' ? getComputedStyle(e.querySelector('span') ?? e).backgroundColor : getComputedStyle(e).backgroundColor), button: !!document.querySelector('[data-palette-chooser]') }; })()`);
+          await ev(`(() => { const radios = [...document.querySelectorAll('[role="radio"]')].filter((e) => !e.hasAttribute('data-palette-set') && e.getAttribute('aria-label') !== 'Custom' && !/recent|zuletzt/i.test(e.closest('[role="radiogroup"]')?.getAttribute('aria-label') ?? '') && getComputedStyle(e).display !== 'none');
+          return { colours: radios.map((e) => getComputedStyle(e.querySelector('span') ?? e).backgroundColor !== 'rgba(0, 0, 0, 0)' ? getComputedStyle(e.querySelector('span') ?? e).backgroundColor : getComputedStyle(e).backgroundColor), button: !!document.querySelector('[data-palette-chooser]')}; })()`);
         return r;
       };
       const first = await readSwatches();

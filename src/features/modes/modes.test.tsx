@@ -911,7 +911,7 @@ describe('the mode card (DESIGN 3.18 E4)', () => {
     expect(container.querySelector('[data-glide-pill="mode"]')).toBeNull();
     expect(tab('Read').className).toContain('aria-selected:bg-subtle');
     expect(tab('Read').className).toContain('aria-selected:border-border-subtle');
-    expect(tab('Read').className).toContain('-mb-px');
+    expect(tab('Read').className).toContain('aria-selected:z-1');
     expect(tab('Read').getAttribute('aria-selected')).toBe('true');
     expect(tab('Edit').getAttribute('aria-selected')).toBe('false');
     expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('bg-chrome');
@@ -926,7 +926,8 @@ describe('the mode card (DESIGN 3.18 E4)', () => {
     for (const entry of tabs) {
       expect(entry.className).toContain('border-b-0');
       expect(entry.className).toContain('border-transparent');
-      expect(entry.className).toContain('-mb-px');
+      // No -1 px overhang: the row's bottom line is an ::after hairline the active tab covers (a snapped 0.8 px border at DPR 1.25).
+      expect(entry.className).not.toContain('-mb-px');
       expect(entry.className).toContain('aria-selected:border-border-subtle');
       expect(entry.className).toContain('hover:text-text');
       expect(entry.querySelector('[data-key-chip]')).not.toBeNull();
@@ -952,7 +953,7 @@ describe('the mode card (DESIGN 3.18 E4)', () => {
     const frame = container.querySelector('[data-slot="mode-tool-frame"]');
     expect(frame?.className).toContain('border-t-0');
     expect(frame?.className).toContain('border-border-subtle');
-    expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('border-b');
+    expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('after:border-b');
     expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('h-mode-tab');
     expect(container.querySelector('[data-slot="tool-row"]')?.className).toContain('h-tool-area');
     expect(item('Select').className).toContain('h-tool-item');
@@ -1030,5 +1031,33 @@ describe('focusToolItem', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('toggle style, separators and tab gaps (v2.0.0 designer round)', () => {
+  it('a pressed toggle is White with the Stone border, not Solar, and has no data-on', () => {
+    setup(<Rows />);
+    useSmartLinks.setState({ enabled: true, overrides: {} });
+    const button = item('Smart links');
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(button.hasAttribute('data-on')).toBe(false);
+    expect(button.className).toContain('aria-pressed:bg-card');
+    expect(button.className).toContain('aria-pressed:border-border-control');
+  });
+
+  it('Lesen has separators between its three groups, incl. Select text | Magnifier', () => {
+    const { container } = setup(<Rows />);
+    const row = container.querySelector('[data-slot="tool-row"]');
+    const kids = Array.from(row?.children ?? []);
+    const at = kids.findIndex((el) => el.textContent === 'Magnifier');
+    expect(kids[at - 1]?.getAttribute('role')).toBe('separator');
+    expect(row?.querySelectorAll('[role="separator"]').length).toBe(2);
+  });
+
+  it('inactive key chips take no room (even gaps between tabs)', () => {
+    setup(<Rows />);
+    const chips = screen.getAllByRole('tab').map((entry) => entry.querySelector('[data-key-chip]'));
+    expect(chips[1]?.className).toContain('absolute');
+    expect(chips[0]?.className).toContain('group-aria-selected:static');
   });
 });

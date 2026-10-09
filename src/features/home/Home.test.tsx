@@ -10,6 +10,7 @@ import { setup } from '../../test/render';
 import { Home } from './Home';
 import { filterByName, formatAge, visibleRecents, withoutOpen } from './recents';
 import { gridTarget } from './roving';
+import { ToolRows } from './ToolRows';
 
 const api = vi.hoisted(() => ({
   listRecents: vi.fn(),
@@ -207,6 +208,15 @@ describe('Home', () => {
       expect(sub?.id).toBeTruthy();
       expect(tile.getAttribute('aria-describedby')).toBe(sub?.id);
     }
+  });
+
+  it('shows three tool tiles and More tools in the tightest fit', () => {
+    const { container } = setup(<ToolRows few />);
+    const names = [...container.querySelectorAll('[data-home-tools] button')].map(
+      (tile) => tile.querySelector('.home-tile-title')?.textContent,
+    );
+    expect(names).toHaveLength(4);
+    expect(names[3]).toBe('More tools');
   });
 
   it('offers no Show all when the recents fit in two rows', async () => {
