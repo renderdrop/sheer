@@ -517,16 +517,25 @@ fn cached_groups(bytes: &[u8], doc: &Document) -> std::sync::Arc<Groups> {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     bytes.hash(&mut hasher);
     let key = hasher.finish();
-    let Ok(mut cache) = CACHE.lock() else {
-        return std::sync::Arc::new(Groups::of(doc));
-    };
-    if let Some((cached_key, len, groups)) = cache.as_ref() {
-        if *cached_key == key && *len == bytes.len() {
-            return groups.clone();
+    let len = bytes.len();
+    let hit = |cache: &Cache| match cache {
+        Some((cached_key, cached_len, groups)) if *cached_key == key && *cached_len == len => {
+            Some(groups.clone())
         }
+        _ => None,
+    };
+    // The lock is held only to look up and to store: the scan runs outside it, so one slow document does not block the reads of others.
+    if let Some(groups) = CACHE.lock().ok().and_then(|cache| hit(&cache)) {
+        return groups;
     }
     let groups = std::sync::Arc::new(Groups::of(doc));
-    *cache = Some((key, bytes.len(), groups.clone()));
+    if let Ok(mut cache) = CACHE.lock() {
+        // Another read of the same bytes may have stored its scan meanwhile; keep that one (they are equal).
+        if let Some(stored) = hit(&cache) {
+            return stored;
+        }
+        *cache = Some((key, len, groups.clone()));
+    }
     groups
 }
 

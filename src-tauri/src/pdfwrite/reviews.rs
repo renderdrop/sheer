@@ -88,18 +88,17 @@ impl Groups {
                 firsts.insert(first);
             }
         }
-        // Sorted, so the key of a duplicate `/NM` is the same on every read; a later first with a taken key gets its object number mixed in.
+        // Sorted, so the key of a duplicate `/NM` is the same on every read; a later first with a taken key gets its object number and
+        // the attempt mixed in. A hostile file can forge salted names too, so the attempts are capped: a first that finds no free key
+        // within MAX_KEY_ATTEMPTS makes no group (its members read as annotations on their own).
         let mut taken: HashSet<u64> = HashSet::new();
         for first in firsts {
-            let mut salt = false;
-            let hash = loop {
-                let hash = identity(doc, first, salt);
-                if taken.insert(hash) {
-                    break hash;
-                }
-                salt = true;
-            };
-            groups.firsts.insert(first, hash);
+            let free = (0..MAX_KEY_ATTEMPTS)
+                .map(|attempt| identity(doc, first, attempt))
+                .find(|hash| taken.insert(*hash));
+            if let Some(hash) = free {
+                groups.firsts.insert(first, hash);
+            }
         }
         groups
     }
@@ -115,7 +114,8 @@ impl Groups {
         // `Some((first, links from the last node of the path))`; `last_is_first` when the walk ended at a non-member.
         let mut base: Option<(ObjectId, usize)> = None;
         let mut last_is_first = false;
-        loop {
+        // Every round stops or grows the path, and the path stops at MAX_GROUP_DEPTH; the bound says so explicitly.
+        for _ in 0..MAX_GROUP_DEPTH {
             let cur = *path.last()?;
             let Ok(Object::Dictionary(at)) = doc.get_object(cur) else {
                 break;
@@ -210,13 +210,17 @@ impl Groups {
     }
 }
 
+/// Most keys tried for one group's first before it is left without a group (see [`Groups::of`]).
+const MAX_KEY_ATTEMPTS: u32 = 8;
+
 /// Longest `/NM` that identifies a group's first annotation; a longer one is not looked at (the object number is used).
 const MAX_NAME_BYTES: usize = 256;
 
 /// What identifies the group whose first annotation is `first`: its `/NM`, else its object number.
 ///
-/// With `salt` the object number is mixed in as well, to tell apart two firsts of a hostile file that carry the same `/NM`.
-fn identity(doc: &Document, first: ObjectId, salt: bool) -> u64 {
+/// From `attempt` 1 on, the object number and the attempt are mixed in as well, to tell apart two firsts of a hostile file that carry
+/// the same `/NM`.
+fn identity(doc: &Document, first: ObjectId, attempt: u32) -> u64 {
     let name = match doc.get_object(first) {
         Ok(Object::Dictionary(dict)) => match dict.get(b"NM") {
             Ok(Object::String(bytes, _)) if !bytes.is_empty() && bytes.len() <= MAX_NAME_BYTES => {
@@ -227,8 +231,8 @@ fn identity(doc: &Document, first: ObjectId, salt: bool) -> u64 {
         _ => None,
     };
     let mut identity = name.unwrap_or_else(|| format!("obj {} {}", first.0, first.1).into_bytes());
-    if salt {
-        identity.extend_from_slice(format!("\0obj {} {}", first.0, first.1).as_bytes());
+    if attempt > 0 {
+        identity.extend_from_slice(format!("\0obj {} {} #{attempt}", first.0, first.1).as_bytes());
     }
     crate::model::annotation::group_hash(&identity)
 }
@@ -519,6 +523,58 @@ mod tests {
         assert_eq!(group(3), group(1));
         let again = read_page(&bytes, 0).unwrap();
         assert_eq!(again.get(&0), links.get(&0), "the keys are stable");
+    }
+
+    fn named(name: &[u8]) -> Dictionary {
+        dictionary! {"Subtype" => "Highlight", "NM" => Object::String(name.to_vec(), lopdf::StringFormat::Literal)}
+    }
+
+    #[test]
+    // Regression file of the v2.0.0 audit (it looped with the old one-salt identity); with attempt-numbered salts it no longer
+    // collides, the cap itself is covered by `a_first_whose_every_key_is_forged_makes_no_group`.
+    fn a_name_forged_to_match_a_salted_key_still_ends_with_distinct_keys() {
+        // The audit's file (ADR-144): A (object 2) `/NM "x"`, B (3) carries the salted name of C, C (4) `/NM "x"` again; each first
+        // has one member. The old code salted C to exactly B's name and looped forever.
+        let bytes = file(vec![
+            named(b"x"),
+            named(b"x\0obj 4 0"),
+            named(b"x"),
+            member(2),
+            member(3),
+            member(4),
+        ]);
+        let links = read_page(&bytes, 0).unwrap();
+        let group = |p: u32| links.get(&p).and_then(|l| l.group);
+        let keys: HashSet<u64> = (0..3).filter_map(group).collect();
+        assert_eq!(keys.len(), 3, "three firsts, three distinct keys");
+        for first in 0..3 {
+            assert_eq!(group(first + 3), group(first), "{first}");
+        }
+        assert_eq!(read_page(&bytes, 0).unwrap(), links, "the keys are stable");
+    }
+
+    #[test]
+    fn a_first_whose_every_key_is_forged_makes_no_group() {
+        // A (2) `/NM "x"`; B1..B7 (3..9) carry the names of C's salted attempts 1..7; C (10) `/NM "x"`. C finds no free key within
+        // MAX_KEY_ATTEMPTS and is left ungrouped, with its member; the others keep their groups.
+        let last = 2 + MAX_KEY_ATTEMPTS;
+        let mut annots = vec![named(b"x")];
+        annots.extend(
+            (1..MAX_KEY_ATTEMPTS).map(|k| named(format!("x\0obj {last} 0 #{k}").as_bytes())),
+        );
+        annots.push(named(b"x"));
+        annots.extend((2..=last).map(member));
+        let links = read_page(&file(annots), 0).unwrap();
+        let group = |p: u32| links.get(&p).and_then(|l| l.group);
+        let c = MAX_KEY_ATTEMPTS;
+        let firsts = c + 1;
+        assert_eq!(group(c), None, "C has no free key");
+        assert_eq!(group(firsts + c), None, "and so neither has its member");
+        let keys: HashSet<u64> = (0..c).filter_map(group).collect();
+        assert_eq!(keys.len() as u32, c, "the others keep distinct keys");
+        for first in 0..c {
+            assert_eq!(group(firsts + first), group(first), "{first}");
+        }
     }
 
     #[test]
