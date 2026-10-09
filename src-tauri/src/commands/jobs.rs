@@ -1635,6 +1635,11 @@ mod tests {
             JobEvent::Failed(error) => assert_eq!(error.code(), ErrorCode::Internal),
             other => panic!("{other:?}"),
         }
+        // The place is freed right after the event is sent; a slow runner can observe the gap (CI #161, Windows).
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while registry.running() != 0 && std::time::Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
         assert_eq!(registry.running(), 0);
     }
 

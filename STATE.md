@@ -15,6 +15,7 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
   ADR-142: model per package named in the brief (Opus: audits, engine-critical Rust, 2nd fix round; Haiku: mechanic). Briefs that start a dev/acceptance window must say: stop it only by process path (incident 2026-10-08: an agent killed sheer.exe by name).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - 5a1ef54..b03ca87 FX, v20 script adaptations, F21.9 one strip, release v2.1.0 → run #161 (37959918611) red: Windows flake in jobs test a_panic_is_an_internal_failure_and_frees_the_place (pre-existing race, place freed after the event) → deflaked next commit; release run #25 (37959919056) success (stable)
   - fd79c76..bf8832e ADR-145, F21.2 recovery, F21.7/.8 render+HF, F21.5 freehand, F21.1/.3/.4/.6 UI, v21 script → run #160 (37935814056) GREEN
   - 8b76a2d..69e0553 F20.6 fix + release v2.0.0 → run #159 (37923883893) GREEN; release run #24 (37923883282) success (stable)
   - 20b6885..f9ac9b5 security fix groups, acceptance + designer fixes → run #158 (37917277747) GREEN
