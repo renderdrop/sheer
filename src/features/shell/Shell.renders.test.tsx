@@ -22,7 +22,7 @@ import { Shell } from './Shell';
  * Render counts (the shell must not re-render for what changes often). Three counters, each at a seam where a parent's render
  * reaches a child:
  * - `shell`: the shell calls `useShellStructure` once per render, so the wrapper below counts the shell's renders.
- * - `tools`: the tool row; it asks `useModeSlots` once per render, so that is the seam.
+ * - `tools`: the tool row; it asks `useModeGroups` once per render, so that is the seam.
  * - `leftPanel`: the Tabs primitive, which only the page sidebar uses in these tests, counted the same way.
  */
 const renders = vi.hoisted(() => ({ shell: 0, tools: 0, leftPanel: 0 }));
@@ -42,9 +42,9 @@ vi.mock('../modes/useSlots', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../modes/useSlots')>();
   return {
     ...actual,
-    useModeSlots: (...args: Parameters<typeof actual.useModeSlots>) => {
+    useModeGroups: (...args: Parameters<typeof actual.useModeGroups>) => {
       renders.tools += 1;
-      return actual.useModeSlots(...args);
+      return actual.useModeGroups(...args);
     },
   };
 });
@@ -308,7 +308,7 @@ describe('what changes often does not render the shell, the tool sidebar or the 
     // Crossing 1280 changes nothing either.
     resizeTo(1280);
     expect(counts()).toEqual(before);
-    expect(screen.getByRole('toolbar', { name: 'Read' })).not.toBeNull();
+    expect(screen.getByRole('toolbar', { name: 'Modes and tools' })).not.toBeNull();
 
     const wide = counts();
     for (const width of [1300, 1500, 1920, 2400]) resizeTo(width);

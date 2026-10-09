@@ -52,7 +52,7 @@ const TMP = resolve(ROOT, 'review/v21/tmp');
 const SHOTS = 'v21/shots';
 const WINDOW_PS = resolve(import.meta.dirname, 'window.ps1');
 const q = (s) => JSON.stringify(s);
-const ALL = 'glow,recovery,home,splitters,freehand,toolbar,hf,thumbs';
+const ALL = 'glow,recovery,home,splitters,freehand,toolbar,hf,thumbs,look';
 const PHASES = (process.env.V21_PHASES ?? ALL).split(',');
 const RUN = Date.now().toString(36);
 const AUTOSAVE_WAIT_MS = 36000; // limits::AUTOSAVE_DEBOUNCE is 30 s
@@ -1140,6 +1140,23 @@ async function thumbsPhase(a) {
   });
 }
 
+// ================================================================================================================ look (F21.9)
+/** Screenshots only (owner: no large tests): the editor with the one-strip tool card at both native sizes, German UI. */
+async function lookPhase(a) {
+  await a.closeAll();
+  await a.setSettings({ language: 'de', showToolLabels: false });
+  await a.ev('location.reload()').catch(() => {});
+  await sleep(4000); // the shared reload() waits for the English UI
+  await a.open(write('look.pdf', plainPdf(2, 'Look')));
+  await a.atSizes(async (w, h) => {
+    await sleep(800);
+    a.grab(`f21-9-strip-${w}x${h}`);
+    C(`F21.9 (${w}x${h}): strip captured`, true, `review/v21/shots/f21-9-strip-${w}x${h}.png`);
+  });
+  await a.setSettings({ language: 'en' });
+  await a.closeAll();
+}
+
 // ================================================================================================================ run
 const PHASE_FNS = {
   glow: glowPhase,
@@ -1149,6 +1166,7 @@ const PHASE_FNS = {
   toolbar: toolbarPhase,
   hf: hfPhase,
   thumbs: thumbsPhase,
+  look: lookPhase,
 };
 let code = 0;
 // Orphaned WebView2 browsers of an earlier run (acceptance data dir only) block the next start.

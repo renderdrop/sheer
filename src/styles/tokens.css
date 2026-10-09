@@ -172,10 +172,13 @@
   --spacing-doc-tab-max: var(--doc-tab-max);
   --spacing-gutter: var(--chrome-gutter);
   --spacing-mode-card: var(--mode-card-height);
-  --spacing-mode-tab: var(--mode-tab-height);
   --spacing-tool-area: var(--tool-area-height);
   --spacing-tool-item: var(--tool-item-height);
-  --spacing-kbd: var(--kbd-compact);
+  --spacing-tool-square: var(--tool-square);
+  --spacing-tool-square-compact: var(--tool-square-compact);
+  --spacing-tool-labelled: var(--tool-labelled-width);
+  --spacing-tool-badge: var(--tool-badge);
+  --spacing-tool-caption: var(--tool-caption-height);
   --spacing-inspector: var(--inspector-width);
   --spacing-inspector-header: var(--inspector-header-height);
   --spacing-inspector-footer: var(--inspector-footer-height);
@@ -472,12 +475,17 @@
   --tab-gap: calc(var(--space-1) / 2); /* 2 between tabs */
   --tabs-n: 1; /* tabs that share the strip: min(open documents, 5); the strip sets it */
   --chrome-gutter: 12px;
-  --mode-card-height: 98px; /* icons only (F21.6): 32 header + 64 tool area + 2 card border; with labels 106, see below */
-  --mode-tab-height: 32px;
-  --tool-area-height: calc(var(--mode-card-height) - var(--mode-tab-height) - 2px);
-  --tool-item-height: 56px;
+  /* The tool card (F21.9): one strip of all five mode groups, no tab header. Icons only: 2 border + 70 area (square 36 + 2 +
+     caption 16, centred); with labels 96, see below. */
+  --mode-card-height: 72px;
+  --tool-area-height: calc(var(--mode-card-height) - 2px);
+  --tool-square: 36px; /* every tool, toggle, split and overflow button: one square */
+  --tool-square-compact: 28px; /* compaction steps 2 and 3 */
+  --tool-labelled-width: 64px; /* "Show labels": icon over label, one width for all */
+  --tool-item-height: 56px; /* the labelled item */
   --tool-item-radius: 8px;
-  --kbd-compact: 16px;
+  --tool-badge: 12px; /* the chevron badge of a split tool, inside its square */
+  --tool-caption-height: 16px; /* the mode caption under each group */
   --chrome: #fafaf8; /* one background for menu bar, tab strip, mode card surround and both sidebars (F20.9) */
   --inspector-width: 300px;
   --inspector-header-height: 48px;
@@ -939,9 +947,9 @@
   z-index: var(--z-modal-popover);
 }
 
-/* "Show labels" on (F21.6): the icon-over-label card, 72 tool area. */
+/* "Show labels" on (F21.6, F21.9): the icon-over-label card, 2 border + 94 area (item 56 + 2 + caption 16, centred). */
 :root[data-tool-labels="on"] {
-  --mode-card-height: 106px;
+  --mode-card-height: 96px;
 }
 
 @utility z-tooltip {

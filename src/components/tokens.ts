@@ -39,9 +39,9 @@ export const LAYOUT = {
   menubar: 28,
   tabstrip: 42,
   gutter: 12,
-  /** Icons only (default, F21.6); with labels it is `modeCardLabels`. */
-  modeCard: 98,
-  modeCardLabels: 106,
+  /** Icons only (default, F21.6, F21.9); with labels it is `modeCardLabels`. */
+  modeCard: 72,
+  modeCardLabels: 96,
   statusbar: 30,
   inspector: 300,
   minibar: 40,

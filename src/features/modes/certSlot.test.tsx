@@ -11,7 +11,7 @@ import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { useIdentities } from '../signatures/sign/identities';
 import { useCertSign } from '../signatures/sign/store';
-import { ModeRow, ToolRow, switchMode } from '.';
+import { ToolRow, switchMode } from '.';
 
 const openManager = vi.fn();
 vi.mock('../signatures/certs/open', () => ({ openCertificateManager: (tab?: string) => openManager(tab) }));
@@ -52,7 +52,6 @@ const uiInitial = useUi.getState();
 
 const Rows = () => (
   <>
-    <ModeRow />
     <ToolRow />
   </>
 );
@@ -128,7 +127,10 @@ describe('the Zertifikat slot (DESIGN 3.8 S1)', () => {
   it('every slot of the mode is disabled while a signature locks the document', async () => {
     act(() => useDocuments.getState().add({ id: 1, pageCount: 3, displayName: 'a.pdf', signatureLock: 'locked' }));
     setup(<Rows />);
-    const buttons = within(screen.getByRole('toolbar'))
+    const group = document.querySelector<HTMLElement>(
+      '[data-mode-group][data-active="true"] [data-tools]',
+    ) as HTMLElement;
+    const buttons = within(group)
       .getAllByRole('button')
       .filter((button) => !(button.getAttribute('aria-label') ?? '').startsWith('Options'));
     expect(buttons.length).toBeGreaterThanOrEqual(8);
@@ -137,7 +139,7 @@ describe('the Zertifikat slot (DESIGN 3.8 S1)', () => {
 });
 
 describe('the fit at 960 x 640', () => {
-  it('keeps the eight tools of Ausfüllen & Signieren icon-only at step 2, without Mehr', () => {
+  it('keeps the eight tools of Ausfüllen & Signieren as compact squares at step 2, without an overflow button', () => {
     window.innerWidth = 1440; // wide: the fit is measured, not forced by the window
     const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth');
     const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
@@ -145,21 +147,26 @@ describe('the fit at 960 x 640', () => {
       configurable: true,
       get(this: HTMLElement) {
         if (this.getAttribute('role') !== 'toolbar') return 0;
+        // A labelled item is 64 wide, a square 36, a compact square 28 (F21.9).
         let total = 0;
-        for (const child of Array.from(this.children)) total += child.querySelector('[data-label]') === null ? 36 : 120;
+        for (const entry of Array.from(this.querySelectorAll('[data-toolbar-item]'))) {
+          if (entry.querySelector('[data-label]') !== null) total += 64;
+          else
+            total += (entry.closest('[data-split]') ?? entry).className.includes('size-tool-square-compact') ? 28 : 36;
+        }
         return total;
       },
     });
     Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
       configurable: true,
       get(this: HTMLElement) {
-        return this.getAttribute('role') === 'toolbar' ? 8 * 36 + 120 : 0;
+        return this.getAttribute('role') === 'toolbar' ? 48 * 28 : 0;
       },
     });
     try {
       setup(<Rows />);
       expect(screen.getByRole('toolbar').getAttribute('data-fit')).toBe('2');
-      expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+      expect(document.querySelector('[data-toolbar-item^="overflow-"]')).toBeNull();
       expect(item('Certificate').getAttribute('aria-label')).toBe('Certificate');
     } finally {
       if (scroll !== undefined) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', scroll);

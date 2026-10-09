@@ -386,7 +386,7 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     '--tabstrip-height': '42px',
     '--doc-tab-height': '36px',
     '--chrome-gutter': '12px',
-    '--mode-card-height': '98px',
+    '--mode-card-height': '72px',
     '--statusbar-height': '30px',
     '--status-control-height': '24px',
     '--inspector-width': '300px',

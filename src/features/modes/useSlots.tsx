@@ -49,7 +49,7 @@ import {
   Wand,
   type LucideIcon,
 } from 'lucide-react';
-import { createElement, useEffect, useMemo, useState } from 'react';
+import { createElement, useEffect, useMemo, useRef, useState } from 'react';
 
 import { runAction } from '../../actions/dispatch';
 import { headerFooterReason } from '../../actions/state';
@@ -61,7 +61,7 @@ import type { SigningIdentityInfo, StoreStatus } from '../../api/signing';
 import { isDirty, useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useTools, type DrawVariant, type MarkupVariant, type ShapeVariant } from '../../stores/tools';
-import { useUi, type Mode, type ToolId } from '../../stores/ui';
+import { MODES, useUi, type Mode, type ToolId } from '../../stores/ui';
 import { deletePages, insertBlank, insertFromFile, rotatePages } from '../organize/commands';
 import { useSlots as usePageSlots } from '../organize/source';
 import { selectionOf, useOrganize } from '../organize/store';
@@ -69,7 +69,7 @@ import { runCompress, runExtract, runMerge, runSplit } from '../jobs/actions';
 import { useSignatureLock } from '../lock/useSignatureLock';
 import { openCertificateManager } from '../signatures/certs/open';
 import { armItem, createAndArm } from '../signatures/place/menu';
-import { canSign, useSigningIdentities } from '../signatures/sign/identities';
+import { canSign, refreshSigningIdentities, useSigningIdentities } from '../signatures/sign/identities';
 import { useCertSign } from '../signatures/sign/store';
 import { usePlacement, type PlaceItem } from '../signatures/place/store';
 import { toggleSmartLinksForActive } from '../smartlinks/actions';
@@ -80,12 +80,15 @@ import { useLastVariant } from './lastVariant';
 import { InsertOptions, RedactOptions } from './Options';
 import { SignaturePreview } from '../signatures/library/SignaturePreview';
 import { grouped, type SlotDef, type VariantDef } from './model';
+import { switchMode } from './switch';
 
-/** The saved signatures and initials, read once when `enabled` first holds (Ausfüllen & Signieren is on). */
-function useLibraryItems(enabled: boolean): readonly LibraryItem[] {
+/** The saved signatures and initials: read at once, and again each time `refresh` turns on (entering Ausfüllen & Signieren). */
+function useLibraryItems(refresh: boolean): readonly LibraryItem[] {
   const [items, setItems] = useState<readonly LibraryItem[]>([]);
+  const read = useRef(false);
   useEffect(() => {
-    if (!enabled) return;
+    if (!refresh && read.current) return;
+    read.current = true;
     let cancelled = false;
     listSignatures().then(
       (library) => {
@@ -96,7 +99,7 @@ function useLibraryItems(enabled: boolean): readonly LibraryItem[] {
     return () => {
       cancelled = true;
     };
-  }, [enabled]);
+  }, [refresh]);
   return items;
 }
 
@@ -633,9 +636,38 @@ const MAKERS: Readonly<Record<Mode, Maker>> = {
   edit: bearbeiten,
 };
 
-/** The tool-row slots of a mode (FEEDBACK F14, in its order), followed live from the stores. */
-export function useModeSlots(mode: Mode): readonly SlotDef[] {
+/** The slots of one mode in the strip of all five (F21.9). */
+export interface ModeGroup {
+  mode: Mode;
+  slots: readonly SlotDef[];
+}
+
+/**
+ * Mode is implicit (F21.9): a tool or action of another group first switches to its mode (which releases the tool and closes the
+ * tool inspector), then runs. A toggle (Smart links) belongs to the tab, not to a mode, and never switches.
+ */
+function entering(mode: Mode, slot: SlotDef): SlotDef {
+  if (slot.kind === 'toggle') return slot;
+  const enter = (run: () => void) => (): void => {
+    if (useUi.getState().mode !== mode) switchMode(mode);
+    run();
+  };
+  return {
+    ...slot,
+    run: enter(slot.run),
+    ...(slot.variants === undefined
+      ? {}
+      : { variants: slot.variants.map((variant) => ({ ...variant, run: enter(variant.run) })) }),
+  };
+}
+
+/**
+ * The tool slots of all five modes (FEEDBACK F14, F21.9), in mode order, each group in its own order, followed live from the
+ * stores. Only the current mode's group shows an active tool; a tool of another group enters its mode when used.
+ */
+export function useModeGroups(): readonly ModeGroup[] {
   const t = useT();
+  const mode = useUi((state) => state.mode);
   const activeTool = useUi((state) => state.activeTool);
   const redactMode = useUi((state) => state.redactMode);
   const markup = useTools((state) => state.markup);
@@ -647,8 +679,13 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
   const selectedPages = useOrganize((state) => selectionOf(state, docId).selected.length);
   const pageCount = usePageSlots(docId).length;
   const last = useLastVariant((state) => state.last);
-  const library = useLibraryItems(mode === 'fill');
-  const { status: certStatus, items: identities } = useSigningIdentities(mode === 'fill');
+  // The Fill & Sign group is always shown: the saved items and identities are read at once, and again on entering the mode.
+  const inFill = mode === 'fill';
+  const library = useLibraryItems(inFill);
+  const { status: certStatus, items: identities } = useSigningIdentities(true);
+  useEffect(() => {
+    if (inFill) void refreshSigningIdentities();
+  }, [inFill]);
   const certId = useCertSign((state) => state.identityId);
   const certActive = useCertSign((state) => state.active);
   const dirty = useAnnotations((state) => isDirty(state, docId));
@@ -656,7 +693,7 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
   const locked = useSignatureLock(docId ?? undefined).locked;
   const hfReason = headerFooterReason(useActionState());
   return useMemo(() => {
-    const slots = MAKERS[mode]({
+    const inputs: Inputs = {
       t,
       activeTool,
       redactMode,
@@ -677,11 +714,17 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
       dirty,
       smartLinks,
       headerFooterReason: hfReason,
+    };
+    return MODES.map((id): ModeGroup => {
+      const slots = MAKERS[id](inputs).map((slot) => {
+        // Another group never shows an active tool (Auswahl is the idle tool of all but Seiten); a toggle keeps its state.
+        const shown = id === mode || slot.kind === 'toggle' ? slot : { ...slot, on: false };
+        // A certifying signature locks every tool but Lesen (DESIGN 3.8 S5): each slot says why with the same tooltip.
+        const open = locked && id !== 'read' ? { ...shown, disabledReason: t('cert.locked.tool') } : shown;
+        return entering(id, open);
+      });
+      return { mode: id, slots };
     });
-    // A certifying signature locks every tool but Lesen (DESIGN 3.8 S5): each slot says why with the same tooltip.
-    return locked && mode !== 'read'
-      ? slots.map((slot) => ({ ...slot, disabledReason: t('cert.locked.tool') }))
-      : slots;
   }, [
     mode,
     t,

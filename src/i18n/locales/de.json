@@ -1232,6 +1232,7 @@
   "modes.edit": "Bearbeiten",
   "modes.announce": "Modus {mode}",
   "modes.more": "Mehr",
+  "modes.moreOf": "Weitere Werkzeuge: {mode}",
   "modes.options": "Optionen für {tool}",
   "modes.colour": "Farbe",
   "modes.readOnly": "Dieses Beispiel lässt sich nicht ändern.",

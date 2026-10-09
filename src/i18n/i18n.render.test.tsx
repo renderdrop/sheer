@@ -131,13 +131,14 @@ describe('the language setting', () => {
     await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
     await screen.findByRole('img', { name: /^Page 1 of/ });
     chooseLanguage('de');
-    const modes = screen.getByRole('tablist', { name: 'Modus' });
-    expect(
-      within(modes)
-        .getAllByRole('tab')
-        .map((tab) => tab.textContent?.replace(/\d$/, '')),
-    ).toEqual(['Lesen', 'Kommentieren', 'Ausfüllen & Signieren', 'Seiten', 'Bearbeiten']);
-    const tools = screen.getByRole('toolbar', { name: 'Lesen' });
+    expect([...document.querySelectorAll('[data-mode-caption]')].map((caption) => caption.textContent)).toEqual([
+      'Lesen',
+      'Kommentieren',
+      'Ausfüllen & Signieren',
+      'Seiten',
+      'Bearbeiten',
+    ]);
+    const tools = document.querySelector<HTMLElement>('[data-mode-group="read"]') as HTMLElement;
     for (const name of ['Auswahl', 'Hand', 'Textauswahl', 'Lupe', 'Drehen', 'Suche']) {
       expect(within(tools).getByRole('button', { name }), name).not.toBeNull();
     }
@@ -158,8 +159,8 @@ describe('the language setting', () => {
       screen.getByRole('separator', { name: 'Breite der Seitenleiste ändern' }).getAttribute('aria-valuetext'),
     ).toBe('220 Pixel');
     expect(screen.getByRole('region', { name: 'Dokument' })).not.toBeNull();
-    // Seiten is a mode tab and a sidebar tab.
-    expect(screen.getAllByRole('tab', { name: 'Seiten' })).toHaveLength(2);
+    // Seiten is a sidebar tab (the mode's caption is a button, F21.9).
+    expect(screen.getAllByRole('tab', { name: 'Seiten' })).toHaveLength(1);
     for (const tab of ['Gliederung', 'Kommentare', 'Suche']) {
       expect(screen.getByRole('tab', { name: tab }), tab).not.toBeNull();
     }

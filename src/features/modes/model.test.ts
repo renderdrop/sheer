@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import { MODES } from '../../stores/ui';
-import { FIT_START, fitOnResize, hiddenIds, keyOfMode, modeAfterKey, modeOfKey, tighter } from './model';
+import {
+  FIT_START,
+  fitOnResize,
+  hiddenIds,
+  hiddenInGroups,
+  keyOfMode,
+  modeAfterKey,
+  modeOfKey,
+  movableIn,
+  tighter,
+} from './model';
 
 describe('the keys of the modes', () => {
   it('1 to 5 are Lesen, Kommentieren, Ausfüllen & Signieren, Seiten, Bearbeiten', () => {
@@ -42,6 +52,34 @@ describe('the three-step overflow', () => {
     expect([...hiddenIds(ids, 'e', 2)]).toEqual(['d', 'c']);
     expect([...hiddenIds(ids, 'a', 10)]).toEqual(['e', 'd', 'c', 'b']);
     expect(hiddenIds(ids, null, 0).size).toBe(0);
+  });
+});
+
+describe('the group overflow (F21.9)', () => {
+  const groups = [
+    ['a1', 'a2', 'a3'],
+    ['b1', 'b2', 'b3', 'b4'],
+    ['c1', 'c2', 'c3', 'c4'],
+  ];
+
+  it('may move all but one tool of every group', () => {
+    expect(movableIn(groups)).toBe(2 + 3 + 3);
+    expect(movableIn([['x']])).toBe(0);
+  });
+
+  it('takes the trailing tool of the fullest group, the rightmost of equals, never the active tool', () => {
+    expect([...hiddenInGroups(groups, null, 1)]).toEqual(['c4']);
+    expect([...hiddenInGroups(groups, null, 2)]).toEqual(['c4', 'b4']);
+    expect([...hiddenInGroups(groups, null, 3)]).toEqual(['c4', 'b4', 'c3']);
+    expect([...hiddenInGroups(groups, 'c4', 1)]).toEqual(['c3']);
+    expect(hiddenInGroups(groups, null, 0).size).toBe(0);
+  });
+
+  it('keeps one tool in every group, the active one where it is in the group', () => {
+    const all = hiddenInGroups(groups, 'b1', 100);
+    expect(all.size).toBe(movableIn(groups));
+    expect(all.has('b1')).toBe(false);
+    expect(['a1', 'b1', 'c1'].every((id) => !all.has(id))).toBe(true);
   });
 });
 

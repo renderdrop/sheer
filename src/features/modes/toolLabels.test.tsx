@@ -43,7 +43,9 @@ describe('the tool card labels (F21.6)', () => {
     setup(<ModeCard />);
     for (const mode of ['read', 'comment', 'fill', 'pages', 'edit'] as const) {
       act(() => useUi.setState({ mode }));
-      const buttons = within(toolbar()).getAllByRole('button');
+      const buttons = within(toolbar())
+        .getAllByRole('button')
+        .filter((button) => !button.hasAttribute('data-mode-caption'));
       expect(buttons.length).toBeGreaterThan(1);
       expect(toolbar().querySelector('[data-label]')).toBeNull();
       for (const button of buttons) expect(button.getAttribute('aria-label')).toBeTruthy();
@@ -60,11 +62,12 @@ describe('the tool card labels (F21.6)', () => {
   });
 
   it('the card height has two values and the layout constants follow (8-pt grid)', () => {
-    expect(LAYOUT.modeCard).toBe(98);
-    expect(LAYOUT.modeCardLabels).toBe(106);
-    expect(LAYOUT.modeCard - LAYOUT.modeCardLabels).toBe(-8);
+    expect(LAYOUT.modeCard).toBe(72);
+    expect(LAYOUT.modeCardLabels).toBe(96);
+    expect(LAYOUT.modeCard % 8).toBe(0);
+    expect(LAYOUT.modeCardLabels % 8).toBe(0);
     const structure = { mode: 'document', leftCollapsed: false, menuRow: false, inspector: false } as const;
-    expect(bodyHeight(structure, 800) - bodyHeight(structure, 800, true)).toBe(8);
+    expect(bodyHeight(structure, 800) - bodyHeight(structure, 800, true)).toBe(24);
   });
 
   it('tooltips in the card open after 150 ms', () => {

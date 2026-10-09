@@ -65,8 +65,8 @@ afterEach(() => {
   useSettings.setState(settingsInitial, true);
 });
 
-/** The tool row (a toolbar named by the mode, DESIGN v2 3.2). */
-const toolRegion = () => document.querySelector<HTMLElement>('[data-slot="tool-row"]') as HTMLElement;
+/** The current mode's group of the tool strip (F21.9). */
+const toolRegion = () => document.querySelector<HTMLElement>('[data-mode-group][data-active="true"]') as HTMLElement;
 const layout = (container: HTMLElement) =>
   container.querySelector('[data-layout]')?.getAttribute('data-layout') ??
   (container.querySelector('[data-slot="home"]') === null ? undefined : 'empty');
@@ -83,9 +83,13 @@ const pageTextNow = () => `${pageField().value} ${pageField().nextElementSibling
 /** The left of the top bar: the file name, or with two or more documents the tabs; it has the name of every open document. */
 const tabs = () => document.querySelector<HTMLElement>('[data-slot="tabstrip"]') as HTMLElement;
 const toolPressed = (name: string) => tool(name).getAttribute('aria-pressed');
-/** Switches the mode with its tab. */
+/** Switches the mode with its caption (F21.9). */
 const inMode = async (user: ReturnType<typeof setup>['user'], name: string) =>
-  user.click(screen.getByRole('tab', { name }));
+  user.click(
+    [...document.querySelectorAll<HTMLElement>('[data-mode-caption]')].find(
+      (entry) => entry.textContent === name,
+    ) as HTMLElement,
+  );
 const readout = () => status().getByRole('textbox', { name: 'Zoom' }) as HTMLInputElement;
 /** Clicks a button of the status bar by its name. */
 const zoomItem = async (user: ReturnType<typeof setup>['user'], name: string) => {
@@ -413,8 +417,8 @@ describe('Shell with a document', () => {
       await openDocument(user);
       expect(container.querySelector('[data-region="inspector"]')).toBeNull();
       expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
-      expect(screen.getByRole('tablist', { name: 'Mode' })).not.toBeNull();
-      expect(screen.getByRole('toolbar', { name: 'Read' })).not.toBeNull();
+      expect(screen.getByRole('toolbar', { name: 'Modes and tools' })).not.toBeNull();
+      expect(document.querySelectorAll('[data-mode-group]')).toHaveLength(5);
       const columns = container.querySelector<HTMLElement>('[data-layout]')?.style.gridTemplateColumns ?? '';
       expect(columns).not.toContain('tool-');
       expect(columns.split(' ').length).toBeLessThanOrEqual(5);

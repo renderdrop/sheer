@@ -6,7 +6,7 @@ import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
-import { ModeRow, ToolRow } from '../modes';
+import { ToolRow } from '../modes';
 import { LeftPanelSplitter } from '../shell/MainGrid';
 import { StatusBar } from '../statusbar/StatusBar';
 import { TopBar } from '../topbar/TopBar';
@@ -71,11 +71,11 @@ describe('tour anchors and modes', () => {
     }
   });
 
-  it('finds every step anchor and phase 0 anchor of the top bar, the mode row and the sidebar toggle in a rendered editor', () => {
+  it('finds every step anchor and phase 0 anchor of the top bar, the mode captions and the sidebar toggle in a rendered editor', () => {
     setup(
       <>
         <TopBar trafficLightInset={false} />
-        <ModeRow />
+        <ToolRow />
         <StatusBar />
         <LeftPanelSplitter controls="left-panel" collapsed={false} />
       </>,
@@ -92,8 +92,8 @@ describe('tour anchors and modes', () => {
     expect(names.has('topbar-zoom') && names.has('sidebar-toggle') && names.has('topbar-file-name')).toBe(true);
   });
 
-  it('does not find a tool anchor outside its mode', () => {
+  it('finds a tool anchor in any mode: the strip shows every group (F21.9)', () => {
     setup(<ToolRow />);
-    expect(document.querySelector('[data-toolbar-item="highlight"]')).toBeNull();
+    expect(document.querySelector('[data-toolbar-item="highlight"]')).not.toBeNull();
   });
 });

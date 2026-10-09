@@ -116,7 +116,10 @@ export function grouped(...groups: readonly (readonly SlotDef[])[]): SlotDef[] {
   );
 }
 
-/** The three steps of the overflow (DESIGN 3.18 E4): all labels, every item icon-only (44 x 44), items leaving into "Mehr". */
+/**
+ * The three steps of the overflow (DESIGN 3.18 E4, F21.9): 1. as set (labels when "Show labels" is on, else the 36 squares),
+ * 2. every item a compact 28 square, 3. trailing tools leaving into their group's overflow menu.
+ */
 export type FitStep = 1 | 2 | 3;
 
 export interface Fit {
@@ -158,6 +161,39 @@ export function hiddenIds(ids: readonly string[], activeId: string | null, hidde
   for (let index = ids.length - 1; index >= 0 && out.size < hidden; index -= 1) {
     const id = ids[index];
     if (id !== undefined && id !== activeId) out.add(id);
+  }
+  return out;
+}
+
+/** How many tools may leave the strip into the groups' overflow menus: all but one of every group (F21.9). */
+export const movableIn = (groups: readonly (readonly string[])[]): number =>
+  groups.reduce((sum, ids) => sum + Math.max(0, ids.length - 1), 0);
+
+/**
+ * The tools that left into their group's overflow menu (F21.9): one at a time from the group that shows the most (the rightmost of
+ * equals), its trailing tool first; never the active tool, and every group keeps at least one tool in the strip.
+ */
+export function hiddenInGroups(
+  groups: readonly (readonly string[])[],
+  activeId: string | null,
+  hidden: number,
+): ReadonlySet<string> {
+  const out = new Set<string>();
+  const shown = groups.map((ids) => ids.length);
+  for (let left = hidden; left > 0; left -= 1) {
+    let pick = -1;
+    let candidate: string | undefined;
+    for (let group = 0; group < groups.length; group += 1) {
+      const count = shown[group] ?? 0;
+      if (count <= 1 || (pick >= 0 && count < (shown[pick] ?? 0))) continue;
+      const tail = [...(groups[group] ?? [])].reverse().find((id) => id !== activeId && !out.has(id));
+      if (tail === undefined) continue;
+      pick = group;
+      candidate = tail;
+    }
+    if (candidate === undefined) break;
+    out.add(candidate);
+    shown[pick] = (shown[pick] ?? 0) - 1;
   }
   return out;
 }
