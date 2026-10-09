@@ -456,6 +456,7 @@ fn render(state: &AppState, id: DocumentId) -> Vec<u8> {
                 page_index: 0,
                 bucket: 0,
                 tile: None,
+                thumbnail: false,
             },
             priority: Priority::Visible,
             generation: 1,

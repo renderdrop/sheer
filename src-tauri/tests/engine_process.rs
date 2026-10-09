@@ -78,6 +78,7 @@ fn render(engine: &Engine, doc: DocumentId) -> Result<Vec<u8>, ErrorCode> {
                 page_index: 0,
                 bucket: 0,
                 tile: None,
+                thumbnail: false,
             },
             priority: Priority::Visible,
             generation: 1,
@@ -151,6 +152,7 @@ fn the_child_serves_the_same_frames_as_the_in_process_worker() {
             page_index: page,
             bucket: 0,
             tile: None,
+            thumbnail: false,
         };
         let spec = RenderSpec {
             key,

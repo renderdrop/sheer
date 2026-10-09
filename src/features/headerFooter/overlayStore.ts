@@ -14,6 +14,8 @@ import { onChangeSet } from '../../stores/annotations';
 export interface PageHeaderFooter {
   runs: readonly PlacedRun[];
   color: Rgb;
+  /** The spec's background box: drawn behind each run in the page colour, as the save writes it (F21.7). */
+  background: boolean;
 }
 
 interface PageEntry {
@@ -61,6 +63,7 @@ async function flush(docId: number, state: DocState): Promise<void> {
     const info = await getHeaderFooter(docId);
     if (!fresh()) return;
     const color = info.spec?.color;
+    const background = info.spec?.background === true;
     if (!info.pending || color === undefined) {
       for (const pageId of wanted) state.pages.set(pageId, { gen, value: null });
       notify();
@@ -75,7 +78,7 @@ async function flush(docId: number, state: DocState): Promise<void> {
         answered.add(page.pageId);
         state.pages.set(page.pageId, {
           gen,
-          value: page.underFileLayer || page.runs.length === 0 ? null : { runs: page.runs, color },
+          value: page.underFileLayer || page.runs.length === 0 ? null : { runs: page.runs, color, background },
         });
       }
       for (const pageId of batch) if (!answered.has(pageId)) state.pages.set(pageId, { gen, value: null });

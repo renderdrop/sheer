@@ -7,6 +7,7 @@ import { cssRgb } from '../forms/model';
 import { fileRotationOf } from '../viewer/fileRotation';
 import type { PageLayerProps } from '../viewer/pageLayer';
 import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize } from '../viewer/transform';
+import { backgroundRect } from './overlap';
 import { usePageHeaderFooter } from './overlayStore';
 
 /** Where the baseline sits in a line box of height `size` for a Helvetica-like system font. */
@@ -31,6 +32,18 @@ function RunText({ run, color }: { run: PlacedRun; color: string }) {
     <span className="absolute whitespace-pre" style={style}>
       {run.text}
     </span>
+  );
+}
+
+/** The opaque box in the page colour behind a run (F21.7): the same box the save fills, so the staged view covers what is under it. */
+function RunBackground({ run }: { run: PlacedRun }) {
+  const box = backgroundRect(run);
+  return (
+    <span
+      className="absolute bg-page"
+      data-hf-background=""
+      style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
+    />
   );
 }
 
@@ -64,6 +77,7 @@ export const HeaderFooterOverlay = memo(function HeaderFooterOverlay({
       className="pointer-events-none absolute z-canvas-text select-none"
       style={{ ...box, transformOrigin: 'center' }}
     >
+      {found.background && found.runs.map((run, i) => <RunBackground key={`bg-${i}`} run={run} />)}
       {found.runs.map((run, i) => (
         <RunText key={i} run={run} color={color} />
       ))}

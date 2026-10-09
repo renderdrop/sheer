@@ -68,6 +68,7 @@ fn render(engine: &Engine, id: DocumentId, page: u32) -> (u32, u32, Vec<u8>) {
                 page_index: page,
                 bucket: 0,
                 tile: None,
+                thumbnail: false,
             },
             priority: Priority::Visible,
             generation: 1,

@@ -79,6 +79,10 @@ pub struct RenderKey {
     pub bucket: i16,
     /// `(column, row)` of a 1024 px tile, `None` for the whole page.
     pub tile: Option<(u16, u16)>,
+    /// A thumbnail (sidebar or recent card, `Priority::Thumbnail`; set by `Engine::render`): always supersampled (F21.8,
+    /// `downscale::supersample_factor`), so it is another frame than a page render of the same bucket.
+    #[serde(default)]
+    pub thumbnail: bool,
 }
 
 /// Why [`Queue::push`] did not take a job.
@@ -528,6 +532,7 @@ mod tests {
             page_index: page,
             bucket: 4,
             tile: None,
+            thumbnail: false,
         }
     }
 

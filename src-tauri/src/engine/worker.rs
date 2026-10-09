@@ -599,16 +599,15 @@ fn render(document: &PdfDocument<'_>, key: RenderKey) -> Result<Vec<u8>, AppErro
         limits::page_pixel_size(page.width().value, page.height().value, scale)?;
     let region = limits::render_region((page_width, page_height), key.tile)?;
 
-    // A small whole-page render (a thumbnail) is drawn at SUPERSAMPLE_FACTOR times its size and averaged down (F17.9): PDFium at
-    // the target size alone turns bold text into solid blocks. Tiles and page views are drawn directly. At most 3 x 320 pixels a
-    // side, so far inside the render limits.
-    let supersample =
-        key.tile.is_none() && page_width.max(page_height) <= downscale::SUPERSAMPLE_MAX_SIDE_PX;
-    let factor = if supersample {
-        downscale::SUPERSAMPLE_FACTOR
+    // A thumbnail (any size, F21.8) or a small whole-page render is drawn at up to SUPERSAMPLE_FACTOR times its size and averaged
+    // down (F17.9): PDFium at the target size alone turns bold text into solid blocks. Tiles and page views are drawn directly.
+    // The factor shrinks for a large thumbnail so the bitmap stays within `downscale::SUPERSAMPLE_MAX_DRAW_PIXELS`.
+    let factor = if key.tile.is_none() {
+        downscale::supersample_factor(page_width, page_height, key.thumbnail)
     } else {
         1
     };
+    let supersample = factor > 1;
     let (draw_w, draw_h) = (region.width * factor, region.height * factor);
 
     // The page is laid out at its full size, shifted so that the region's top left corner is the bitmap's; the bitmap is the

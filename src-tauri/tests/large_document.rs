@@ -213,6 +213,7 @@ fn first_visible_page(id: sheer_lib::documents::DocumentId) -> RenderSpec {
             // 100 % zoom on a 96 dpi display, bucket b = ceil(4 * log2(4/3)) = 2.
             bucket: 2,
             tile: None,
+            thumbnail: false,
         },
         priority: Priority::Visible,
         generation: 1,

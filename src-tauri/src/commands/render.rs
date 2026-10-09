@@ -246,6 +246,8 @@ impl AppState {
                 page_index,
                 bucket: request.bucket,
                 tile: request.tile,
+                // `Engine::render` sets it from the priority.
+                thumbnail: false,
             },
             priority: request.priority.into(),
             generation: request.generation,

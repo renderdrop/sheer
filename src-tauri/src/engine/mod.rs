@@ -875,8 +875,13 @@ impl Engine {
             priority: spec.priority,
             generation: spec.generation,
         };
+        // Whether it is a thumbnail follows from the priority alone (F21.8): the worker supersamples every thumbnail.
+        let key = RenderKey {
+            thumbnail: spec.priority == Priority::Thumbnail,
+            ..spec.key
+        };
         self.call(limits::RENDER_TIMEOUT, rank, |reply| Job::Render {
-            key: spec.key,
+            key,
             reply,
         })
     }
@@ -1465,6 +1470,7 @@ mod tests {
                 page_index,
                 bucket,
                 tile,
+                thumbnail: false,
             },
             priority: Priority::Visible,
             generation: 1,
@@ -2379,6 +2385,7 @@ mod tests {
             page_index: 0,
             bucket: 0,
             tile: None,
+            thumbnail: false,
         };
         let past = Instant::now();
         thread::sleep(Duration::from_millis(2));

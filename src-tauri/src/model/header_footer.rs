@@ -27,6 +27,11 @@ pub const ASCENT: f32 = 0.72;
 pub const DESCENT: f32 = 0.21;
 /// Points the background box reaches past the text on every side.
 pub const BACKGROUND_PAD: f32 = 3.0;
+/// The full glyph box of Helvetica in em (its `/FontBBox` top and bottom: accented capitals above, the deepest descender below):
+/// what the background box covers before its padding (F21.7), so that no glyph of the run and nothing under it peeks out. The UI
+/// mirrors them in `overlap.ts`.
+pub const BOX_ASCENT: f32 = 0.931;
+pub const BOX_DESCENT: f32 = 0.225;
 
 /// The texts of the six places; `""` is none.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,8 +87,8 @@ pub struct HfSpec {
     pub color: Rgb,
     /// What `{date}` is, formatted by the UI when the dialog applies.
     pub date: String,
-    /// A white box (the page colour) behind each run, `BACKGROUND_PAD` around the text, so that what lies under it is not seen. Only
-    /// our own layer carries it; the page content is never changed.
+    /// An opaque box in the page colour (white when unknown) behind each run: its full glyph box plus `BACKGROUND_PAD`
+    /// ([`background_rect`]), so that what lies under it is not seen. Only our own layer carries it; the page content is never changed.
     pub background: bool,
 }
 
@@ -242,14 +247,25 @@ pub struct PlacedRun {
     pub fill: Option<Rgb>,
 }
 
-/// The bounding box `[x0, y0, x1, y1]` of a run's text box in page space (y down), `pad` points larger on every side: what the
-/// background box covers (the UI computes the same in `overlap.ts`).
+/// The bounding box `[x0, y0, x1, y1]` of a run's text box (descender to ascender) in page space (y down), `pad` points larger on
+/// every side (the UI computes the same in `overlap.ts`).
 pub fn box_rect(run: &PlacedRun, pad: f32) -> [f32; 4] {
+    extent_rect(run, (DESCENT, ASCENT), pad)
+}
+
+/// The bounding box in page space of the background box the writer fills behind `run` (F21.7): its full glyph box
+/// ([`BOX_DESCENT`] to [`BOX_ASCENT`]) plus [`BACKGROUND_PAD`] on every side, turned with the run.
+pub fn background_rect(run: &PlacedRun) -> [f32; 4] {
+    extent_rect(run, (BOX_DESCENT, BOX_ASCENT), BACKGROUND_PAD)
+}
+
+/// The run's box from `below` em under the baseline to `above` em over it, `pad` points larger, as a page-space bounding box.
+fn extent_rect(run: &PlacedRun, (below, above): (f32, f32), pad: f32) -> [f32; 4] {
     let a = f32::from(run.angle).to_radians();
     let (dir, up) = ((a.cos(), -a.sin()), (-a.sin(), -a.cos()));
     let mut out = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
     for s in [-pad, run.width + pad] {
-        for t in [-(DESCENT * run.size + pad), ASCENT * run.size + pad] {
+        for t in [-(below * run.size + pad), above * run.size + pad] {
             let x = run.origin.x + s * dir.0 + t * up.0;
             let y = run.origin.y + s * dir.1 + t * up.1;
             out = [out[0].min(x), out[1].min(y), out[2].max(x), out[3].max(y)];
@@ -572,6 +588,31 @@ mod tests {
 
     fn texts(runs: &[PlacedRun]) -> Vec<&str> {
         runs.iter().map(|r| r.text.as_str()).collect()
+    }
+
+    #[test]
+    fn the_background_box_is_the_full_glyph_box_plus_padding_and_turns() {
+        let run = PlacedRun {
+            text: "Äg".into(),
+            origin: crate::model::geometry::Point { x: 20.0, y: 40.0 },
+            angle: 0,
+            size: 10.0,
+            width: 30.0,
+            fill: None,
+        };
+        let b = background_rect(&run);
+        let want = [17.0, 40.0 - 9.31 - 3.0, 53.0, 40.0 + 2.25 + 3.0];
+        assert!(
+            b.iter().zip(want).all(|(a, w)| (a - w).abs() < 1e-3),
+            "{b:?}"
+        );
+        // it contains the text box with the same padding
+        let t = box_rect(&run, BACKGROUND_PAD);
+        assert!(b[0] <= t[0] && b[1] <= t[1] && b[2] >= t[2] && b[3] >= t[3]);
+        // turned by 90 degrees the glyph tops point to smaller x
+        let turned = background_rect(&PlacedRun { angle: 90, ..run });
+        assert!((turned[0] - (20.0 - 9.31 - 3.0)).abs() < 1e-3, "{turned:?}");
+        assert!((turned[2] - turned[0] - (9.31 + 2.25 + 6.0)).abs() < 1e-3);
     }
 
     #[test]

@@ -47,6 +47,7 @@ impl AppState {
                     page_index: 0,
                     bucket: RENDER_BUCKET,
                     tile: None,
+                    thumbnail: true,
                 },
                 priority: Priority::Thumbnail,
                 generation: 0,

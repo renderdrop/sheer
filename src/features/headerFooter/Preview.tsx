@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-  HF_BACKGROUND_PAD,
   resolveHeaderFooter,
   type DetectedItem,
   type HfSpec,
@@ -12,7 +11,7 @@ import { renderPage } from '../../api/render';
 import { bucketFor } from '../../engine/buckets';
 import { CSS_PX_PER_PT } from '../../lib/zoom';
 import { drawnSize, pageIdAt, readSlots } from '../../stores/pages';
-import { findOverlaps, overlappedItems, runRect } from './overlap';
+import { backgroundRect, findOverlaps, overlappedItems } from './overlap';
 
 /** The preview box in CSS px (DESIGN 3.15 HF2: 216 x 306); the page is contained in it. */
 const BOX_W = 216;
@@ -133,21 +132,6 @@ export function Preview({
           className="absolute start-1/2 top-1/2"
           style={{ transform: `translate(-50%, -50%) rotate(${slot.rotation}deg)` }}
         >
-          {background &&
-            runs.map((run, index) => {
-              const box = runRect(run, HF_BACKGROUND_PAD);
-              return (
-                <rect
-                  key={`bg-${index}`}
-                  x={box.x}
-                  y={box.y}
-                  width={box.w}
-                  height={box.h}
-                  className="fill-white"
-                  data-hf="preview-background"
-                />
-              );
-            })}
           {detected.map((item, index) => (
             <rect
               key={`found-${index}`}
@@ -162,6 +146,23 @@ export function Preview({
               data-hf={hit.includes(item) ? 'preview-overlap' : 'preview-existing'}
             />
           ))}
+          {/* The background boxes come after the outlines of what is there: opaque in the page colour, they cover it as the saved
+              page will (F21.7). */}
+          {background &&
+            runs.map((run, index) => {
+              const box = backgroundRect(run);
+              return (
+                <rect
+                  key={`bg-${index}`}
+                  x={box.x}
+                  y={box.y}
+                  width={box.w}
+                  height={box.h}
+                  className="fill-page"
+                  data-hf="preview-background"
+                />
+              );
+            })}
           {runs.map((run, index) => (
             <text
               key={index}

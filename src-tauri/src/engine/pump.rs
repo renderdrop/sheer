@@ -1333,6 +1333,7 @@ mod tests {
             page_index: 0,
             bucket: 0,
             tile: None,
+            thumbnail: false,
         }
     }
 

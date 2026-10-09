@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { DetectedItem, PlacedRun } from '../../api/headerFooter';
-import { findOverlaps, overlappedItems, rectsOverlap, runRect } from './overlap';
+import { backgroundRect, findOverlaps, overlappedItems, rectsOverlap, runRect } from './overlap';
 
 const run = (patch: Partial<PlacedRun> = {}): PlacedRun => ({
   text: 'Seite 3',
@@ -29,6 +29,16 @@ describe('header and footer overlap', () => {
     expect(box.h).toBeCloseTo(9.3);
     const padded = runRect(run(), 3);
     expect([padded.x, padded.w]).toEqual([25, 46]);
+  });
+
+  it('makes the background box the full glyph box plus padding, around the text box', () => {
+    const box = backgroundRect(run());
+    expect([box.x, box.w]).toEqual([25, 46]);
+    expect(box.y).toBeCloseTo(765 - 9.31 - 3);
+    expect(box.h).toBeCloseTo(9.31 + 2.25 + 6);
+    const text = runRect(run(), 3);
+    expect(box.y).toBeLessThan(text.y);
+    expect(box.y + box.h).toBeGreaterThan(text.y + text.h);
   });
 
   it('turns the box with the page', () => {

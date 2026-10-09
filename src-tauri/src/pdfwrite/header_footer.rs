@@ -11,7 +11,9 @@ use super::page_layer::{self, num, page_geom, PageGeom, Wrap, HF_HEAD, HF_KEY};
 use crate::content::std14;
 use crate::error::{AppError, ErrorCode};
 use crate::model::annotation::Rgb;
-use crate::model::header_footer::{HfSpec, HfWrite, PlacedRun, ASCENT, BACKGROUND_PAD, DESCENT};
+use crate::model::header_footer::{
+    HfSpec, HfWrite, PlacedRun, BACKGROUND_PAD, BOX_ASCENT, BOX_DESCENT,
+};
 
 /// The resource name of the font on a page.
 pub const FONT_NAME: &str = "SHR_HF0";
@@ -36,8 +38,10 @@ fn hex_winansi(text: &str) -> String {
 /// The content of the layer of one page. `geom` is the page as the file has it: the runs are in page space (top left of the unrotated
 /// crop box, y down) and turn with the page's rotation, so that they read upright on the displayed page.
 ///
-/// With `background`, a white box (the page colour) is filled behind every run first: the text box (descender to ascender, the run's
-/// width) plus [`BACKGROUND_PAD`] on every side, turned with the page. Only this layer carries it; the page content is not changed.
+/// With `background`, an opaque box in the page colour (`run.fill`, white when none was sampled) is filled behind every run first,
+/// after the wrapped original and before `BT`: the run's full glyph box (`BOX_DESCENT` to `BOX_ASCENT`, its width) plus
+/// [`BACKGROUND_PAD`] on every side, turned with the page (F21.7). The layer starts from the initial graphics state (the original
+/// is wrapped in `q`/`Q`), so the fill is opaque. Only this layer carries it; the page content is not changed.
 pub fn layer_stream(geom: &PageGeom, runs: &[PlacedRun], color: Rgb, background: bool) -> Vec<u8> {
     let mut out = String::from_utf8_lossy(HF_HEAD).into_owned();
     if background {
@@ -52,8 +56,8 @@ pub fn layer_stream(geom: &PageGeom, runs: &[PlacedRun], color: Rgb, background:
             }
             let (e, f) = (geom.crop[0] + run.origin.x, geom.crop[3] - run.origin.y);
             let (a0, a1) = (-BACKGROUND_PAD, run.width + BACKGROUND_PAD);
-            let b0 = -(DESCENT * run.size + BACKGROUND_PAD);
-            let b1 = ASCENT * run.size + BACKGROUND_PAD;
+            let b0 = -(BOX_DESCENT * run.size + BACKGROUND_PAD);
+            let b1 = BOX_ASCENT * run.size + BACKGROUND_PAD;
             let corner = |a: f32, b: f32| {
                 format!(
                     "{} {}",
@@ -638,9 +642,9 @@ mod tests {
             fill: None,
         };
         let text = String::from_utf8(layer_stream(&geom, &[run], Rgb([0, 0, 0]), true)).unwrap();
-        // baseline at pdf y 260; box from x 17 to 53, y from 260 - 2.1 - 3 = 254.9 to 260 + 7.2 + 3
+        // baseline at pdf y 260; box from x 17 to 53, y from 260 - 2.25 - 3 = 254.75 to 260 + 9.31 + 3 (the full glyph box)
         assert!(
-            text.contains("17 254.9 m 53 254.9 l 53 270.2 l 17 270.2 l h f"),
+            text.contains("17 254.75 m 53 254.75 l 53 272.31 l 17 272.31 l h f"),
             "{text}"
         );
     }
@@ -830,6 +834,134 @@ mod render_tests {
         }
     }
 
+    /// A letter page that already has a footer: `text` in bold Helvetica at `size` with its baseline at `origin` (page space, y down).
+    fn footed_pdf(text: &str, origin: (f32, f32), size: f32) -> Vec<u8> {
+        let mut doc = Document::with_version("1.5");
+        let pages = doc.new_object_id();
+        let font = doc.add_object(dictionary! {
+            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica-Bold", "Encoding" => "WinAnsiEncoding",
+        });
+        let ops = format!(
+            "BT /F1 {size} Tf 1 0 0 1 {} {} Tm ({text}) Tj ET
+",
+            origin.0,
+            792.0 - origin.1
+        );
+        let content = doc.add_object(Stream::new(Dictionary::new(), ops.into_bytes()));
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages,
+            "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+            "Resources" => dictionary! { "Font" => dictionary! { "F1" => font } },
+            "Contents" => content,
+        });
+        doc.set_object(
+            pages,
+            dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 },
+        );
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages });
+        doc.trailer.set("Root", catalog);
+        let mut out = Vec::new();
+        doc.save_to(&mut out).unwrap();
+        out
+    }
+
+    /// Page 0 at one pixel per point as tightly packed RGB rows (white paper).
+    fn rgb(pdfium: &Pdfium, bytes: &[u8]) -> (Vec<u8>, u32, u32) {
+        let doc = pdfium.load_pdf_from_byte_slice(bytes, None).unwrap();
+        let page = doc.pages().get(0).unwrap();
+        let (w, h) = (page.width().value as i32, page.height().value as i32);
+        let bitmap = page
+            .render_with_config(&PdfRenderConfig::new().set_target_size(w, h))
+            .unwrap();
+        let (bw, bh) = (bitmap.width() as u32, bitmap.height() as u32);
+        let raw = bitmap.as_raw_bytes();
+        let stride = raw.len() / bh as usize;
+        let mut out = Vec::with_capacity((bw * bh * 3) as usize);
+        for y in 0..bh as usize {
+            for x in 0..bw as usize {
+                // BGRA rows from PDFium
+                let p = &raw[y * stride + x * 4..][..3];
+                out.extend_from_slice(&[p[2], p[1], p[0]]);
+            }
+        }
+        (out, bw, bh)
+    }
+
+    /// F21.7: the background box hides an existing footer at the same place completely. Inside the box the saved page looks exactly
+    /// like the same layer on a blank page; the old footer, bolder and wider than the new text, had ink there before. The page colour
+    /// is sampled from the original as the save does it (`sample_fill`), so a footer under the box cannot tint the box either.
+    #[test]
+    fn pdfium_shows_the_background_box_over_an_existing_footer() {
+        let Some(pdfium) = pdfium() else {
+            eprintln!("PDFium library not available, skipping");
+            return;
+        };
+        let spec = HfSpec {
+            slots: HfSlots {
+                footer_right: "Seite {page} von {total}".into(),
+                ..HfSlots::default()
+            },
+            pages: HfPages::All,
+            background: true,
+            ..HfSpec::default()
+        };
+        let runs = header_footer::resolve(&spec, geom_letter(), 0, 1, "f");
+        let run = runs.first().unwrap().clone();
+        // The old footer: bold, a little larger, starting where the new run starts and running past its end.
+        let original = footed_pdf(
+            "Alte Fusszeile 12 WWW",
+            (run.origin.x, run.origin.y),
+            run.size * 1.1,
+        );
+        let blank = footed_pdf("", (0.0, 0.0), 1.0);
+        let (before, w, h) = rgb(&pdfium, &original);
+        let raster = crate::pdfwrite::redact::RasterPage::from_rgb(before.clone(), w, h);
+        let fill = crate::commands::hf_detect::sample_fill(
+            &raster,
+            612.0,
+            792.0,
+            header_footer::box_rect(&run, BACKGROUND_PAD),
+        );
+        assert_eq!(
+            fill,
+            Some(Rgb([255, 255, 255])),
+            "the footer under the box does not tint it"
+        );
+        let sampled: Vec<PlacedRun> = runs
+            .iter()
+            .cloned()
+            .map(|r| PlacedRun { fill, ..r })
+            .collect();
+        let plan = HfWrite {
+            spec: Some(spec.clone()),
+            pages: vec![(0, sampled)],
+        };
+        let (after, ..) = rgb(&pdfium, &apply(original, &plan).unwrap());
+        let (reference, ..) = rgb(&pdfium, &apply(blank, &plan).unwrap());
+        // The box in pixels, one pixel inside its edges (anti-aliasing).
+        let b = header_footer::background_rect(&run);
+        let (x0, y0, x1, y1) = (
+            b[0].ceil() as u32 + 1,
+            b[1].ceil() as u32 + 1,
+            b[2].floor() as u32 - 1,
+            b[3].floor() as u32 - 1,
+        );
+        let (mut inked, mut differ) = (0, 0);
+        for y in y0..=y1.min(h - 1) {
+            for x in x0..=x1.min(w - 1) {
+                let at = ((y * w + x) * 3) as usize;
+                if before[at] < 128 {
+                    inked += 1;
+                }
+                if (0..3).any(|c| after[at + c].abs_diff(reference[at + c]) > 8) {
+                    differ += 1;
+                }
+            }
+        }
+        assert!(inked > 50, "the old footer had ink under the box: {inked}");
+        assert_eq!(differ, 0, "old footer pixels show through the box");
+    }
+
     // The spike of ARCHITECTURE 16.2 (hiding an old header in the engine copy while an edit is pending) failed: pdfium-render 0.9.4 has
     // no public API for content marks (`FPDFPageObj_GetMark` is reachable only through the crate-private bindings accessor, and the
     // page object handle is private too), so the documented fallback applies: the engine shows the old layer until save, and the
@@ -860,9 +992,9 @@ mod fill_tests {
             true,
         ))
         .unwrap();
-        assert!(tinted.contains("1 0 0.2 rg\n17 254.9 m"), "{tinted}");
+        assert!(tinted.contains("1 0 0.2 rg\n17 254.75 m"), "{tinted}");
         let plain =
             String::from_utf8(layer_stream(&geom, &[run(None)], Rgb([0, 0, 0]), true)).unwrap();
-        assert!(plain.contains("1 1 1 rg\n17 254.9 m"), "{plain}");
+        assert!(plain.contains("1 1 1 rg\n17 254.75 m"), "{plain}");
     }
 }

@@ -68,6 +68,29 @@ describe('HeaderFooterOverlay', () => {
     expect(api.resolveHeaderFooter).toHaveBeenCalledWith(7, null, [0]);
   });
 
+  it('covers what is under each run with the background box in the page colour only when the spec asks', async () => {
+    api.getHeaderFooter.mockResolvedValue(info(true));
+    api.resolveHeaderFooter.mockResolvedValue([page(0)]);
+    const plain = render(<HeaderFooterOverlay {...props(0)} />);
+    await settle();
+    expect(plain.container.querySelector('[data-hf-background]')).toBeNull();
+    plain.unmount();
+    forgetHeaderFooter(7);
+
+    api.getHeaderFooter.mockResolvedValue({ ...info(true), spec: { ...spec, background: true } });
+    const { container } = render(<HeaderFooterOverlay {...props(0)} />);
+    await settle();
+    const box = container.querySelector<HTMLElement>('[data-hf-background]');
+    expect(box?.className).toContain('bg-page');
+    // size 10 at the baseline y 30: full glyph box (0.931 em up, 0.225 em down) plus 3 pt, from x 17 over 50 + 6 pt
+    expect(parseFloat(box?.style.left ?? '')).toBeCloseTo(17);
+    expect(parseFloat(box?.style.top ?? '')).toBeCloseTo(30 - 9.31 - 3);
+    expect(parseFloat(box?.style.width ?? '')).toBeCloseTo(56);
+    expect(parseFloat(box?.style.height ?? '')).toBeCloseTo(9.31 + 2.25 + 6);
+    // behind the text: drawn first
+    expect(container.querySelector('[data-hf-overlay]')?.firstElementChild).toBe(box);
+  });
+
   it('skips a page whose engine copy still shows a layer of the file', async () => {
     api.getHeaderFooter.mockResolvedValue(info(true));
     api.resolveHeaderFooter.mockResolvedValue([page(1, true)]);

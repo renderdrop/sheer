@@ -710,6 +710,7 @@ mod tests {
             page_index: 0,
             bucket: 0,
             tile: None,
+            thumbnail: false,
         };
         assert_eq!(
             reply_blob_cap(&WireRequest::Render { key }),
