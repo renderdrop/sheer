@@ -3143,3 +3143,14 @@ with a report.
   (sidebar and recent cards) supersampled within the render limits; before/after with `owner-pdf-E4` (images untracked).
 - Models (ADR-142): F21.5 and F21.7/F21.8 on Opus (third freehand round; content streams; F17.9 regression = second fix
   round), the rest on Sonnet.
+
+**ADR-145 addendum (implementation results).**
+- F21.2: real causes were a pending discard lost when the window closed inside the 8 s undo window, a restored record left on
+  disk at a clean exit, and ignored records re-listed on every start. A restored record is deleted when its document closes or
+  the app quits, not at adoption (crash safety). Ledger `autosave/shown.json` (≤ 256 ids). The banner stays the only entry point
+  to the recovery list.
+- F21.6: icon-only card 98 px (64 px tool area); with labels 106 px.
+- F21.7: the saved file already covered the content; the faults were the on-canvas overlay (no box), the live preview (existing
+  footer outlines drawn over the box) and a box only up to cap height. The box now spans the full Helvetica glyph height + 3 pt.
+- F21.8: hypothesis confirmed (A4 sidebar thumbnail 354×501, recent card 433×560 > 320). `RenderKey.thumbnail` from the render
+  priority; factor 3× or 2× within a 2048² px budget; thumbnails above about 1000² px render at 1×.

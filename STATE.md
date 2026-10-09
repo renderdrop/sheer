@@ -7,7 +7,8 @@ packages:
           B2 F21.7 header/footer field + F21.8 thumbnail supersampling (backend-implementer, Opus; pdfwrite/header_footer.rs, model/header_footer.rs, engine/worker.rs, engine/downscale.rs, storage/thumbs.rs, src/features/headerFooter/*)
           FA F21.3 home Recent grid + Tools catalogue (implementer, Sonnet; src/features/home/* except the glow line, src/features/hub/*)
           FC F21.5 freehand shape fit (implementer, Opus; src/features/annotations/create/*)
-  wave 2: FB F21.1 glow + F21.4 splitters (Sonnet); FD F21.6 tool card icons only (Sonnet); AC v21 acceptance script + window.ps1 (Sonnet)
+  B1 done (root causes: pending discard lost on close; restored record left at clean exit; ignored records re-listed) → review running; FA done (24-tool catalogue, launchTool, Recent full cards + lazy thumbs)
+  wave 2 (running): FB F21.1 glow + F21.4 splitters (Sonnet); FD F21.6 tool card icons only (Sonnet); next: AC v21 acceptance script (window.ps1 written by orchestrator)
 last_completed: v2.0.0 — F20.1–F20.11, F19.28, author detection, designer round, final audit; report docs/reports/2026-10-09-v2.0.0-final.md
 loop_count_this_session: 0
 open_blockers: 3 (B-002, B-005, B-008, human-only)

@@ -441,3 +441,5 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - (acceptance v2.0) recovery banner left by killed acceptance sessions shortens the viewport in later script runs (acceptance profile only)
   - (a11y v2.0) no unit tests for the new region landmarks, tab stops and the Settings opener; v20-a11y skips the menu layer for axe region
   - (security v2.0, low) signing key visible to the whole `tauri build` step; macOS sidecar without rlimit; sidecar integrity relies on code signing (B-002)
+  - (F21 B1 review) pagehide discard flush is fire-and-forget (quit path awaits); recovery ledger rewritten on every list call; no test for a corrupt/oversized shown.json (path is tolerant); "Decide later" records only resurface with a new record (banner is the only entry point)
+  - (F21 B2 review) owner thumbnail test only asserts dark_after <= dark_before (not that pixels changed); thumbnails above ~1000×1000 px fall back to factor 1 (no supersampling)

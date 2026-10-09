@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Home: the gradient is drawn on its own layer anchored to the window surface and repainted on every resize — no more stripes or cut-off areas while moving or resizing the window.
+- Home: "Recent" shows every recent file as a card grid with previews; "Tools" lists every tool of the app (icon, title, subtitle), and each one opens a file and starts with the tool active and ready.
+- Tool card shows icons only with quick tooltips (150 ms); labels can be turned back on in Settings ("Show labels"); the card is 8 px lower.
+- Sidebar drag handles are invisible until hovered (thin line), and the sidebars merge into the surface without an edge.
+- Freehand shape recognises circles, ellipses and rectangles and draws a clean closed shape that keeps a slight hand-drawn wobble; other shapes close smoothly.
+
+### Fixed
+- The recovery banner no longer returns on every start: discarded or restored documents are deleted and never reported again, and the banner only appears for new recoveries.
+- Header/footer background now covers the full text height and shows in the live preview and before saving.
+- Page and recent-file thumbnails keep bold headings legible again (supersampled at every thumbnail size).
+
 ## [2.0.0] - 2026-10-09
 
 Stable release 2.0: the new editor and home layout, grouped comments, smarter links and sources, OCR text PDFs, history, palettes — plus the owner test of rc.3 (F20).
