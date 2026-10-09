@@ -1,17 +1,15 @@
 # STATE
-phase: session "v2.0.0 final — owner test rc.3 (F20)" (ADR-144, tempo level 4, model policy ADR-142) closed: v2.0.0 released (stable)
-version: 2.0.0 (tag v2.0.0, stable)
-current_item: none — next session: owner decides (proposal: v2.1 — macOS check of the new layout, polish minors; signing when certificates exist)
-  final: v20final 63/63, v20rc3 60/60, v20rc2 57/57, v19 64/64, v17-ocr 50/50, v16-range 11/11, smartlinks 79/79, gate 2584/2584, annot 16/16, real smoke PASS
+phase: session "v2.1 — owner test v2.0.0 (F21)" (ADR-145, tempo level 4, model policy ADR-142) — in progress
+version: 2.0.0 (tag v2.0.0, stable); target v2.1.0 (stable)
+current_item: F21.1–F21.8 (docs/FEEDBACK.md F21)
 packages:
-  review A PASS; minors (polish): gate home sweep only one state (with/without open row), 784px literal in container query, FIT_NEEDS hand-synced, long de tile title could overflow
-  review D PASS; minors: foreign.rs:507 Groups::of per page read (O(pages×annots), full parse — check perf on 500 pages), group text edit skips locked members silently, multi-range drag untested end-to-end
-  security D/A PASS; lows 1–4 → package D2 (memoise Groups::of + HashSet, cache per doc for read_page, /NM identity + object number, cap imported groups at MAX_GROUP_MEMBERS) + SECURITY.md MAX_THUMB_BYTES 512 KiB
-  E author detection: authors 15/8/8/0 → 15/14/14/0 (truth/found/correct/wrong), year 19/17/14/3 → 19/19/15/4 (corpus-03 deck no year in truth), kind 15/12/11/1 unchanged, others unchanged; corpus-21 letter-spaced not found
-  final security audit: FAIL (high Groups::of loop) → S1 fixed (bounded key attempts, scan outside CACHE lock) → verification PASS; deny 0, npm audit 0
-  designer round: PASS (no blocker); majors: home 960 "+" misaligned, Smart links toggle filled Solar → K (home) + L (editor: toggle style, tab gaps, separator, h-scrollbar at 100 %)
+  wave 1: B1 F21.2 recovery + settings field show_tool_labels (backend-implementer, Sonnet; storage/autosave.rs, commands/recovery.rs, storage/settings.rs, src/features/recovery/*, src/api/recovery.ts)
+          B2 F21.7 header/footer field + F21.8 thumbnail supersampling (backend-implementer, Opus; pdfwrite/header_footer.rs, model/header_footer.rs, engine/worker.rs, engine/downscale.rs, storage/thumbs.rs, src/features/headerFooter/*)
+          FA F21.3 home Recent grid + Tools catalogue (implementer, Sonnet; src/features/home/* except the glow line, src/features/hub/*)
+          FC F21.5 freehand shape fit (implementer, Opus; src/features/annotations/create/*)
+  wave 2: FB F21.1 glow + F21.4 splitters (Sonnet); FD F21.6 tool card icons only (Sonnet); AC v21 acceptance script + window.ps1 (Sonnet)
 last_completed: v2.0.0 — F20.1–F20.11, F19.28, author detection, designer round, final audit; report docs/reports/2026-10-09-v2.0.0-final.md
-loop_count_this_session: 30 (session closed, STOP set)
+loop_count_this_session: 0
 open_blockers: 3 (B-002, B-005, B-008, human-only)
 notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
   ADR-120: every push starts with `bash scripts/ci-status.sh`; red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs`; real input only `smoke-real.mjs` (≤ 5 min, announced).

@@ -321,3 +321,16 @@ Every item is checked in the acceptance build at 1280×800 and 960×640.
 - [x] F20.10 Zoom display in the status bar: "100 %" does not fit. Field sized for four digits plus percent sign, tabular figures.
 - [x] F20.11 Mode tabs: the active tab ("Read") shows a double contour — its own border meets the card border. Tabs and card share one contour: the active tab has a border only on top and sides and merges seamlessly into the sand area below, no second line. Check all five tabs, also with key chip.
 - Acceptance (2026-10-09, acceptance build v2.0.0 final tree, Windows 11, CDP, 1280×800 + 960×640): v20final 63/63, v20rc3 60/60, v20rc2 57/57, v19-backlog 64/64, v17-ocr 50/50, v16-range 11/11, v16-smartlinks 79/79, surface gate --wide 2584/2584 (incl. "home does not scroll" with and without open documents), annot-smoke 16/16, real-input smoke PASS; macOS via CI only. F20.1 at 960×640 with open documents shows three tool tiles plus "More tools" so home never scrolls.
+
+## F21 — Owner test v2.0.0 (owner, 2026-10-09, v2.1; ADR-145)
+
+Every item is checked in the acceptance build, including moving the window and resizing it natively.
+
+- [ ] F21.1 Home gradient: while the window is moved or resized the glow travels along and leaves stripes and cut-off areas. Glow on its own compositing layer, anchored to the surface, fully redrawn on every size change; gate check with three window sizes in a row.
+- [ ] F21.2 Recovery banner appears on almost every start. Records once discarded or restored are deleted and never reported again; banner only for new records.
+- [ ] F21.3 Home: "Recent" (navigation) shows all documents with preview as a grid, not only five. "Tools" lists every tool of the app with icon, title and subtitle. Every tool opens the file dialog and starts with the tool active and ready — checked for every tool, not only Redact.
+- [ ] F21.4 Left and right sidebars: the drag handles show as visible strips. Handles invisible (6 px hit area, cursor change only, thin line only on hover); sidebars merge into the surface without an edge.
+- [ ] F21.5 Freehand shape: endpoints are joined bluntly. Recognise the shape (circle, ellipse, rectangle), fit a clean closed shape and render it with the natural slight wobble of the original stroke — clean but hand-drawn. Comparison on five strokes.
+- [ ] F21.6 Tool card: icons only, no labels; tooltips after 150 ms; setting "Show labels", default off; card height reduced accordingly; template `editor-rc3.png` stays valid otherwise.
+- [ ] F21.7 Header/footer: the background field does not cover the content below. Field as an opaque rectangle in page colour written into the content stream before the text; test with a document that already has a footer.
+- [ ] F21.8 Page thumbnails: bold headings clog into black blocks again. Check whether the 3× render pipeline still applies after the layout change; prove before/after with `owner-pdf-E4`.

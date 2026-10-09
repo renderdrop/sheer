@@ -3095,3 +3095,51 @@ fix), author detection on slides and official texts (hit rate in the report), on
 - The designer round (one round, only blockers trigger fixes, ADR-030) judges editor and home at 1280×800 and 960×640 in light
   mode only (no dark mode).
 - Result: stable release `v2.0.0`.
+
+## ADR-145 — Session "v2.1 — owner test v2.0.0 (F21)"
+
+**Status:** accepted (2026-10-09, owner instruction). Tempo level 4 (ADR-141), model policy ADR-142, rules 13–17 unchanged.
+
+**Scope.** F21.1–F21.8 (`docs/FEEDBACK.md`). Every item is checked in the acceptance build, including moving the window and
+resizing it natively (not only CDP viewport emulation, which never showed the F21.1 artefacts). Result: stable release `v2.1.0`
+with a report.
+
+**Defaults recorded so no question is needed.**
+- *Native window move/resize in acceptance.* New helper `scripts/ui/accept/window.ps1` calls `SetWindowPos` on the acceptance
+  process's main window only (refuses any other process, like `os-input.ps1`). It moves and sizes a window; it sends no mouse or
+  keyboard input, so it is allowed outside the final smoke (ADR-131). Captures stay window captures (`PrintWindow`, ADR-126).
+- *F21.1 glow.* The home glow becomes its own compositing layer inside an `overflow: hidden; contain: paint` surface, anchored to
+  that surface, gradient geometry in pixels from a `ResizeObserver` (full repaint on every size change), no drift animation on
+  the home glow (other glows keep theirs). A canvas is allowed if CSS does not repaint cleanly. Gate check: three native window
+  sizes in a row plus a move path, window-captured after each step; the glow box equals the surface box and the area outside
+  the glow is free of hard edges or stripes.
+- *F21.2 recovery.* Root cause first, with a lifecycle test (crash → banner; discard → record deleted, never listed again;
+  restore → record deleted after adoption; clean close/exit → no record). A pending discard (8 s undo toast) is flushed when the
+  window closes. The banner only appears when at least one record has never been shown before (persisted ledger of shown record
+  ids); "Decide later" keeps records reachable but does not re-trigger the banner by itself.
+- *F21.3 home.* "Recent" shows every stored recent file (`MAX_RECENTS` = 50) as a responsive card grid with lazy previews; the
+  home row stays one row. "Tools" lists every tool of the five mode cards plus the hub dialogs (Merge, Split, Compress, Images to
+  PDF, export), grouped by mode, each with icon, title and subtitle, from one catalogue derived from the existing tool and slot
+  definitions (a test fails when a tool has no entry). The default pointer tools (select text, pan) are left out: their "ready"
+  state is just an open document. A tile opens the file dialog (not for Images to PDF/Merge, which keep their flows), opens the
+  document in the tool's mode with the tool active and its inspector or dialog open.
+- *F21.4 splitters.* Hit area 6 px (token), transparent at rest, `col-resize` cursor; on hover or drag a 1 px line; keyboard
+  focus keeps a visible 2 px accent line (a11y); no grip pill; left panel and inspector lose their edge lines and share the
+  chrome background.
+- *F21.5 freehand shape.* Refines F19.26 for the freehand shape tool only (pen and freehand arrow unchanged): a closed stroke is
+  classified as circle, ellipse or rectangle by fit error; the fitted shape gets the stroke's own wobble back (low-passed radial
+  residual, scaled down) and closes without a seam. It stays an ink annotation (hand-drawn), never a /Square or /Circle.
+  Unrecognised strokes close with a smooth periodic spline instead of a straight join. Five fixed strokes before/after as images
+  under `review/` (untracked).
+- *F21.6 tool card.* Icons only; setting "Show labels" (default off, app-wide, Rust settings field `show_tool_labels`);
+  tooltips in the mode card after 150 ms (own token), other tooltips keep 400 ms; card height reduced accordingly (8-pt grid),
+  layout constants follow. `docs/brand/editor-rc3.png` stays valid otherwise.
+- *F21.7 header/footer field.* Opaque rectangle in page colour (white when the sample is unusable), written into the
+  header/footer content stream before the text, sized to cover the run's full glyph box including descenders and padding, and
+  shown the same way in the live preview. Test with a self-generated PDF that already has a footer at the same place (render
+  the saved page, old footer pixels covered); acceptance additionally with an owner PDF that has a footer (ID only).
+- *F21.8 thumbnails.* Hypothesis to verify: since the F19.16 layout, sidebar thumbnails exceed the supersampling threshold
+  (320 px side) at common panel widths and DPR, so they render plain and bold text clogs. The fix keeps every thumbnail render
+  (sidebar and recent cards) supersampled within the render limits; before/after with `owner-pdf-E4` (images untracked).
+- Models (ADR-142): F21.5 and F21.7/F21.8 on Opus (third freehand round; content streams; F17.9 regression = second fix
+  round), the rest on Sonnet.
