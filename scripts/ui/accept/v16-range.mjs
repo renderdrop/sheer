@@ -2,7 +2,7 @@
 // Prereq: npm run build:acceptance. Run: node scripts/ui/accept/v16-range.mjs   (UI language German)
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { createResults, runSession, openAndWait, sleep, SCROLLER } from './harness.mjs';
+import { createResults, runSession, setUiLanguage, openAndWait, sleep, SCROLLER } from './harness.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../../..');
 const PDF = resolve(ROOT, 'review/v170/range.pdf');
@@ -13,6 +13,7 @@ const results = createResults();
 const { check: C } = results;
 
 await runSession(async ({ input, dialogs, ev, shot }) => {
+  await setUiLanguage({ ev, input }, 'de');
   await openAndWait({ input, dialogs }, PDF);
   await input.waitFor(`document.querySelectorAll('[data-links-list] [data-smartlink]').length > 0`, {
     timeoutMs: 20000,

@@ -5,6 +5,7 @@ import {
   SCROLLER,
   createResults,
   runSession,
+  setUiLanguage,
   installInvokeCounter,
   callCount,
   openAndWait,
@@ -34,7 +35,7 @@ for (const [tag, file] of FILES) {
         const p = document.querySelector('[data-page="${pageNo}"]');
         return { top: s.scrollTop, left: s.scrollLeft,
           w: p ? p.getBoundingClientRect().width : null,
-          zoom: document.querySelector('[data-toolbar-item="zoom-in"]')?.getAttribute('aria-label') ?? null,
+          zoom: document.querySelector('[data-slot="statusbar"] [data-toolbar-item="zoom-in"]')?.value ?? null,
           save: document.querySelector('[data-save-status]')?.getAttribute('data-save-status') ?? null };
       })()`);
     const same = (a, b) =>
@@ -55,6 +56,7 @@ for (const [tag, file] of FILES) {
     };
     const bandPage = `document.querySelector('[data-history-mark]')?.closest('[data-page]')?.dataset.page ?? ''`;
 
+    await setUiLanguage({ ev, input }, 'de');
     await openAndWait({ input, dialogs }, file);
     await installInvokeCounter(ev);
     await input.sleep(500);

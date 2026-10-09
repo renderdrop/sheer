@@ -113,3 +113,9 @@ export function guardDecision(snap, ownPids) {
     return { reason: 'foreign-foreground', ...pick(fg) };
   return null;
 }
+
+/** The settings patch that sets the UI language and nothing else. */
+export const languagePatch = (lang) => {
+  if (lang !== 'en' && lang !== 'de') throw new Error(`unsupported UI language: ${lang}`);
+  return { language: lang };
+};

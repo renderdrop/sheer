@@ -59,6 +59,14 @@
   --thumb-h: var(--home-thumb-height-short);
 }
 
+/* A banner above and a short window: less top padding and section gap (homeFit, F19.17). */
+.home-main[data-squeeze] {
+  --pad-top: var(--space-4);
+  --section-gap: var(--space-4);
+  --search-gap: var(--space-3);
+  --head-gap: var(--space-2);
+  --pad-bottom: var(--space-2);
+}
 .home-content {
   max-width: var(--home-content-max);
   width: 100%;

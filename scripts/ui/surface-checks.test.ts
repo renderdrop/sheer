@@ -285,3 +285,20 @@ describe('split contour check (F19.27)', () => {
     expect(run(s)).toEqual(['Draw main: state active was not read']);
   });
 });
+
+describe('checkPanelOverlap (rc.3 inspector)', () => {
+  const panel = { left: 660, top: 100, right: 960, bottom: 610 };
+  it('passes a docked column that only touches its neighbours', () => {
+    const canvas = { name: 'canvas', rect: { left: 228, top: 100, right: 660, bottom: 610 } };
+    const status = { name: 'status bar', rect: { left: 0, top: 610, right: 960, bottom: 640 } };
+    expect(c.checkPanelOverlap(panel, [canvas, status])).toEqual([]);
+  });
+  it('flags the canvas and the status bar when the column covers them', () => {
+    const canvas = { name: 'canvas', rect: { left: 228, top: 100, right: 700, bottom: 610 } };
+    const status = { name: 'status bar', rect: { left: 0, top: 580, right: 960, bottom: 640 } };
+    expect(c.checkPanelOverlap(panel, [canvas, status])).toEqual([
+      'inspector overlaps canvas',
+      'inspector overlaps status bar',
+    ]);
+  });
+});

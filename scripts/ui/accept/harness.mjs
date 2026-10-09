@@ -3,6 +3,7 @@ import { launch } from './launch.mjs';
 import { createInput } from './cdp-input.mjs';
 import { createDialogs } from './dialogs.mjs';
 import { startGuard } from './guard.mjs';
+import { languagePatch } from './pure.mjs';
 
 export const SCROLLER = '[data-action-scope="canvas"] > [role="region"]';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -81,4 +82,24 @@ export async function openAndWait(ctx, path) {
     what: 'page image',
   });
   await input.sleep(800);
+}
+
+/**
+ * Sets the UI language of the acceptance profile (the same update_settings call v20rc3 and v17-ocr use) and reloads, so a script
+ * does not depend on what an earlier script left behind. Touches no other setting.
+ */
+export async function setUiLanguage(ctx, lang) {
+  const { ev, input } = ctx;
+  const patch = JSON.stringify(languagePatch(lang));
+  const r = await ev(
+    `window.__TAURI_INTERNALS__.invoke('update_settings', { patch: ${patch} }).then(() => 'ok', (e) => 'ERR ' + JSON.stringify(e))`,
+  );
+  if (r !== 'ok') throw new Error(`update_settings failed: ${r}`);
+  await ev('location.reload()').catch(() => {});
+  await sleep(1500);
+  await input.waitFor(`document.documentElement.lang === ${JSON.stringify(lang)}`, {
+    timeoutMs: 20000,
+    what: 'UI language applied',
+  });
+  await sleep(800);
 }

@@ -64,7 +64,6 @@ export function modeOfTool(tool: ToolId): Mode | null {
     case 'highlight':
     case 'cite':
     case 'note':
-    case 'stamp':
     case 'text':
     case 'draw':
     case 'shapes':
@@ -77,6 +76,7 @@ export function modeOfTool(tool: ToolId): Mode | null {
     case 'textBox':
     case 'image':
     case 'crop':
+    case 'stamp':
     case 'editText':
       return 'edit';
     case 'select':

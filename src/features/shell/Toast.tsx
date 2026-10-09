@@ -63,7 +63,7 @@ function ToastView({ toast }: { toast: Toast }) {
 }
 
 /**
- * The toast slot: the bottom centre of the window, 24 from the window edge, at `--z-toast`. The layer takes no pointer itself, so
+ * The toast slot: the bottom centre of the window, 12 above the status bar (never over it), at `--z-toast`. The layer takes no pointer itself, so
  * it never covers what is under it; one toast at a time.
  */
 export function ToastLayer() {
@@ -71,7 +71,7 @@ export function ToastLayer() {
   // One notice at a time (DESIGN 3.9 Q8): an error toast takes the slot at once, any other waits behind it and the coach mark.
   const shown = useNoticeSlot(`toast-${toast?.id ?? 0}`, toast?.tone === 'error' ? 'error' : 'info', toast !== null);
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-(--space-6) z-toast flex justify-center">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--statusbar-height)+var(--space-3))] z-toast flex justify-center">
       {/* An error is said at once (assertive, role alert); anything else politely. */}
       <div role="status" className="sr-only">
         {toast?.tone === 'error' ? null : toast?.message}

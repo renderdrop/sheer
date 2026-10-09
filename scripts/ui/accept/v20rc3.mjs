@@ -4,6 +4,7 @@
 // Output: review/v20rc3/out (generated PDFs), review/v20rc3/shots/*.png (window captures only). Rule 15: CDP input + dialog queue.
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { readPng } from './png.mjs';
 import { createResults, runSession, sleep } from './harness.mjs';
 import {
   coloursDiffer,
@@ -68,12 +69,20 @@ const session = async (ctx) => {
       `window.__TAURI_INTERNALS__.invoke('update_settings', { patch: ${q(patch)} }).then(() => 'ok', (e) => 'ERR ' + JSON.stringify(e))`,
     );
     if (r !== 'ok') throw new Error(`update_settings failed: ${r}`);
+    // Records left by earlier acceptance kills would raise the recovery banner (test profile only).
+    await ev(`window.__TAURI_INTERNALS__.invoke('discard_all_recoveries').then(() => 'ok', () => 'ERR')`);
     await ev('location.reload()').catch(() => {});
     await sleep(2500);
     await input.waitFor(`document.documentElement.lang === 'en'`, { timeoutMs: 20000, what: 'UI language' });
     await sleep(1800);
     if (await exists('[data-region="banner"] button[aria-label="Dismiss"]')) {
       await input.click({ selector: '[data-region="banner"] button[aria-label="Dismiss"]' });
+      await sleep(600);
+    }
+    // Recovery notice left by earlier acceptance kills: hide it for the session (not part of the spec'd layout).
+    if (await exists('button[aria-label="Decide later"]')) {
+      if (await exists('button[aria-label="Decide later"]'))
+        await input.click({ selector: 'button[aria-label="Decide later"]' });
       await sleep(600);
     }
   }
@@ -116,10 +125,10 @@ const session = async (ctx) => {
     for (let i = 0; i < 12 && (await exists('[data-page]')); i++) {
       await closeDoc();
       if (await count('[role="alertdialog"], [role="dialog"]')) {
-        await input.press('Escape').catch(() => {});
         await input
           .click({ selector: '[role="alertdialog"] button, [role="dialog"] button', text: "Don't Save" })
-          .catch(() => {});
+          .catch(() => input.press('Escape').catch(() => {}));
+        await sleep(500);
       }
     }
     await sleep(600);
@@ -172,8 +181,10 @@ const session = async (ctx) => {
   }
   async function rectAnnotation(r, x1, y1, x2, y2) {
     await mode('comment');
-    await input.click({ selector: '[data-toolbar-item="shapes"]' });
-    await sleep(300);
+    if (!(await exists('[data-toolbar-item="shapes"][data-on="true"]'))) {
+      await input.click({ selector: '[data-toolbar-item="shapes"]' });
+      await sleep(300);
+    }
     await input.drag(atTop(r, x1, y1), atTop(r, x2, y2), { steps: 8 });
     await sleep(500);
   }
@@ -359,7 +370,7 @@ const session = async (ctx) => {
         await sleep(900);
         const st = await inspectorState();
         const dlg = await dialogCount();
-        const picker = await exists('[data-surface="stamp-picker"]');
+        const picker = await exists('[data-surface="stamp-picker"]:not([data-slot="inspector"] *)');
         await shot(`f19-16-inspector-${item}`);
         C(
           `F19.16: ${what} opens the 300 px inspector, no dialog or popup`,
@@ -463,6 +474,12 @@ const session = async (ctx) => {
       }
       const measure = async (tag) => {
         await sleep(900);
+        // The recovery banner (left by earlier acceptance kills) is not part of the spec'd layout; dismiss it.
+        if (await exists('button[aria-label="Decide later"]')) {
+          if (await exists('button[aria-label="Decide later"]'))
+            await input.click({ selector: 'button[aria-label="Decide later"]' });
+          await sleep(700);
+        }
         const m = await ev(`(() => {
           const main = document.querySelector('[data-home-main]'); const nav = document.querySelector('[data-home-nav]');
           const tiles = [...document.querySelectorAll('[data-home-tools] button')];
@@ -491,6 +508,9 @@ const session = async (ctx) => {
         JSON.stringify({ nav: withDocs.nav, cards: withDocs.cards, open: withDocs.openCards }),
       );
       C('F19.17: 8 tool tiles', withDocs.tiles === 8, `${withDocs.tiles} tiles`);
+      // Back on Home the document stays open: reopen it from its card, close it, then drop the recovery banner.
+      await input.click({ selector: '[data-open-card]' });
+      await sleep(900);
       await closeAll();
       const bare = await measure('no-docs');
       C(
@@ -774,9 +794,8 @@ const session = async (ctx) => {
       await open(await plain(1, 'History'));
       const r = await pageRect(1);
       await rectAnnotation(r, 120, 250, 250, 320);
-      await input.drag(atTop(await curRect(1), 300, 250), atTop(await curRect(1), 430, 320), { steps: 8 });
-      await sleep(400);
-      await input.drag(atTop(await curRect(1), 120, 400), atTop(await curRect(1), 250, 470), { steps: 8 });
+      await rectAnnotation(await curRect(1), 300, 250, 430, 320);
+      await rectAnnotation(await curRect(1), 450, 250, 560, 320);
       await sleep(600);
       await input.press('Escape');
       const made = (await annotations()).length;
@@ -837,7 +856,7 @@ const session = async (ctx) => {
         .catch(() => {});
       await input.drag(atTop(r, 74, 100), atTop(r, 250, 100), { steps: 10 });
       await sleep(700);
-      await input.click({ selector: 'button', text: 'Comment' });
+      await input.click({ selector: '[role="toolbar"] button', text: 'Comment' });
       await sleep(900);
       const focus = await ev(
         `(() => { const a = document.activeElement; return { tag: a?.tagName, inMargin: !!a?.closest?.('[data-margin-column]'), label: a?.getAttribute?.('aria-label') ?? null, bubbles: document.querySelectorAll('[data-bubble]').length }; })()`,
@@ -856,7 +875,7 @@ const session = async (ctx) => {
       );
       C('F19.24: Enter confirms the comment', after.text, JSON.stringify(after));
       // The mark outline follows the scroll.
-      await input.hover({ selector: '[data-bubble]' });
+      await input.click({ selector: '[data-bubble]' });
       await sleep(500);
       const o0 = await rectOf('[data-mark-outline]');
       await ev(`document.querySelector(${q(SC)}).scrollTop += 30`);
@@ -894,14 +913,24 @@ const session = async (ctx) => {
           const p = atTop(r, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t + Math.sin(t * 9) * 6);
           return p;
         });
-      const pathInfo = () =>
-        ev(
-          `[...document.querySelectorAll('[data-annot-hit]')].map((e) => ({ id: e.getAttribute('data-annot-hit'), tag: e.tagName, subpaths: (e.getAttribute('d') ?? '').split(/M/i).length - 1 }))`,
-        );
+      // The arrowhead is part of the rendered page (PDFium), so count dark pixels in a window around a stroke end.
+      const darkAround = async (pt, name) => {
+        const png = readPng(await shot(name));
+        let n = 0;
+        for (let y = Math.round(pt.y - 18); y < Math.round(pt.y + 18); y++)
+          for (let x = Math.round(pt.x - 26); x < Math.round(pt.x + 6); x++) if (png.lum(x, y) < 100) n++;
+        return n;
+      };
       const pickVariant = async (slot, text) => {
         await input.click({ selector: `[data-split="${slot}"] [data-roving="${slot}:more"]` });
-        await input.waitFor(`!!document.querySelector('[role="menu"]')`, { timeoutMs: 4000, what: 'variant menu' });
-        await input.click({ selector: '[role="menu"] [role="menuitem"], [role="menu"] [role="menuitemradio"]', text });
+        await input.waitFor(`!!document.querySelector('[role="menu"], [role="radio"]')`, {
+          timeoutMs: 4000,
+          what: 'variant menu',
+        });
+        await input.click({
+          selector: '[role="menu"] [role="menuitem"], [role="menu"] [role="menuitemradio"], [role="radio"]',
+          text,
+        });
         await sleep(500);
       };
       await pickVariant('draw', 'Freehand');
@@ -911,38 +940,40 @@ const session = async (ctx) => {
           what: 'draw tool',
         })
         .catch(() => {});
-      await stroke(wobble(100, 250, 300, 300));
-      await sleep(700);
+      await stroke(wobble(100, 180, 300, 220));
+      await sleep(1500);
       const kinds1 = (await annotations()).map((a) => a.kind);
       C(
         'F19.26: freehand stays an ink drawing (not straightened)',
         kinds1.length === 1 && kinds1[0] === 'ink',
         JSON.stringify(kinds1),
       );
-      const free = await pathInfo();
+      const freeEnd = atTop(await curRect(1), 300, 220);
+      const freeDark = await darkAround(freeEnd, 'f19-26-freehand');
       await pickVariant('draw', 'Freehand arrow');
-      await stroke(wobble(100, 400, 300, 450));
-      await sleep(700);
+      await stroke(wobble(100, 250, 300, 290));
+      await sleep(1500);
       const list2 = await annotations();
-      const arrow = await pathInfo();
+      const arrowDark = await darkAround(atTop(await curRect(1), 300, 290), 'f19-26-arrow-probe');
       await shot('f19-26-freehand-arrow');
-      const head =
-        Math.max(0, ...arrow.map((p) => p.subpaths)) > Math.max(0, ...free.map((p) => p.subpaths)) ||
-        arrow.length > free.length * 2;
+      const head = arrowDark > freeDark * 1.5;
       C(
         'F19.26: freehand arrow is ink and carries an arrowhead',
         list2.length === 2 && list2[1].kind === 'ink' && head,
-        JSON.stringify({ kinds: list2.map((a) => a.kind), free, arrow }),
+        JSON.stringify({ kinds: list2.map((a) => a.kind), freeDark, arrowDark }),
       );
       await input.press('Escape');
       await input.click({ selector: '[data-split="shapes"] [data-roving="shapes:more"]' });
-      await input.waitFor(`!!document.querySelector('[role="menu"]')`, { timeoutMs: 4000, what: 'shapes menu' });
+      await input.waitFor(`!!document.querySelector('[role="menu"], [role="radio"]')`, {
+        timeoutMs: 4000,
+        what: 'shapes menu',
+      });
       await input.click({
-        selector: '[role="menu"] [role="menuitem"], [role="menu"] [role="menuitemradio"]',
+        selector: '[role="menu"] [role="menuitem"], [role="menu"] [role="menuitemradio"], [role="radio"]',
         text: 'Line',
       });
       await sleep(500);
-      await stroke(wobble(100, 550, 300, 600, 12));
+      await stroke(wobble(100, 320, 300, 360, 12));
       await sleep(700);
       const list3 = await annotations();
       await shot('f19-26-shapes-line');

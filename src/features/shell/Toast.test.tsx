@@ -16,6 +16,11 @@ afterEach(() => {
 });
 
 describe('the toast (DESIGN 3.12)', () => {
+  it('sits above the status bar, never over it (F19.17)', () => {
+    const { container } = setup(<ToastLayer />);
+    expect(container.firstElementChild?.className).toContain('bottom-[calc(var(--statusbar-height)+var(--space-3))]');
+  });
+
   it('says an error assertively (role alert) and anything else politely', () => {
     setup(<ToastLayer />);
     act(() => useUi.getState().showToast({ message: 'Broke', tone: 'error' }));

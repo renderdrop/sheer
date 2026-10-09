@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { cardSize, greetingPart, homeTier, stackHeight, titleHidden, type TierMeasures } from './homeLayout';
+import { cardSize, greetingPart, homeFit, homeTier, stackHeight, titleHidden, type TierMeasures } from './homeLayout';
 
 const tokens = readFileSync('src/styles/tokens.css', 'utf8');
 const num = (name: string): number => {
@@ -103,5 +103,54 @@ describe('the greeting by time of day', () => {
     expect(greetingPart(at(12))).toBe('day');
     expect(greetingPart(at(17, 59))).toBe('day');
     expect(greetingPart(at(18))).toBe('evening');
+  });
+});
+
+describe('Home with a banner above it (F19.17)', () => {
+  /** The stack of a fit, with the squeeze applied the way home.css does. */
+  function fitted(width: number, height: number, openRow: boolean, banner: number): number {
+    const fit = homeFit(height, openRow, banner);
+    const m = measures(fit.tier);
+    if (fit.squeeze) {
+      m.paddingTop = num('space-4');
+      m.sectionGap = num('space-4');
+      m.searchGap = num('space-3');
+      m.headingGap = num('space-2');
+      m.paddingBottom = num('space-2');
+    }
+    const section = (content: number) => m.sectionGap + m.heading + m.headingGap + content;
+    const tiles = tileRows(width);
+    let sum = m.paddingTop + m.greetingRow;
+    if (!fit.hideTitle) sum += m.titleGap + m.titleHeight;
+    sum += m.searchGap + m.search;
+    if (openRow) sum += section(m.card[fit.card]);
+    sum += section(m.card[fit.card]);
+    sum += section(tiles * m.tile + (tiles - 1) * m.tileGap);
+    return sum + m.paddingBottom;
+  }
+
+  it('is the plain tier logic without a banner', () => {
+    expect(homeFit(800, false, 0)).toEqual({ tier: 'b', hideTitle: false, card: 'compact', squeeze: false });
+    expect(homeFit(800, true, 0)).toEqual({ tier: 'b', hideTitle: true, card: 'short', squeeze: false });
+    expect(homeFit(1100, false, 0).tier).toBe('a');
+  });
+
+  it('fits 1280 x 800 with the banner (no Open row), for banners of 56 to 120', () => {
+    for (const banner of [56, 72, 88, 104, 120])
+      expect(fitted(1280, 800, false, banner)).toBeLessThanOrEqual(800 - banner);
+  });
+
+  it('fits 1280 x 800 with the banner and the Open row, for banners of 56 to 88', () => {
+    for (const banner of [56, 72, 88]) expect(fitted(1280, 800, true, banner)).toBeLessThanOrEqual(800 - banner);
+  });
+
+  it('fits 1440 x 900 with a banner', () => {
+    expect(fitted(1440, 900, false, 80)).toBeLessThanOrEqual(900 - 80);
+    expect(fitted(1440, 900, true, 80)).toBeLessThanOrEqual(900 - 80);
+  });
+
+  it('leaves a tall window airy (the banner takes its height off first)', () => {
+    expect(homeFit(1200, false, 80).tier).toBe('a');
+    expect(homeFit(1080, false, 80).tier).toBe('b');
   });
 });

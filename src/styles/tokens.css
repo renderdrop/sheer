@@ -465,7 +465,7 @@
   --tab-gap: calc(var(--space-1) / 2); /* 2 between tabs */
   --tabs-n: 1; /* tabs that share the strip: min(open documents, 5); the strip sets it */
   --chrome-gutter: 12px;
-  --mode-card-height: 104px;
+  --mode-card-height: 106px; /* 32 header + 72 tool area + 2 card border */
   --mode-tab-height: 32px;
   --tool-area-height: 72px;
   --tool-item-height: 56px;

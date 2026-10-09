@@ -132,7 +132,7 @@ const makeSession =
       });
       // capabilities load asynchronously: wait until the language state settled
       await input.waitFor(
-        `!['loading', ''].includes(document.querySelector('[data-surface="ocr-dialog"]')?.dataset.language ?? '')`,
+        `!['loading', ''].includes(document.querySelector('[data-surface="ocr-dialog"] [data-language]')?.dataset.language ?? '')`,
         {
           timeoutMs: 15000,
           what: 'language state',
@@ -147,7 +147,7 @@ const makeSession =
       const on = d.querySelector('[data-ocr="scope"] label[data-checked]');
       const start = d.querySelector('[data-ocr="start"]');
       return {
-        language: d.dataset.language,
+        language: d.querySelector('[data-language]')?.dataset.language,
         fallback: d.querySelector('[data-ocr="language-fallback"]')?.textContent?.trim() ?? null,
         scope: on?.textContent?.replace(/\\s+/g, ' ').trim() ?? null,
         startLabel: start?.textContent?.trim() ?? '',

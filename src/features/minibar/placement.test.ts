@@ -29,8 +29,8 @@ describe('placeBar', () => {
     expect(placeBar(box(960, 300, 1000, 400), bar, bounds)).toMatchObject({ left: 1000 - 8 - 300 });
   });
 
-  it('starts at the inset when the canvas is narrower than the bar', () => {
-    expect(placeBar(box(10, 300, 50, 400), bar, box(0, 100, 200, 700))).toMatchObject({ left: 8 });
+  it('docks when the canvas is narrower than the bar (no clipped bar, F19.17)', () => {
+    expect(placeBar(box(10, 300, 50, 400), bar, box(0, 100, 200, 700))).toEqual({ mode: 'dock' });
   });
 });
 

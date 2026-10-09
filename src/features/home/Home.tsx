@@ -16,7 +16,7 @@ import { closeTab } from '../tabs/nav';
 import { useViewer } from '../viewer/useViewer';
 import { DropOverlay, useHomeDrop } from './DropOverlay';
 import { Hero, useSearchShortcut } from './Hero';
-import { cardSize, homeTier, titleHidden as isTitleHidden } from './homeLayout';
+import { homeFit } from './homeLayout';
 import { HomeNav, type HomeSection } from './HomeNav';
 import { OpenCard } from './OpenCard';
 import { RecentCard } from './RecentCard';
@@ -44,6 +44,22 @@ function useWindowHeight(): number {
     const onResize = () => setHeight(window.innerHeight);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return height;
+}
+
+/** Height of the banner slot above Home (0 while nothing is said), kept current; Home's fit subtracts it (F19.17). */
+function useBannerHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const slot = document.querySelector<HTMLElement>('[data-slot="banner"]');
+    if (slot === null) return;
+    const measure = () => setHeight(Math.round(slot.getBoundingClientRect().height));
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(slot);
+    return () => observer.disconnect();
   }, []);
   return height;
 }
@@ -200,8 +216,8 @@ export function Home({ platform }: HomeProps) {
   const open = () => void runAction('open');
   const height = useWindowHeight();
   const openRow = section === 'home' && openShown.length > 0;
-  const tier = homeTier(height, openTabs.length > 0);
-  const hideTitle = isTitleHidden(tier, openTabs.length > 0, height);
+  const bannerHeight = useBannerHeight();
+  const { tier, hideTitle, card, squeeze } = homeFit(height, openTabs.length > 0, bannerHeight);
   useEffect(() => watchAmbient(), []);
 
   let body;
@@ -293,7 +309,8 @@ export function Home({ platform }: HomeProps) {
       <main
         data-home-main=""
         data-tier={tier}
-        data-card={cardSize(tier, openTabs.length > 0)}
+        data-card={card}
+        data-squeeze={squeeze || undefined}
         data-open-row={openRow || undefined}
         className="home-main relative min-w-0 flex-auto overflow-x-hidden overflow-y-auto bg-app"
       >

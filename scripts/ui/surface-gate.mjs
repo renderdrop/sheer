@@ -29,6 +29,7 @@ import {
   LABEL_SELECTOR,
   checkNotice,
   checkOverlap,
+  checkPanelOverlap,
   checkScroll,
   checkSplitButtons,
   checkSplitContour,
@@ -83,7 +84,7 @@ const escape = async () => {
 /** Runs inside the page. Everything comes back as plain data; the verdicts are the pure functions of surface-checks.mjs. */
 const PAGE = `(() => {
   // The mini bar (toolbar) and the coach mark card (region) are floating surfaces of their own: registry entries open them.
-  const SURFACES = '[role="dialog"],[role="alertdialog"],[role="menu"],[data-minibar],[data-tour-card],[data-surface="textedit-notice"],[data-surface="textedit-refusal"],[data-surface="link-preview"],[data-surface="range-chooser"],[data-surface="ocr-banner"],[data-toast]';
+  const SURFACES = '[role="dialog"],[role="alertdialog"],[role="menu"],[data-minibar],[data-tour-card],[data-surface="textedit-notice"],[data-surface="textedit-refusal"],[data-surface="link-preview"],[data-surface="range-chooser"],[data-surface="ocr-banner"],[data-toast],[data-slot="inspector"][data-open]';
   const LIST = '[role="list"],[role="listbox"],[role="menu"],[role="grid"],[role="tree"],[data-scroll="list"]';
   const hidden = ${isVisuallyHidden.toString()};
   // Visible text of an element: its own text nodes, unless the element or an ancestor up to root is visually hidden (sr-only).
@@ -99,6 +100,9 @@ const PAGE = `(() => {
     const t = (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 28);
     return el.tagName.toLowerCase() + (el.getAttribute('role') ? '[' + el.getAttribute('role') + ']' : '') + (t ? ' "' + t + '"' : '');
   };
+  const INSPECTOR = '[data-slot="inspector"]';
+  // rc.3 (DESIGN 3.18 E5): the inspector column is a docked panel; its body may scroll like a list.
+  const scrollish = (p, el) => p !== el && el.matches(INSPECTOR) && ['auto', 'scroll'].includes(getComputedStyle(p).overflowY);
   const area = (e) => { const r = e.getBoundingClientRect(); return r.width * r.height; };
   // Tooltips are aria-hidden by design (a live region speaks them), so a [data-surface] tooltip counts when it is on screen.
   const shown = () => [...document.querySelectorAll(SURFACES)].filter((e) => visible(e) || (e.matches('[data-surface][role="tooltip"]') && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0));
@@ -114,17 +118,20 @@ const PAGE = `(() => {
       if (found.length === 0) return null;
       const el = found.sort((a, b) => area(b) - area(a))[0];
       const rect = R(el.getBoundingClientRect());
+      const panel = el.matches(INSPECTOR);
+      const isListEl = (p) => p.matches(LIST) || scrollish(p, el);
+      const closestList = (c) => { for (let p = c; p && p !== el.parentElement; p = p.parentElement) if (isListEl(p)) return p; return null; };
       const modal = el.getAttribute('aria-modal') === 'true' || !!el.closest('[aria-modal="true"]');
       // ADR-124 addendum 1 c: a menu opened from the menu bar (role=menubar) follows the OS menu convention.
       const menubar = el.getAttribute('role') === 'menu' && !!document.querySelector('[role="menubar"] [aria-controls="' + el.id + '"]');
       // A mini bar and a coach mark are floating, not modal; a coach mark is a notice (Q8): it may not touch any protected rect.
       // v1.7: the OCR banner and the toasts (DESIGN 3.12 O8) are notices too: the banner never covers a page, the toast never covers Stop.
-      const kind = el.hasAttribute('data-tour-card') || el.hasAttribute('data-toast') || ['textedit-notice', 'ocr-banner'].includes(el.getAttribute('data-surface')) ? 'notice' : el.hasAttribute('data-tour-card') ? 'notice' : el.hasAttribute('data-minibar') ? 'bar' : null;
+      const kind = panel ? 'panel' : el.hasAttribute('data-tour-card') || el.hasAttribute('data-toast') || ['textedit-notice', 'ocr-banner'].includes(el.getAttribute('data-surface')) ? 'notice' : el.hasAttribute('data-tour-card') ? 'notice' : el.hasAttribute('data-minibar') ? 'bar' : null;
       const onlyBig = (c) => { const r = c.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
       const clipsOf = (c) => {
         const clips = [];
         for (let p = c.parentElement; p && p !== document.documentElement; p = p.parentElement) {
-          if (p.matches(LIST)) continue; // a list scrolls by design; the list itself is checked as a control below
+          if (isListEl(p)) continue; // a list scrolls by design; the list itself is checked as a control below
           const s = getComputedStyle(p);
           if (s.overflowX !== 'visible' || s.overflowY !== 'visible') clips.push(R(p.getBoundingClientRect()));
         }
@@ -143,14 +150,14 @@ const PAGE = `(() => {
       // A row of a list scrolled out of it is no cut-off (the list itself is checked below); its rect is held inside the list's.
       const inList = (c) => {
         const r = R(c.getBoundingClientRect());
-        const l = c.closest(LIST);
+        const l = closestList(c);
         if (!l) return r;
         const b = l.getBoundingClientRect();
         const k = { left: Math.max(r.left, b.left), top: Math.max(r.top, b.top), right: Math.min(r.right, b.right), bottom: Math.min(r.bottom, b.bottom) };
         return k.right < k.left || k.bottom < k.top ? R(b) : k;
       };
       const controls = ctrl.map((c) => ({ name: name(c), rect: inList(c), clips: clipsOf(c), label: labelOf(c) }));
-      for (const l of new Set(ctrl.map((c) => c.closest(LIST)).filter((l) => l && visible(l))))
+      for (const l of new Set(ctrl.map((c) => closestList(c)).filter((l) => l && visible(l))))
         controls.push({ name: name(l), rect: R(l.getBoundingClientRect()), clips: clipsOf(l), label: null });
       // ADR-124 addendum 1 b: a control inside [data-adornment] sits in its field on purpose; the field wrapper is the adornment's parent.
       const wrappers = new Map();
@@ -195,12 +202,12 @@ const PAGE = `(() => {
       const plain = all.filter((c) => !['TEXTAREA', 'INPUT', 'SELECT'].includes(c.tagName));
       const containers = plain
         .filter((c) => { const s = getComputedStyle(c); return s.overflowY === 'auto' || s.overflowY === 'scroll'; })
-        .map((c) => ({ name: name(c), scrollHeight: c.scrollHeight, clientHeight: c.clientHeight, overflowY: getComputedStyle(c).overflowY, isList: !!c.closest(LIST) }));
+        .map((c) => ({ name: name(c), scrollHeight: c.scrollHeight, clientHeight: c.clientHeight, overflowY: getComputedStyle(c).overflowY, isList: !!closestList(c) || isListEl(c) }));
       // An icon-only control may carry an invisible hit-area pseudo-element (before:-inset-1) that counts as overflow; it has no label to cut.
       const wide = plain
         .filter((c) => getComputedStyle(c).display !== 'inline' && c.clientWidth > 2 && !(c.matches(CONTROLS) && !hasText(c, c) && !c.querySelector('*:not(svg):not(svg *)')))
-        .map((c) => ({ name: name(c), scrollWidth: c.scrollWidth, clientWidth: c.clientWidth, isList: !!c.closest(LIST) }));
-      const descendants = all.filter((c) => c !== el && !c.closest(LIST) && onlyBig(c) && getComputedStyle(c).position !== 'fixed')
+        .map((c) => ({ name: name(c), scrollWidth: c.scrollWidth, clientWidth: c.clientWidth, isList: !!closestList(c) || isListEl(c) }));
+      const descendants = all.filter((c) => c !== el && !closestList(c) && onlyBig(c) && getComputedStyle(c).position !== 'fixed')
         .map((c) => ({ name: name(c), rect: R(c.getBoundingClientRect()) }));
       const layerEls = [...document.querySelectorAll('[role="tooltip"],[role="region"]')]
         .filter((l) => visible(l) && !el.contains(l) && !l.contains(el))
@@ -225,7 +232,9 @@ const PAGE = `(() => {
         if (el.contains(c) || !onlyBig(c)) continue;
         protectedRects.push({ name: name(c), rect: R(c.getBoundingClientRect()), role: c.hasAttribute('data-protect') ? 'other' : 'active' });
       }
-      return { kind, wraps, rect, modal, menubar, controls, interactive, containers, wide, descendants, layers, protectedRects, vp: { w: innerWidth, h: innerHeight } };
+      const neighbours = panel ? ['[data-action-scope="canvas"]', '[data-slot="statusbar"]', '[data-slot="tabstrip"]', '[data-slot="mode-card"]', '[data-slot="menu-row"]']
+        .flatMap((q) => [...document.querySelectorAll(q)].filter((n) => visible(n) && !el.contains(n) && !n.contains(el)).map((n) => ({ name: q.replace(/.*="(.*)"\]/, '$1'), rect: R(n.getBoundingClientRect()) }))) : [];
+      return { kind, neighbours, wraps, rect, modal, menubar, controls, interactive, containers, wide, descendants, layers, protectedRects, vp: { w: innerWidth, h: innerHeight } };
     },
     triggers() {
       document.querySelectorAll('[data-gate-trigger]').forEach((e) => e.removeAttribute('data-gate-trigger'));
@@ -247,13 +256,16 @@ const verdict = (id, m) =>
     clipped: checkClipped(m.controls, m.vp),
     scroll: checkScroll(m.containers),
     wrap: checkLabelWrap(m.wraps),
-    overlap: [
-      ...checkOverlap(m.modal ? 'modal' : m.menubar ? 'menubar' : 'popover', m.rect, m.layers, m.protectedRects),
-      ...checkControlOverlap(m.interactive),
-      ...m.layers.flatMap((l) => checkNotice(l, m.protectedRects)),
-      // A coach mark is a notice: it may not touch any protected rect (Q8).
-      ...(m.kind === 'notice' ? checkNotice({ name: 'coach mark', rect: m.rect }, m.protectedRects) : []),
-    ],
+    overlap:
+      m.kind === 'panel'
+        ? checkPanelOverlap(m.rect, m.neighbours)
+        : [
+            ...checkOverlap(m.modal ? 'modal' : m.menubar ? 'menubar' : 'popover', m.rect, m.layers, m.protectedRects),
+            ...checkControlOverlap(m.interactive),
+            ...m.layers.flatMap((l) => checkNotice(l, m.protectedRects)),
+            // A coach mark is a notice: it may not touch any protected rect (Q8).
+            ...(m.kind === 'notice' ? checkNotice({ name: 'coach mark', rect: m.rect }, m.protectedRects) : []),
+          ],
   });
 
 /** Opens with `open`, waits for the animation, measures, closes. `pick`: a selector; only a new surface matching it is measured. */
@@ -344,7 +356,11 @@ async function sweepTextEdit() {
   await ev(`(async()=>{${stores('stores/ui.ts')}.useUi.getState().setMode('edit')})()`);
   await sleep(400);
   const openLine = async () => {
-    await ev(`document.querySelector('[data-testid="tool-editText"]')?.click()`);
+    // The tool item may sit in the overflow menu at 960 px (rc.3 icon-only row): the store is the stable way in. A click on the
+    // active tool releases it, so the tool is selected only when it is not on.
+    await ev(
+      `(async()=>{const u=${stores('stores/ui.ts')}.useUi.getState(); if (u.activeTool !== 'editText') u.selectTool('editText')})()`,
+    );
     await sleep(300);
     const p = await lineAt();
     await mouse('mouseMoved', p.x, p.y, { button: 'none' });
@@ -446,6 +462,49 @@ async function sweepTextEdit() {
     );
   }
   await ev(`(async()=>{${stores('features/textedit/store.ts')}.useTextEdit.getState().reset()})()`);
+}
+
+/**
+ * rc.3 tool inspector (DESIGN 3.18 E5): the 300 px column right of the canvas holds Zuschneiden, Kopf-/Fußzeile, Stempel, Text erkennen,
+ * Quellenangabe and the history list. Opened the new way: the tool item of the mode card (crop, headerFooter, stamp; Bearbeiten) or the
+ * tool-inspector store (ocr, reference, history: no stable tool item at every width). The column is checked as a docked surface
+ * (inside the viewport, no overlap with canvas, status bar, tab strip or mode card; its body may scroll like a list).
+ */
+const INSPECTORS = [
+  { id: 'crop', item: 'crop' },
+  { id: 'headerFooter', item: 'headerFooter' },
+  { id: 'stamp', item: 'stamp' },
+  { id: 'ocr', item: null },
+  { id: 'reference', item: null },
+  { id: 'history', item: null },
+];
+async function sweepInspectors() {
+  if (only && !'inspector'.includes(only) && !only.includes('inspector')) return;
+  const stores = (path) => `(await ${store(path)})`;
+  await ev(`(async()=>{${stores('stores/ui.ts')}.useUi.getState().setMode('edit')})()`);
+  await sleep(400);
+  for (const { id, item } of INSPECTORS) {
+    await probe(
+      `inspector:${id}`,
+      async () => {
+        const sel = item === null ? null : `[data-slot="tool-row"] [data-toolbar-item="${item}"]`;
+        const via =
+          sel !== null &&
+          (await ev(
+            `(() => { const b = document.querySelector(${JSON.stringify(sel)}); if (!b || b.getAttribute('aria-disabled') === 'true') return false; b.click(); return true; })()`,
+          ));
+        if (!via)
+          await ev(
+            `(async()=>{${stores('features/inspector/toolInspector.ts')}.useToolInspector.getState().openToolInspector(${JSON.stringify(id)})})()`,
+          );
+      },
+      () =>
+        ev(
+          `(async()=>{${stores('features/inspector/toolInspector.ts')}.useToolInspector.getState().closeToolInspector()})()`,
+        ),
+      '[data-slot="inspector"]',
+    );
+  }
 }
 
 async function sweepTriggers(label) {
@@ -708,6 +767,7 @@ try {
       await sleep(500);
       await sweepRegistry();
       await sweepTextEdit();
+      await sweepInspectors();
       for (const mode of modes) {
         await ev(`(async()=>{(await ${store('stores/ui.ts')}).useUi.getState().setMode(${JSON.stringify(mode)})})()`);
         await sleep(400);

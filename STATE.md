@@ -7,7 +7,10 @@ packages:
   wave L (frontend, Sonnet): L1 shell/tabs/topbar/status bar + tokens.css · L2 modes card · L3 tool inspector (+ modes/Options.tsx) · L4 home
   wave L committed 24cf7c8 (+ L5 integration); wave P committed e3784c4
   wave S committed 282bc1d: A smartlinks (gate 100/100/90.5 %), B OCR text PDF [Opus] (security PASS, 4 medium → H), C comments, D draw/shapes, E history (frontend), F crop keys + split button
-  done (uncommitted): G sources F19.21 (hit-rate table in report), H sec mediums + get_history, v20rc3 script; running: G2 ISBN field, security review G+H
+  committed 4755e21: G sources F19.21 + G2 ISBN + H sec fixes/get_history + v20rc3 script (security reviews S1-B and G/H: PASS, mediums fixed)
+  acceptance round 1: v20rc3 50/60, gate 2238/2308 (37 registry drift, 20 mode-tab hover, 9 toast/status overlap, 2 minibar clip), annot-smoke 16/16, v16-smartlinks 76/79, v16-range 11/11, v19-backlog 22/28, v20rc2 38/47 (old layout)
+  running fixes: FX-1 layout (tool area 72, tab hover, toast, minibar, home+banner) · FX-2 smartlinks glued markers + v16 preview (cargo) · FX-3 imprint author/title (cargo) · FX-4 gate registry + v19/v20rc2/v16 scripts
+  then: full check, commit, rebuild, acceptance round 2, real-input smoke, rc.3
   then: full check, commit, build:acceptance, v20rc3 + touched scripts, surface gate, annot-smoke, real-input smoke, rc.3 release, report
 last_completed: v2.0.0-rc.2 — report docs/reports/2026-10-08-v2.0.0-rc.2-f19-teil1.md
 loop_count_this_session: 0
@@ -19,6 +22,7 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
   ADR-142: model per package named in the brief (Opus: audits, engine-critical Rust, 2nd fix round; Haiku: mechanic). Briefs that start a dev/acceptance window must say: stop it only by process path (incident 2026-10-08: an agent killed sheer.exe by name).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - 4755e21 G/G2/H + v20rc3 → run #153 (37862527681) GREEN
   - 282bc1d wave S F19.20/.22-.27 → run #152 (37857822228) GREEN
   - e3784c4 palettes F19.19 → run #151 (37854203156) GREEN
   - 24cf7c8 wave L layout F19.16/17 → run #150 (37852370249) GREEN

@@ -775,6 +775,35 @@ fn parse_persons(line: &str) -> Option<Vec<Person>> {
     (!persons.is_empty() && persons.len() <= limits::BIB_AUTHORS_MAX).then_some(persons)
 }
 
+/// Splits "Title by Given Family and ..." into the title and its persons; `None` if no byline parses.
+fn split_byline(title: &str) -> Option<(String, Vec<Person>)> {
+    // ASCII lowercasing keeps every byte offset, and the markers start with an ASCII space.
+    let low = title.to_ascii_lowercase();
+    for marker in [
+        " herausgegeben von ",
+        " hrsg. von ",
+        " edited by ",
+        " von ",
+        " by ",
+    ] {
+        let Some(at) = low.find(marker) else {
+            continue;
+        };
+        let head = title.get(..at).unwrap_or("").trim();
+        let rest = title.get(at + marker.len()..).unwrap_or("").trim();
+        if head.chars().count() < 3 {
+            continue;
+        }
+        if let Some(persons) = parse_persons(rest) {
+            return Some((
+                head.trim_end_matches([',', ':', '-']).trim().to_owned(),
+                persons,
+            ));
+        }
+    }
+    None
+}
+
 /// The authors from the lines after (else before) the title.
 fn find_authors(lines: &[Line], title_end: usize, title_start: usize) -> Vec<Person> {
     let mut found: Vec<Person> = Vec::new();
@@ -1092,6 +1121,12 @@ pub(super) fn hints_from_pages(pages: &[PageLines]) -> FirstPageHints {
     // Authors.
     if let Some((page, start, end)) = title_page {
         hints.authors = find_authors(&page.lines, end, start);
+        if let Some((head, persons)) = hints.title.as_deref().and_then(split_byline) {
+            hints.title = Some(head);
+            if hints.authors.is_empty() {
+                hints.authors = persons;
+            }
+        }
     }
 
     // Journal facts.
@@ -1283,6 +1318,66 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn the_generated_book_layout_gives_title_and_author() {
+        let pages = [
+            page(0, &[(28, "A Short History of Maps"), (16, "Anna Berger")]),
+            page(
+                1,
+                &[
+                    (11, "A Short History of Maps"),
+                    (11, "by Anna Berger"),
+                    (10, "Copyright 2011 by Anna Berger. All rights reserved."),
+                    (10, "Second edition 2011"),
+                    (10, "Published by Harbor Press, Leeds"),
+                    (10, "ISBN 978-3-16-148410-0"),
+                ],
+            ),
+            page(2, &[(18, "Chapter 1"), (12, BODY)]),
+        ];
+        let hints = hints_from_pages(&pages);
+        assert_eq!(hints.title.as_deref(), Some("A Short History of Maps"));
+        assert_eq!(hints.authors.len(), 1);
+        assert_eq!(hints.authors[0].family, "Berger");
+        assert_eq!(hints.authors[0].given, "Anna");
+        // Half-point sizes and 16 pt line gaps as the generator sets them: the byline must not join the title.
+        let tight = [PageLines {
+            index: 0,
+            lines: vec![
+                line(700.0, 22, "A Short History of Maps"),
+                line(684.0, 22, "by Anna Berger"),
+                line(
+                    660.0,
+                    20,
+                    "Copyright 2011 by Anna Berger. All rights reserved.",
+                ),
+                line(644.0, 20, "Second edition 2011"),
+            ],
+        }];
+        let t = hints_from_pages(&tight);
+        assert_eq!(t.title.as_deref(), Some("A Short History of Maps"));
+        assert_eq!(t.authors.len(), 1);
+        let one = [page(
+            0,
+            &[
+                (26, "Maps and Roads by Anna Berger and Hans Roth"),
+                (11, BODY),
+            ],
+        )];
+        let h = hints_from_pages(&one);
+        assert_eq!(h.title.as_deref(), Some("Maps and Roads"));
+        assert_eq!(h.authors.len(), 2);
+        let two = [page(
+            0,
+            &[
+                (26, "Maps and Roads"),
+                (14, "herausgegeben von Anna Berger, Hans Roth"),
+                (11, BODY),
+            ],
+        )];
+        assert_eq!(hints_from_pages(&two).authors.len(), 2);
     }
 
     #[test]

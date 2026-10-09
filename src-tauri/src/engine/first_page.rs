@@ -169,6 +169,12 @@ pub(super) fn find_title_at(lines: &[Line]) -> Option<(String, usize, usize)> {
     let (&body, _) = by_size
         .iter()
         .max_by_key(|&(&size, &count)| (count, std::cmp::Reverse(size)))?;
+    // A bare title page (a few lines, no body text) has no body size: its smallest size stands in.
+    let body = if lines.len() <= 4 {
+        by_size.keys().copied().min().unwrap_or(body)
+    } else {
+        body
+    };
     let eligible = |line: &Line| {
         line.text.chars().filter(|c| c.is_alphabetic()).count() >= 4
             && line.text.chars().filter(|c| c.is_alphabetic()).count() * 2

@@ -72,3 +72,36 @@ export function greetingPart(date: Date): 'morning' | 'day' | 'evening' {
   if (hour >= 12 && hour < 18) return 'day';
   return 'evening';
 }
+
+/** Banner present and the window short: the title goes when the stack minus the banner is under this (no Open row). */
+export const TITLE_BANNER_MIN_HEIGHT = 760;
+/** Banner present: the short card replaces the compact one under this available height (no Open row). */
+export const SHORT_CARD_BANNER_MIN_HEIGHT = 700;
+/** Squeeze (less top padding and section gap) under these available heights, with a banner. */
+export const SQUEEZE_MAX_HEIGHT = 660;
+export const SQUEEZE_OPEN_MAX_HEIGHT = 800;
+
+export interface HomeFit {
+  tier: HomeTier;
+  hideTitle: boolean;
+  card: CardSize;
+  /** Tighter padding and section gaps (`data-squeeze` in home.css). */
+  squeeze: boolean;
+}
+
+/**
+ * Everything the layout decides from the window height, the "Open" row and the height of the banner slot above Home (the recovery
+ * banner, F19.17): the banner takes its height off the window, and the tiers step down (title, compact to short cards, squeeze)
+ * until the stack fits. Without a banner it is exactly the plain tier logic.
+ */
+export function homeFit(height: number, openRow: boolean, banner: number): HomeFit {
+  const available = height - Math.max(0, banner);
+  const tier = homeTier(available, openRow);
+  const banned = banner > 0 && tier === 'b';
+  const hideTitle =
+    titleHidden(tier, openRow, available) || (banned && !openRow && available < TITLE_BANNER_MIN_HEIGHT);
+  let card = cardSize(tier, openRow);
+  if (banned && card === 'compact' && available < SHORT_CARD_BANNER_MIN_HEIGHT) card = 'short';
+  const squeeze = banned && available < (openRow ? SQUEEZE_OPEN_MAX_HEIGHT : SQUEEZE_MAX_HEIGHT);
+  return { tier, hideTitle, card, squeeze };
+}

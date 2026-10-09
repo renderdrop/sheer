@@ -23,8 +23,8 @@ const TAB =
 
 /** The key chip (1 to 5): always on the active tab, on the others at hover and focus. */
 const CHIP =
-  'ms-2 hidden h-kbd min-w-kbd items-center justify-center rounded-sm border border-border-subtle bg-panel px-1 text-xs font-medium tabular-nums text-text-muted ' +
-  'group-hover:inline-flex group-focus-visible:inline-flex group-aria-selected:inline-flex';
+  'ms-2 invisible inline-flex h-kbd min-w-kbd items-center justify-center rounded-sm border border-border-subtle bg-panel px-1 text-xs font-medium tabular-nums text-text-muted ' +
+  'group-hover:visible group-focus-visible:visible group-aria-selected:visible';
 
 /**
  * The header of the mode card (DESIGN 3.18 E4, ADR-102): Lesen, Kommentieren, Ausfüllen & Signieren, Seiten, Bearbeiten as file-tab
@@ -52,7 +52,7 @@ export const ModeRow = memo(function ModeRow() {
       aria-orientation="horizontal"
       data-slot="mode-row"
       onKeyDown={onKeyDown}
-      className="flex h-mode-tab min-w-0 items-end border-b border-border-subtle bg-panel px-1"
+      className="flex h-mode-tab shrink-0 min-w-0 items-end border-b border-border-subtle bg-panel px-1"
     >
       {MODES.map((id: Mode) => {
         const selected = id === mode;

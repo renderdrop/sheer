@@ -192,6 +192,13 @@ const session = async (ctx) => {
     await sleep(1000);
   }
   async function openComments() {
+    // rc.3: no top-bar toggle; a collapsed sidebar comes back through View > Left panel (F4) or a click on the splitter's grip.
+    if (!(await exists('[role="tab"][data-value="comments"]'))) {
+      await menu('View', 'Left panel').catch(() => {});
+      if (!(await exists('[role="tab"][data-value="comments"]')))
+        await input.click({ selector: '[role="separator"][aria-label="Resize left panel"]' });
+      await sleep(500);
+    }
     if (!(await exists('[role="tab"][data-value="comments"]'))) throw new Error('no comments tab (sidebar closed?)');
     await input.click({ selector: '[role="tab"][data-value="comments"]' });
     await sleep(1000);
@@ -267,7 +274,7 @@ const session = async (ctx) => {
           const sec = [...document.querySelectorAll('[data-home-body] main section')];
           const head = (s) => s.querySelector('h2')?.textContent ?? '';
           const open = sec.find((s) => head(s) === 'Open');
-          const recent = sec.find((s) => head(s) === 'Recent');
+          const recent = sec.find((s) => head(s) === 'Recently opened'); // rc.3 H4: "Recently opened"
           const tools = document.querySelector('[data-home-tools]');
           const main = document.querySelector('[data-home-body] main');
           const cards = [...document.querySelectorAll('[data-recent-card]')];
@@ -286,8 +293,8 @@ const session = async (ctx) => {
           JSON.stringify(info),
         );
         C(
-          `F19.6 (${tag}): Recent shows at most two rows, "Show all" offered`,
-          info.rows >= 1 && info.rows <= 2 && info.showAll && info.cards < 10,
+          `F19.6 (${tag}): Recent shows one row of at most five cards (rc.3 H4), "Show all" offered`,
+          info.rows === 1 && info.cards <= 5 && info.showAll && info.cards < 10,
           `rows ${info.rows}, cards ${info.cards}, showAll ${info.showAll}`,
         );
         if (w === 1280)
@@ -309,9 +316,9 @@ const session = async (ctx) => {
         ev(`(() => {
           const card = document.querySelector('[data-recent-card]'); const cr = card.getBoundingClientRect();
           const btn = card.querySelector('button[aria-pressed]'); const br = btn.getBoundingClientRect();
-          const title = card.querySelector('.t-label').getBoundingClientRect();
+          const title = card.querySelector('.home-card-name').getBoundingClientRect(); // rc.3: name is .home-card-name (.t-nav)
           const svg = btn.querySelector('svg');
-          const probe = document.createElement('i'); probe.style.color = 'var(--color-hl-solar)'; document.body.append(probe);
+          const probe = document.createElement('i'); probe.style.color = 'var(--star-fill)'; document.body.append(probe); // rc.3: --star-fill (var(--accent))
           const solar = getComputedStyle(probe).color; probe.remove();
           return { inside: br.left >= cr.left && br.right <= cr.right && br.top >= cr.top && br.bottom <= cr.bottom,
             topRight: br.left + br.width / 2 > cr.left + cr.width / 2 && br.top + br.height / 2 < cr.top + cr.height / 2,
@@ -331,7 +338,7 @@ const session = async (ctx) => {
         JSON.stringify({ inside: st.inside, topRight: st.topRight, overTitle: st.overTitle }),
       );
       C(
-        'F19.5: starred star is filled Solar',
+        'F19.5 (rc.3): starred star is filled with --star-fill',
         st.pressed === 'true' && st.fill === st.solar,
         `fill ${st.fill}, solar ${st.solar}, pressed ${st.pressed}`,
       );
@@ -562,14 +569,17 @@ const session = async (ctx) => {
             ),
             JSON.stringify(
               await ev(
-                `[...document.querySelectorAll('[data-slot="topbar"] *')].filter((e) => !e.children.length && e.textContent.trim()).map((e) => e.textContent.trim()).slice(0, 12)`,
+                `[...document.querySelectorAll('[data-slot="statusbar"] *')].filter((e) => !e.children.length && e.textContent.trim()).map((e) => e.textContent.trim()).slice(0, 12)`,
               ),
             ),
           );
         // The edit is staged: it must make the document unsaved.
         C(
           'F19.1: editing an adopted comment marks the document unsaved',
-          await ev(`!/Saved/.test(document.querySelector('[data-slot="topbar"]')?.textContent ?? '')`),
+          // rc.3: the save state lives in the status bar (data-save-status), the top bar is the tab strip
+          await ev(
+            `document.querySelector('[data-save-status]') !== null && document.querySelector('[data-save-status]').getAttribute('data-save-status') !== 'saved'`,
+          ),
         );
         await save();
         await closeDoc();
@@ -615,6 +625,10 @@ const session = async (ctx) => {
       await input.click({ selector: '[data-toolbar-item="crop"]' });
       await input.waitFor(`!!document.querySelector('[data-crop-catcher]')`, { timeoutMs: 6000, what: 'crop layer' });
       await sleep(500);
+      C(
+        'F19.7 (rc.3): the Crop tool opens its settings in the tool inspector',
+        await exists('[data-slot="inspector"][data-open] [data-surface="crop"]'),
+      );
       const r0 = await ev(
         `(() => { const r = document.querySelector('[data-page]').getBoundingClientRect(); return { l: r.left, t: r.top, w: r.width, h: r.height }; })()`,
       );
@@ -631,10 +645,11 @@ const session = async (ctx) => {
       await sleep(800);
       const afterCancel =
         await ev(`({ dialogs: document.querySelectorAll('[role="dialog"]').length, bar: !!document.querySelector('[data-crop-bar]'),
-        on: document.querySelector('[data-toolbar-item="crop"]')?.getAttribute('aria-pressed') })`);
+        on: document.querySelector('[data-toolbar-item="crop"]')?.getAttribute('aria-pressed'),
+        inspector: !!document.querySelector('[data-slot="inspector"][data-open]') })`);
       C(
-        'F19.7: Cancel leaves no popup and the tool off',
-        afterCancel.dialogs === 0 && !afterCancel.bar && afterCancel.on === 'false',
+        'F19.7: Cancel leaves no popup, the tool off and the inspector closed',
+        afterCancel.dialogs === 0 && !afterCancel.bar && afterCancel.on === 'false' && !afterCancel.inspector,
         JSON.stringify(afterCancel),
       );
       // Apply with one click.
@@ -812,10 +827,16 @@ const session = async (ctx) => {
       );
       await setViewport(960, 640);
       await shot('f19-12-hf-overlap-960x640');
+      // rc.3: the panel is the 300 px inspector column (DESIGN 3.18 E5), not a dialog: inside the window and right of the canvas.
       const fits = await ev(
-        `(() => { const f = document.querySelector('[data-surface="hf-dialog"]').closest('[role="dialog"]') ?? document.querySelector('[data-surface="hf-dialog"]'); const r = f.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight + 1 && r.left >= 0 && r.right <= window.innerWidth + 1; })()`,
+        `(() => { const f = document.querySelector('[data-slot="inspector"][data-open]'); const c = document.querySelector('[data-action-scope="canvas"]'); if (!f) return false; const r = f.getBoundingClientRect(); const cr = c?.getBoundingClientRect();
+          return r.top >= 0 && r.bottom <= window.innerHeight + 1 && r.left >= 0 && r.right <= window.innerWidth + 1 && (!cr || r.left >= cr.right - 1); })()`,
       );
-      console.log(`INFO  F19.12 (960x640): dialog inside the window: ${fits}`);
+      C(
+        'F19.12 (rc.3, 960x640): the header/footer inspector is inside the window and does not cover the canvas',
+        fits === true,
+        String(fits),
+      );
       await setViewport(1280, 800);
       // Background on: the warning turns into "covers", Apply writes a box.
       await input
@@ -829,7 +850,7 @@ const session = async (ctx) => {
         /Covers existing text/.test(covers),
         covers.slice(0, 160),
       );
-      await input.click({ selector: '[data-hf="apply"]' });
+      await input.click({ selector: '[data-inspector="apply"]' });
       await input.waitFor(`!document.querySelector('[data-surface="hf-dialog"]')`, {
         timeoutMs: 15000,
         what: 'dialog closed',
@@ -1022,6 +1043,19 @@ const session = async (ctx) => {
         'F19.3: dragging the sidebar edge far right stops at 480 px',
         w0 < 480 && w1 === 480,
         `${w0} -> ${w1}, panel ${px} px`,
+      );
+      // rc.3: the sidebar toggle is the splitter's grip (a click without movement) and View > Left panel; the top-bar toggle is gone.
+      const left = () => ev(`document.querySelector('[data-left]')?.getAttribute('data-left') ?? null`);
+      await input.click({ selector: sep });
+      await sleep(900);
+      const afterGrip = await left();
+      await menu('View', 'Left panel');
+      await sleep(900);
+      const afterMenu = await left();
+      C(
+        'F19.3 (rc.3): a click on the splitter grip collapses the sidebar, View > Left panel restores it',
+        afterGrip === 'collapsed' && afterMenu === 'open',
+        `grip -> ${afterGrip}, menu -> ${afterMenu}`,
       );
       await sleep(2500); // the width is written to the settings after it has been still
     });

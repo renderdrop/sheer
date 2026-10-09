@@ -36,7 +36,7 @@ export const LAYOUT = {
   menubar: 28,
   tabstrip: 42,
   gutter: 12,
-  modeCard: 104,
+  modeCard: 106,
   statusbar: 30,
   inspector: 300,
   minibar: 40,

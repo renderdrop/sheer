@@ -77,7 +77,7 @@ describe('the editor columns of DESIGN v2 3.2', () => {
 });
 
 describe('the editor rows of DESIGN 3.18 E1', () => {
-  it('Windows: menu 28 | tabs 42 | gutter 12 | mode card 104 | gutter 12 | body | status 30', () => {
+  it('Windows: menu 28 | tabs 42 | gutter 12 | mode card 106 | gutter 12 | body | status 30', () => {
     const windows = layout({ menuRow: true });
     expect(windows.menuRow).toBe(true);
     expect(windows.rowTracks.map((track) => track.row)).toEqual([
@@ -104,9 +104,9 @@ describe('the editor rows of DESIGN 3.18 E1', () => {
     expect(mac.row).toEqual({ tabs: 1, 'gutter-top': 2, mode: 3, 'gutter-mode': 4, body: 5, status: 6 });
   });
 
-  it('the body at 960 x 640 is 412 on Windows and 440 on macOS', () => {
-    expect(bodyHeight(shellStructure({ ...base, menuRow: true }), LAYOUT.minWindowHeight)).toBe(412);
-    expect(bodyHeight(shellStructure(base), LAYOUT.minWindowHeight)).toBe(440);
+  it('the body at 960 x 640 is 410 on Windows and 438 on macOS (mode card 106)', () => {
+    expect(bodyHeight(shellStructure({ ...base, menuRow: true }), LAYOUT.minWindowHeight)).toBe(410);
+    expect(bodyHeight(shellStructure(base), LAYOUT.minWindowHeight)).toBe(438);
     expect(bodyHeight(shellStructure({ ...base, hasDocument: false }), 640)).toBe(640);
   });
 });
@@ -153,11 +153,11 @@ describe('the page sidebar', () => {
 });
 
 describe('the window minimum', () => {
-  it('the spec numbers: 960 x 640, page sidebar collapse below 860, rows 28, 42, 12, 104, 30', () => {
+  it('the spec numbers: 960 x 640, page sidebar collapse below 860, rows 28, 42, 12, 106, 30', () => {
     expect(LAYOUT.minWindowWidth).toBe(960);
     expect(LAYOUT.minWindowHeight).toBe(640);
     expect([LAYOUT.menubar, LAYOUT.tabstrip, LAYOUT.gutter, LAYOUT.modeCard, LAYOUT.statusbar]).toEqual([
-      28, 42, 12, 104, 30,
+      28, 42, 12, 106, 30,
     ]);
     expect(LAYOUT.leftCollapseBelow).toBe(860);
     expect(LAYOUT.leftCollapseBelow).toBeLessThan(LAYOUT.minWindowWidth);

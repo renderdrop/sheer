@@ -923,12 +923,12 @@ describe('the mode card (DESIGN 3.18 E4)', () => {
     setup(<Rows />);
     const chips = screen.getAllByRole('tab').map((entry) => entry.querySelector('[data-key-chip]'));
     expect(chips.map((chip) => chip?.textContent)).toEqual(['1', '2', '3', '4', '5']);
-    expect(chips[0]?.className).toContain('group-aria-selected:inline-flex');
-    expect(chips[1]?.className).toContain('group-hover:inline-flex');
-    expect(chips[1]?.className).toContain('group-focus-visible:inline-flex');
+    expect(chips[0]?.className).toContain('group-aria-selected:visible');
+    expect(chips[1]?.className).toContain('group-hover:visible');
+    expect(chips[1]?.className).toContain('group-focus-visible:visible');
   });
 
-  it('is one card of header 32 + tool area 72 = 104', () => {
+  it('is one card of header 32 + tool area 72 inside the 1 px border = 106', () => {
     const { container } = setup(<ModeCard />);
     const card = container.querySelector('[data-slot="mode-card"]');
     expect(card?.className).toContain('h-mode-card');

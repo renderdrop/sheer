@@ -39,9 +39,10 @@ const clamp = (value: number, min: number, max: number): number => Math.max(min,
 export function placeBar(selection: Box, bar: { width: number; height: number }, bounds: Box): Placement {
   const minLeft = bounds.left + MINIBAR_INSET;
   const maxLeft = bounds.right - MINIBAR_INSET - bar.width;
-  // A bar wider than the canvas starts at the inset.
+  // A bar wider than the canvas cannot be clamped inside it (it would clip, F19.17): it docks.
+  if (maxLeft < minLeft) return { mode: 'dock' };
   const centred = (selection.left + selection.right) / 2 - bar.width / 2;
-  const left = maxLeft < minLeft ? minLeft : clamp(centred, minLeft, maxLeft);
+  const left = clamp(centred, minLeft, maxLeft);
   const above = selection.top - MINIBAR_GAP - bar.height;
   if (above >= bounds.top + MINIBAR_INSET) return { mode: 'above', left, top: above };
   const below = selection.bottom + MINIBAR_GAP;

@@ -183,7 +183,9 @@ export const ToolRow = memo(function ToolRow() {
       data-fit={current.step}
       onKeyDown={onKeyDown}
       onFocus={onFocus}
-      className={cx('bg-subtle relative isolate flex h-tool-area min-w-0 items-center gap-1 overflow-hidden px-3 py-2')}
+      className={cx(
+        'bg-subtle relative isolate flex h-tool-area shrink-0 min-w-0 items-center gap-1 overflow-hidden px-3 py-2',
+      )}
     >
       <span
         ref={pill}

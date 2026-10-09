@@ -77,3 +77,11 @@ describe('guard decision', () => {
     });
   });
 });
+
+describe('languagePatch', () => {
+  it('sets the UI language and nothing else', () => {
+    expect(p.languagePatch('de')).toEqual({ language: 'de' });
+    expect(p.languagePatch('en')).toEqual({ language: 'en' });
+    expect(() => p.languagePatch('fr')).toThrow();
+  });
+});

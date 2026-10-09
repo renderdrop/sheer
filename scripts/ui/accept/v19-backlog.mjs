@@ -38,7 +38,12 @@ const session = async (ctx) => {
     stamp: 'Stempel…',
     hf: 'Kopf- und Fußzeile…',
     exportComments: 'Kommentare exportieren…',
+    view: 'Ansicht',
+    leftPanel: 'Linke Seitenleiste',
   };
+  // rc.3 (DESIGN 3.18): the tool inspector is the 300 px column right of the canvas; stamp picker and header/footer panel live in it.
+  const INSPECTOR = '[data-slot="inspector"][data-open]';
+  const SPLITTER = '[role="separator"][aria-label="Breite der Seitenleiste ändern"]';
 
   // ---- helpers ------------------------------------------------------------------------------------------------------------
   async function fresh(lang = 'de') {
@@ -83,8 +88,12 @@ const session = async (ctx) => {
   }
 
   async function openComments() {
-    if (!(await exists('[role="tab"][data-value="comments"]')))
-      await input.click({ selector: 'button', text: 'Seitenleiste einblenden' });
+    // rc.3: no top-bar toggle any more; the sidebar comes back through View > Left panel (F4), else the splitter's grip.
+    if (!(await exists('[role="tab"][data-value="comments"]'))) {
+      await menu(T.view, T.leftPanel).catch(() => {});
+      if (!(await exists('[role="tab"][data-value="comments"]'))) await input.click({ selector: SPLITTER });
+      await sleep(500);
+    }
     if (process.env.V19_DEBUG) await input.screenshot(`${SHOTS}/debug-comments`);
     await input.click({ selector: '[role="tab"][data-value="comments"]' });
     await sleep(900);
@@ -170,7 +179,7 @@ const session = async (ctx) => {
     await section('stamps', async () => {
       await fresh('de');
       await open(WORK('stamps.pdf'));
-      await mode('comment');
+      await mode('edit');
       const slots = await count('[data-toolbar-item]');
       const openPicker = async () => {
         await menu(T.edit, T.stamp);
@@ -181,13 +190,18 @@ const session = async (ctx) => {
         await sleep(400);
       };
       await openPicker();
-      const slotLabel = await ev(
-        `[...document.querySelectorAll('[data-toolbar-item="note"]')].map((e) => e.textContent.trim()).join('|')`,
+      // rc.3: Stempel is an own item of the tool row (no longer the Notiz split's variant) and its picker is the tool inspector.
+      const stampItem = await ev(
+        `(() => { const b = document.querySelector('[data-slot="tool-row"] [data-toolbar-item="stamp"]'); return b ? { text: b.textContent.trim() || b.getAttribute('aria-label'), on: b.getAttribute('data-on'), inSplit: !!b.closest('[data-split="note"]') } : null; })()`,
       );
       C(
-        'ST-AC 1: the Notiz split now reads "Stempel", picker open',
-        /Stempel/.test(slotLabel),
-        `slot "${slotLabel}", items ${slots}`,
+        'ST-AC 1 (rc.3): Stempel is its own tool item (not in the Notiz split), active, picker open in the inspector',
+        stampItem !== null &&
+          /Stempel/.test(stampItem.text ?? '') &&
+          !stampItem.inSplit &&
+          stampItem.on === 'true' &&
+          (await exists(`${INSPECTOR} [data-surface="stamp-picker"]`)),
+        `item ${JSON.stringify(stampItem)}, items ${slots}`,
       );
       const tiles = await ev(
         `[...document.querySelectorAll('[data-stamp-tile]')].map((e) => e.getAttribute('aria-label'))`,
@@ -544,10 +558,10 @@ const session = async (ctx) => {
     if (!existsSync(path)) throw new Error(`${what}: file was not written`);
     await sleep(500);
   };
+  // rc.3: the HF and cite panels are the inspector column (inside the window, not covering the canvas), the export dialog stays a dialog.
   const dialogFits = () =>
-    ev(`(() => { const f = document.querySelector('[data-surface]'); if (!f) return null; const r = f.getBoundingClientRect();
-      return r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth; })()`);
-
+    ev(`(() => { const f = document.querySelector('[data-slot="inspector"][data-open]') ?? document.querySelector('[role="dialog"]'); if (!f) return null; const r = f.getBoundingClientRect(); const c = document.querySelector('[data-action-scope="canvas"]')?.getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth && (!c || f.matches('[role="dialog"]') || r.left >= c.right - 1); })()`);
   // ---- hf (HF-AC) ---------------------------------------------------------------------------------------------------------
   if (PHASES.includes('hf')) {
     await section('hf', async () => {
@@ -563,7 +577,7 @@ const session = async (ctx) => {
         await sleep(600);
       };
       const apply = async () => {
-        await input.click({ selector: '[data-hf="apply"]' });
+        await input.click({ selector: '[data-inspector="apply"]' });
         await input.waitFor(`!document.querySelector('[data-surface="hf-dialog"]')`, {
           timeoutMs: 15000,
           what: 'dialog closed after Apply',
@@ -592,22 +606,38 @@ const session = async (ctx) => {
       await fresh('de');
       await open(WORK('hf.pdf'));
 
-      // HF-AC 1: the Bearbeiten mode lists the item last, the Werkzeuge menu holds it
+      // HF-AC 1 (rc.3): Kopf-/Fußzeile is a tool item of Bearbeiten (no longer the last slot of a row of actions); it opens the
+      // inspector. The Werkzeuge menu still holds the command (openHf below).
       try {
         await input.click({ role: 'tab', text: T.edit });
         await sleep(700);
         const items = await ev(
-          `[...document.querySelectorAll('[data-toolbar-item]')].map((e) => ((e.getAttribute('aria-label') ?? '') + ' ' + e.textContent).trim())`,
+          `[...document.querySelectorAll('[data-slot="tool-row"] [data-toolbar-item]')].map((e) => ({ id: e.getAttribute('data-toolbar-item'), label: ((e.getAttribute('aria-label') ?? '') + ' ' + e.textContent).trim() }))`,
         );
+        const hfItem = items.find((i) => i.id === 'headerFooter');
         C(
-          'HF-AC 1: Bearbeiten lists "Kopf- und Fußzeile…" as the last slot',
-          items.length > 0 && items[items.length - 1].includes('Kopf- und Fußzeile'),
-          `${items.length} slots, last "${items[items.length - 1]}"`,
+          'HF-AC 1 (rc.3): Bearbeiten has the tool item "Kopf- und Fußzeile"',
+          hfItem !== undefined && hfItem.label.includes('Kopf- und Fußzeile'),
+          `${items.length} items, ids ${items.map((i) => i.id).join(',')}`,
         );
+        await input.click({ selector: '[data-slot="tool-row"] [data-toolbar-item="headerFooter"]' });
+        await input
+          .waitFor(`!!document.querySelector('${INSPECTOR} [data-surface="hf-dialog"]')`, {
+            timeoutMs: 6000,
+            what: 'hf inspector',
+          })
+          .catch(() => {});
+        C(
+          'HF-AC 1 (rc.3): the tool item opens the header/footer panel in the inspector',
+          await exists(`${INSPECTOR} [data-surface="hf-dialog"]`),
+          '',
+        );
+        await input.click({ selector: '[data-inspector="close"]' }).catch(() => {});
+        await sleep(500);
         await input.click({ role: 'tab', text: 'Lesen' });
         await sleep(500);
       } catch (e) {
-        C('HF-AC 1: Bearbeiten lists "Kopf- und Fußzeile…" as the last slot', false, e.message);
+        C('HF-AC 1 (rc.3): Bearbeiten has the tool item "Kopf- und Fußzeile"', false, e.message);
       }
 
       await openHf();
@@ -877,14 +907,21 @@ const session = async (ctx) => {
         },
       ];
       const setReference = async (src) => {
-        await menu(T.file, 'Dokumenteigenschaften…');
-        await input.waitFor(`!!document.querySelector('[role="dialog"]')`, {
-          timeoutMs: 6000,
-          what: 'properties dialog',
+        // rc.3: Quellenangabe is the reference inspector (DESIGN 3.18 E5), no longer a tab of Dokumenteigenschaften. It opens from
+        // the reference popover of the Kommentare panel ("Quellenangabe bearbeiten…").
+        await openComments();
+        await input.click({ selector: 'button[aria-label="Quellenangabe und Zitatliste"]' });
+        await sleep(700);
+        await input.click({
+          selector: '[role="dialog"] button, [data-surface] button, button',
+          text: 'Quellenangabe bearbeiten…',
         });
-        await input.click({ role: 'tab', text: 'Quellenangabe' });
-        await sleep(900);
-        const D = '[role="dialog"]';
+        await input.waitFor(`!!document.querySelector('${INSPECTOR} [data-surface="reference"] input[id$="-title"]')`, {
+          timeoutMs: 8000,
+          what: 'reference inspector',
+        });
+        await sleep(600);
+        const D = `${INSPECTOR} [data-surface="reference"]`;
         const fill = async (sel, value) => {
           if (!(await exists(sel))) return false;
           await input.click({ selector: sel });
@@ -909,10 +946,10 @@ const session = async (ctx) => {
         filled.family = await fill(`${D} [data-part="family"]`, src.family);
         filled.given = await fill(`${D} [data-part="given"]`, src.given);
         await sleep(300);
-        await input.click({ selector: `${D} button`, text: 'Anwenden' });
-        await input.waitFor(`!document.querySelector('[role="dialog"]')`, {
+        await input.click({ selector: '[data-inspector="apply"]' });
+        await input.waitFor(`!document.querySelector('${D}')`, {
           timeoutMs: 8000,
-          what: 'properties closed',
+          what: 'reference inspector closed',
         });
         await sleep(800);
         C(

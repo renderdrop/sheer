@@ -298,3 +298,13 @@ export function checkSplitContour(items) {
   }
   return out;
 }
+
+/**
+ * rc.3 inspector column (DESIGN 3.18 E1/E5): a docked panel, not a floating surface. It may not overlap the canvas, the status bar,
+ * the left panel, the tab strip or the mode card (they are neighbours in the grid); it touches them at most.
+ * @param {{left:number,top:number,right:number,bottom:number}} panel
+ * @param {{name:string,rect:{left:number,top:number,right:number,bottom:number}}[]} neighbours
+ */
+export function checkPanelOverlap(panel, neighbours) {
+  return neighbours.filter((n) => overlap(panel, n.rect)).map((n) => `inspector overlaps ${n.name}`);
+}

@@ -231,12 +231,55 @@ impl<'a> Ctx<'a> {
         ));
     }
 
+    /// The k-th of `dup` equal symbol markers on page `s` points to the k-th of exactly `dup` same-key notes in the lower page part.
+    fn resolve_ordinal(&mut self, s: usize, m: &Marker, dup: usize) -> Option<(NoteRef, f32)> {
+        let height = self.doc.pages[s].height;
+        let mut same: Vec<&Marker> = self.markers[s]
+            .as_ref()?
+            .iter()
+            .filter(|x| x.key == m.key)
+            .collect();
+        same.sort_by(|a, b| {
+            a.rect
+                .y
+                .total_cmp(&b.rect.y)
+                .then(a.rect.x.total_cmp(&b.rect.x))
+        });
+        let k = same
+            .iter()
+            .position(|x| x.rect.x == m.rect.x && x.rect.y == m.rect.y)?;
+        self.ensure_notes(s);
+        let mut notes: Vec<(usize, &Note)> = self.notes[s]
+            .as_ref()?
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.key == m.key && n.rect.y >= height * LOWER_FROM)
+            .collect();
+        notes.sort_by(|a, b| a.1.rect.y.total_cmp(&b.1.rect.y));
+        if notes.len() != dup || notes[k].1.rect.y <= m.rect.y {
+            return None;
+        }
+        Some((
+            NoteRef {
+                endnote: false,
+                page_idx: s,
+                idx: notes[k].0,
+            },
+            0.85,
+        ))
+    }
+
     /// The single note a marker on page `s` points to, with its score (ADR-132 §3), or `None`.
     fn resolve(&mut self, s: usize, m: &Marker) -> Option<(NoteRef, f32)> {
         self.ensure_markers(s);
         let dup = self.markers[s]
             .as_ref()
             .map_or(0, |v| v.iter().filter(|x| x.key == m.key).count());
+        // A repeated symbol ("*" twice on a page) pairs with the notes of the page by order when the counts are equal.
+        let symbol = m.key.starts_with(['*', '†', '‡']);
+        if dup > 1 && symbol {
+            return self.resolve_ordinal(s, m, dup);
+        }
         if dup != 1 {
             return None;
         }
@@ -420,6 +463,57 @@ fn trailing_sup(text: &str) -> Option<(usize, String)> {
     valid_number(&key).then_some((chars.len() - tail, key))
 }
 
+/// All self-marking markers inside a run's text, as (start, end, key) in chars: `word[3]`, `word(3)`, `word*`, `word†`, also
+/// followed by more text ("records* the river") and `[3]` after a space ("records [3]"). The marker must be followed by the end,
+/// whitespace or punctuation. Whether it links is decided by a matching note.
+fn inline_markers(text: &str) -> Vec<(usize, usize, String)> {
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < n {
+        let c = chars[i];
+        let (end, key) = match c {
+            '[' | '(' => {
+                let close = if c == '[' { ']' } else { ')' };
+                let digits = chars[i + 1..]
+                    .iter()
+                    .take_while(|d| d.is_ascii_digit())
+                    .count();
+                let end = i + digits + 2;
+                let k: String = chars[i + 1..i + 1 + digits].iter().collect();
+                if digits == 0 || chars.get(end - 1) != Some(&close) || !valid_number(&k) {
+                    i += 1;
+                    continue;
+                }
+                (end, k)
+            }
+            '*' | '†' | '‡' => {
+                let run = chars[i..].iter().take_while(|x| **x == c).count();
+                if run > 3 || (run > 1 && c != '*') {
+                    i += run;
+                    continue;
+                }
+                (i + run, chars[i..i + run].iter().collect())
+            }
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+        let attached = i > 0 && !chars[i - 1].is_whitespace();
+        let spaced_bracket = c == '[' && i > 0 && chars[i - 1] == ' ' && i > 1;
+        let after_ok = chars.get(end).is_none_or(|a| {
+            a.is_whitespace() || (a.is_ascii_punctuation() && !matches!(a, '*' | '[' | '('))
+        });
+        if (attached || spaced_bracket) && after_ok {
+            out.push((i, end, key));
+        }
+        i = end;
+    }
+    out
+}
+
 fn run_text(line: &Line) -> String {
     let mut s = String::new();
     for r in &line.runs {
@@ -570,11 +664,14 @@ fn page_markers(p: &PageText, body: f32) -> Vec<Marker> {
                     }
                 }
                 // A marker attached to the end of the first run ("Claim[7]") is still found below.
-                if parse_marker(&run.text).is_some() || trailing_sup(&run.text).is_none() {
+                if parse_marker(&run.text).is_some()
+                    || (trailing_sup(&run.text).is_none() && inline_markers(&run.text).is_empty())
+                {
                     continue;
                 }
             }
-            let found = if let Some(key) = parse_marker(&run.text) {
+            let mut found: Vec<(String, PtRect)> = Vec::new();
+            if let Some(key) = parse_marker(&run.text) {
                 let ok = if is_self_marking(&run.text) {
                     !line.runs[ri - 1].text.ends_with(char::is_whitespace)
                 } else {
@@ -583,16 +680,28 @@ fn page_markers(p: &PageText, body: f32) -> Vec<Marker> {
                         && (is_sup_only(&run.text) || !run.text.starts_with(char::is_whitespace))
                         && prev_ok(&line.runs[ri - 1].text)
                 };
-                ok.then_some((key, run.rect))
-            } else if let Some((pre, key)) = trailing_sup(&run.text) {
-                let prefix: String = run.text.chars().take(pre).collect();
-                let total = run.text.chars().count();
-                (prev_ok(&prefix) && run.size > SMALL_FRAC * body)
-                    .then(|| (key, frac_rect(run.rect, pre, total, total)))
+                if ok {
+                    found.push((key, run.rect));
+                }
             } else {
-                None
-            };
-            if let Some((key, rect)) = found {
+                let total = run.text.chars().count();
+                let mut seen_start = None;
+                if let Some((pre, key)) = trailing_sup(&run.text) {
+                    let prefix: String = run.text.chars().take(pre).collect();
+                    seen_start = Some(pre);
+                    if prev_ok(&prefix) && run.size > SMALL_FRAC * body {
+                        found.push((key, frac_rect(run.rect, pre, total, total)));
+                    }
+                }
+                if run.size > SMALL_FRAC * body {
+                    for (st, en, key) in inline_markers(&run.text) {
+                        if seen_start != Some(st) {
+                            found.push((key, frac_rect(run.rect, st, en, total)));
+                        }
+                    }
+                }
+            }
+            for (key, rect) in found {
                 let lt = text.get_or_insert_with(|| run_text(line)).clone();
                 out.push(Marker {
                     key,
@@ -999,6 +1108,97 @@ mod tests {
             .map(|l| l.marker)
             .collect();
         assert_eq!(keys, vec!["7", "8", "**", "*", "9"]);
+    }
+
+    /// The layout of `footnotePdf` in `v20rc3-pure.mjs`: marker glued mid-run, notes "[n] text" / "* text" at 9 pt.
+    fn generated_page(
+        marker: &dyn Fn(usize) -> String,
+        label: &dyn Fn(usize) -> String,
+        first: usize,
+    ) -> PageText {
+        let mut lines = vec![
+            line(vec![run("1 Introduction", 72.0, 72.0, 20.0, 90.0)]),
+            line(vec![run(
+                "The survey of the old town began",
+                72.0,
+                102.0,
+                12.0,
+                112.0,
+            )]),
+        ];
+        for k in 0..2 {
+            let y = 192.0 + 24.0 * k as f32;
+            lines.push(line(vec![run(
+                &format!(
+                    "As the archive records{} the river moved again.",
+                    marker(first + k)
+                ),
+                72.0,
+                y,
+                12.0,
+                y + 10.0,
+            )]));
+            let ny = 662.0 + 14.0 * k as f32;
+            lines.push(line(vec![run(
+                &format!(
+                    "{} Smith, J. (1999). A Short History of Maps.",
+                    label(first + k)
+                ),
+                72.0,
+                ny,
+                9.0,
+                ny + 8.0,
+            )]));
+        }
+        PageText {
+            page: 1,
+            width: 612.0,
+            height: 792.0,
+            lines,
+            body_size: 12.0,
+        }
+    }
+
+    #[test]
+    fn generated_bracket_and_asterisk_markers_mid_run() {
+        let d = doc(vec![generated_page(
+            &|n| format!("[{n}]"),
+            &|n| format!("[{n}]"),
+            3,
+        )]);
+        let keys: Vec<String> = detect(&d, 1)
+            .into_iter()
+            .filter(|l| l.kind == Kind::Footnote)
+            .map(|l| l.marker)
+            .collect();
+        assert_eq!(keys, vec!["3", "4"]);
+        let d = doc(vec![generated_page(&|_| "*".into(), &|_| "*".into(), 1)]);
+        let links = detect(&d, 1);
+        let foot: Vec<&SmartLink> = links.iter().filter(|l| l.kind == Kind::Footnote).collect();
+        assert_eq!(foot.len(), 2);
+        assert!(foot[0].target.rect.unwrap().y < foot[1].target.rect.unwrap().y);
+        assert_eq!(links.iter().filter(|l| l.kind == Kind::NoteBack).count(), 2);
+    }
+
+    #[test]
+    fn citation_without_note_and_spaced_bracket() {
+        // "[3]" in running text without a matching note stays unlinked; "word [3]" links to its note.
+        let l = line(vec![run(
+            "Cited in [3] and more.",
+            72.0,
+            192.0,
+            12.0,
+            202.0,
+        )]);
+        let d = doc(vec![page(
+            1,
+            vec![l.clone(), note_line(700.0, "[4]", "Other.")],
+        )]);
+        assert!(detect(&d, 1).is_empty());
+        let d = doc(vec![page(1, vec![l, note_line(700.0, "[3]", "Three.")])]);
+        assert!(detect(&d, 1)
+            .iter()
+            .any(|l| l.kind == Kind::Footnote && l.marker == "3"));
     }
 
     #[test]
