@@ -51,7 +51,12 @@ export function readPng(path) {
     const o = y * stride + x * bpp;
     return bpp < 3 ? px[o] : 0.2126 * px[o] + 0.7152 * px[o + 1] + 0.0722 * px[o + 2];
   };
-  return { width, height, lum };
+  /** [r, g, b] of a pixel (grey replicated). */
+  const rgb = (x, y) => {
+    const o = y * stride + x * bpp;
+    return bpp < 3 ? [px[o], px[o], px[o]] : [px[o], px[o + 1], px[o + 2]];
+  };
+  return { width, height, lum, rgb };
 }
 
 /** Darkest and lightest luminance (0..255) inside a rect given in device pixels. */

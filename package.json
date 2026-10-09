@@ -29,6 +29,7 @@
     "cargo": "bash scripts/cargo.sh",
     "target:budget": "node scripts/target-budget.mjs",
     "accept:v20rc3": "node scripts/ui/accept/v20rc3.mjs",
+    "accept:v20final": "node scripts/ui/accept/v20final.mjs",
     "accept:clean": "node scripts/ui/accept/clean-recordings.mjs",
     "tools:install": "bash scripts/install-tools.sh",
     "bump-version": "bash scripts/bump-version.sh",

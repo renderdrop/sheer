@@ -97,7 +97,7 @@ for (const [tag, file] of FILES) {
       if (!(await reveal(pick))) return C(`${K}: link rendered again`, false, pick.label);
       await ev(`document.querySelector(${q(sel(pick))}).scrollIntoView({ block: 'center' })`);
       await sleep(400);
-      const s0 = await state(pick.page);
+      let s0 = await state(pick.page);
       const run = `${sel(pick)} [data-smartlink-run]`;
       // hover -> preview
       await input.hover({ selector: run });
@@ -144,6 +144,8 @@ for (const [tag, file] of FILES) {
       const m = head.match(/\(Seite (\d+) der Datei\)/) ?? head.match(/S\.\s*(\d+)/);
       const target = m ? Number(m[1]) : null;
       // click -> target reached, band
+      // F19.28: input.hover/click centre the run (scrollIntoView, inline too), which can move scrollLeft; baseline after that
+      s0 = await state(pick.page);
       await input.click({ selector: run });
       const band = await input.waitFor(bandPage, { timeoutMs: 6000, what: 'band' }).catch(() => '');
       await sleep(300);
