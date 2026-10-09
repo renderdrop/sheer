@@ -4,6 +4,7 @@
 // One launch. Cases 1-4 run in German and once more in English; 5-8 in German. Before every case `tipsSeen` is reset to [] and
 // `tipsEnabled` to true (update_settings + reload, which also clears the per-session set of the tip runtime).
 // Screenshots (light, German): review/v180/shots/tip-{highlightClip,formClip,signClip,pagesClip}.png.
+import { enterMode } from './modes.mjs';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createResults, runSession, openAndWait, sleep, SCROLLER } from './harness.mjs';
@@ -68,7 +69,7 @@ const session = async (ctx) => {
   }
   const open = (path) => openAndWait(ctx, path);
   const mode = async (id) => {
-    await input.click({ selector: `[data-mode="${id}"]` });
+    await enterMode(input, id, sleep);
     await sleep(500);
   };
   const tool = async (id) => {

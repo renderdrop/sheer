@@ -97,7 +97,6 @@ import { mayCopy, mayEdit, mayHeaderFooter, mayPrint, mayRecognize, maySaveTextP
 /** The action of each tool of the toolbar: it makes the tool the active one. */
 export type ToolActionId = `tool-${ToolId}`;
 
-
 /** The id of every action. These strings are also the native menu's item ids (`src/actions/menu.json`, the Rust allowlist). */
 export type ActionId =
   | 'open'

@@ -2,6 +2,7 @@
 // tests/fixtures/text.pdf (copied to review/v190/out) and tests/fixtures/signed.pdf (refusal). Prereq: npm run build:acceptance.
 // Run: node scripts/ui/accept/v19-backlog.mjs   (German UI; V19_PHASES=stamps,hf,export,cite to select; one launch, shared state)
 // Screenshots (light): review/v190/shots/*.png (1280x800; the HF and export dialogs again at 960x640).
+import { enterMode } from './modes.mjs';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createResults, runSession, openAndWait, sleep } from './harness.mjs';
@@ -76,7 +77,7 @@ const session = async (ctx) => {
   const exists = (sel) => ev(`!!document.querySelector(${q(sel)})`);
   const open = (path) => openAndWait(ctx, path);
   const mode = async (id) => {
-    await input.click({ selector: `[data-mode="${id}"]` });
+    await enterMode(input, id, sleep);
     await sleep(500);
   };
   async function menu(top, item) {

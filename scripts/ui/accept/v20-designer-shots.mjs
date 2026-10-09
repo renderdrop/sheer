@@ -3,6 +3,7 @@
 // Prereq: npm run build:acceptance. Run: node scripts/ui/accept/v20-designer-shots.mjs
 // Output: review/v200/designer-{a-home,b-document,c-menu,d-stamps}.png. Empties the acceptance recent list first. The recovery banner of earlier killed sessions is hidden
 // with "Später entscheiden" (session only, the records stay).
+import { enterMode } from './modes.mjs';
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,7 +67,7 @@ const code = await runSession(async (ctx) => {
   await hideRecovery();
   if (!(await ev(`!!document.querySelector('[role="tab"][data-value="thumbnails"],[role="tablist"] [role="tab"]')`)))
     await input.click({ selector: 'button', text: 'Seitenleiste einblenden' }).catch(() => {});
-  await input.click({ selector: '[data-mode="read"]' });
+  await enterMode(input, 'read', sleep);
   await sleep(1500);
   await shot('b-document');
 
@@ -101,7 +102,7 @@ const code = await runSession(async (ctx) => {
     (await ev(`document.title + ' ' + document.body.innerText.slice(0, 400)`)).includes(basename(DOC).slice(0, 14)),
     '',
   );
-  await input.click({ selector: '[data-mode="comment"]' });
+  await enterMode(input, 'comment', sleep);
   await sleep(600);
   await menu('Bearbeiten');
   await input.click({ selector: '[role="menu"] [role="menuitem"]', text: 'Stempel…' });

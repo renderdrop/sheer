@@ -3,6 +3,7 @@
 //   V20F_PHASES=home,ink,colour,thumbs,inspector,chrome,zoom,tabs,comments to select (default all). English UI.
 // Every check runs at 1280x800 and 960x640 (Emulation.setDeviceMetricsOverride); F20.3 also at deviceScaleFactor 2.
 // Output: review/v20final/out (generated PDFs), review/v20final/shots/*.png (window captures only). Rule 15: CDP input + dialog queue.
+import { enterMode } from './modes.mjs';
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { readPng } from './png.mjs';
@@ -32,7 +33,8 @@ const ROOT = resolve(import.meta.dirname, '../../..');
 const OUT = resolve(ROOT, 'review/v20final/out');
 const SHOTS = 'v20final/shots';
 const q = (s) => JSON.stringify(s);
-const ALL = 'home,ink,colour,thumbs,inspector,chrome,zoom,tabs,comments';
+// F22: the 'tabs' phase (active mode tab seam) is obsolete, the tabs are gone; not in ALL.
+const ALL = 'home,ink,colour,thumbs,inspector,chrome,zoom,comments';
 const PHASES = (process.env.V20F_PHASES ?? ALL).split(',');
 const RUN = Date.now().toString(36);
 
@@ -114,7 +116,7 @@ const session = async (ctx) => {
     await sleep(900);
   }
   const mode = async (id) => {
-    await input.click({ selector: `[data-mode="${id}"]` });
+    await enterMode(input, id, sleep);
     await sleep(500);
   };
   const blurField = () =>

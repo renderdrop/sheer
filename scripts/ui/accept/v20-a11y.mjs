@@ -11,6 +11,7 @@
 // Prereq: npm run build:acceptance. Run: node scripts/ui/accept/v20-a11y.mjs   (German UI)
 // Env: V20_A11Y_THEMES=light,dark  V20_A11Y_ONLY=<substring of a screen name>  V20_A11Y_NO_MENUS=1
 // Output: table + review/a11y-v20.json. Exit 1 on any violation.
+import { enterMode } from './modes.mjs';
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createResults, runSession, openAndWait, sleep } from './harness.mjs';
@@ -126,7 +127,7 @@ const session = async (ctx) => {
   };
   const mode = async (id) => {
     await input.press('Escape').catch(() => {});
-    await input.click({ selector: `[data-mode="${id}"]` });
+    await enterMode(input, id, sleep);
     await sleep(500);
   };
 

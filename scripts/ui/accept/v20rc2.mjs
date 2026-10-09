@@ -2,6 +2,7 @@
 // Prereq: npm run build:acceptance (a build younger than the F19 commits). Run: node scripts/ui/accept/v20rc2.mjs
 //   V20_PHASES=home,comments,crop,redact,hf,shapes,props,sidebar to select (default all). English UI, one launch (plus one relaunch
 //   for the sidebar width). Output: review/v20rc2/out (generated PDFs), review/v20rc2/shots/*.png (window captures only).
+import { enterMode } from './modes.mjs';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
@@ -169,7 +170,7 @@ const session = async (ctx) => {
     await sleep(700);
   }
   const mode = async (id) => {
-    await input.click({ selector: `[data-mode="${id}"]` });
+    await enterMode(input, id, sleep);
     await sleep(500);
   };
   const blurField = () =>

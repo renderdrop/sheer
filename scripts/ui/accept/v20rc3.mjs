@@ -2,6 +2,7 @@
 // Generated PDFs only (rule 13). Prereq: npm run build:acceptance (a build younger than the rc.3 commits). Run: npm run accept:v20rc3
 //   V20_PHASES=layout,mode,inspector,status,home,palette,links,ocr,sources,history,comments,draw to select (default all). English UI.
 // Output: review/v20rc3/out (generated PDFs), review/v20rc3/shots/*.png (window captures only). Rule 15: CDP input + dialog queue.
+import { enterMode } from './modes.mjs';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { readPng } from './png.mjs';
@@ -25,7 +26,8 @@ const ROOT = resolve(import.meta.dirname, '../../..');
 const OUT = resolve(ROOT, 'review/v20rc3/out');
 const SHOTS = 'v20rc3/shots';
 const q = (s) => JSON.stringify(s);
-const ALL = 'layout,mode,inspector,status,home,palette,links,ocr,sources,history,comments,draw';
+// F22: the 'mode' phase (mode registers, key chips 1-5) is obsolete; not in ALL.
+const ALL = 'layout,inspector,status,home,palette,links,ocr,sources,history,comments,draw';
 const PHASES = (process.env.V20_PHASES ?? ALL).split(',');
 const RUN = Date.now().toString(36);
 
@@ -111,7 +113,7 @@ const session = async (ctx) => {
     await sleep(700);
   }
   const mode = async (id) => {
-    await input.click({ selector: `[data-mode="${id}"]` });
+    await enterMode(input, id, sleep);
     await sleep(500);
   };
   const blurField = () =>
@@ -216,7 +218,12 @@ const session = async (ctx) => {
         await shot(`f19-16-editor-${w}x${h}`);
         C(
           `F19.16 (${w}x${h}): editor rows 28/42/12/98/12/body/30 (F21.6: icons only)`,
-          rowsMatch(tracks, h, menu) && g.tabs === 42 && g.card === 98 && g.status === 30 && (!menu || g.menu === 28),
+          // F22.3: a wrapped strip makes the card taller than the 98 px one-line card; the rows must follow the measured card.
+          rowsMatch(tracks, h, menu, 1, g.card) &&
+            g.tabs === 42 &&
+            g.card >= 98 &&
+            g.status === 30 &&
+            (!menu || g.menu === 28),
           JSON.stringify({
             tracks,
             menu: g.menu,
