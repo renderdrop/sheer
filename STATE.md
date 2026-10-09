@@ -1,20 +1,12 @@
 # STATE
-phase: session "v2.0.0-rc.3 — F19 part 2" (ADR-143, tempo level 4, model policy ADR-142) in progress
-version: 2.0.0-rc.2 (tag v2.0.0-rc.2, pre-release; latest stable v1.9.0)
-current_item: F19.16/F19.17 designer spec (DESIGN §3.18) → wave L (layout) → F19.19 palettes → wave S (F19.20–F19.23)
+phase: session "v2.0.0-rc.3 — F19 part 2" (ADR-143, tempo level 4, model policy ADR-142) closed: v2.0.0-rc.3 pre-released
+version: 2.0.0-rc.3 (tag v2.0.0-rc.3, pre-release; latest stable v1.9.0)
+current_item: none — next session: owner decides (proposal: v2.0.0 final — F19.28, author detection, macOS check of the rc.3 layout, one designer round)
 packages:
-  spec: designer §3.18 editor + home (Opus) — done 14ef62b
-  wave L (frontend, Sonnet): L1 shell/tabs/topbar/status bar + tokens.css · L2 modes card · L3 tool inspector (+ modes/Options.tsx) · L4 home
-  wave L committed 24cf7c8 (+ L5 integration); wave P committed e3784c4
-  wave S committed 282bc1d: A smartlinks (gate 100/100/90.5 %), B OCR text PDF [Opus] (security PASS, 4 medium → H), C comments, D draw/shapes, E history (frontend), F crop keys + split button
-  committed 4755e21: G sources F19.21 + G2 ISBN + H sec fixes/get_history + v20rc3 script (security reviews S1-B and G/H: PASS, mediums fixed)
-  acceptance round 1: v20rc3 50/60, gate 2238/2308 (37 registry drift, 20 mode-tab hover, 9 toast/status overlap, 2 minibar clip), annot-smoke 16/16, v16-smartlinks 76/79, v16-range 11/11, v19-backlog 22/28, v20rc2 38/47 (old layout)
-  fixes committed 70313f8 (FX-1..FX-4 + stamp mode); round 2: v20rc3 60/60, v17-ocr 50/50, v16-range 11/11, v19 64/64, annot 16/16, v16-smartlinks 77/79, v20rc2 56/57, gate 2507/2540
-  running: FX-5 (scroll restore clamp, de home tiles, ink minibar 960, hf slot labels) · FX-6 gate openers textedit/font/notice; then round 3 (gate, v16-smartlinks, v20rc2, v20rc3)
-  then: full check, commit, rebuild, acceptance round 2, real-input smoke, rc.3
-  then: full check, commit, build:acceptance, v20rc3 + touched scripts, surface gate, annot-smoke, real-input smoke, rc.3 release, report
-last_completed: v2.0.0-rc.2 — report docs/reports/2026-10-08-v2.0.0-rc.2-f19-teil1.md
-loop_count_this_session: 0
+  spec §3.18 (14ef62b) · wave L layout (24cf7c8) · P palettes (e3784c4) · wave S F19.20/.22-.27 (282bc1d) · G/G2/H sources, ISBN, sec fixes, get_history (4755e21)
+  acceptance fixes 70313f8, fa3c247, ef915aa; final: v20rc3 60/60, v20rc2 57/57, v19 64/64, v17-ocr 50/50, v16-range 11/11, v16-smartlinks 77/79 (F19.28), gate 2576/2576, annot 16/16, real smoke PASS
+last_completed: v2.0.0-rc.3 — F19.16–F19.27; report docs/reports/2026-10-09-v2.0.0-rc.3-f19-teil2.md
+loop_count_this_session: 0 (session closed, STOP set)
 open_blockers: 3 (B-002, B-005, B-008, human-only)
 notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
   ADR-120: every push starts with `bash scripts/ci-status.sh`; red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs`; real input only `smoke-real.mjs` (≤ 5 min, announced).
@@ -23,6 +15,8 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
   ADR-142: model per package named in the brief (Opus: audits, engine-critical Rust, 2nd fix round; Haiku: mechanic). Briefs that start a dev/acceptance window must say: stop it only by process path (incident 2026-10-08: an agent killed sheer.exe by name).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - ef915aa..release mini bar fix + release v2.0.0-rc.3 → run pending
+  - fa3c247 acceptance round 2 fixes + changelog → run #155 (37874555467) GREEN
   - 70313f8 acceptance round 1 fixes → run #154 (37868472036) GREEN
   - 4755e21 G/G2/H + v20rc3 → run #153 (37862527681) GREEN
   - 282bc1d wave S F19.20/.22-.27 → run #152 (37857822228) GREEN
