@@ -750,6 +750,80 @@ export async function redo(docId: number): Promise<ChangeSet> {
   return changes;
 }
 
+// --- The undo history as a list (the history panel, F19.23) --------------------------------------------------------------
+
+export type HistoryKind = 'annotation' | 'text' | 'page' | 'other';
+
+/** One step of the backend's undo history. */
+export interface HistoryItem {
+  /** Stable while the step stays on the stacks; an edit folded into the step gives it a new one. */
+  id: number;
+  /** A catalog key (`annotation.create`, `page.rotate`, ...), or a batch's own label. */
+  labelKey: string;
+  kind: HistoryKind;
+  /** The page the step concerns, if it has one. */
+  page: number | null;
+  annotationId: number | null;
+  /** The kind of the annotation (`highlight`, ...) when the step concerns one. */
+  annotationKind: string | null;
+  isTextEdit: boolean;
+}
+
+/** The history, oldest first: `cursor` steps are applied, the ones from there on are redo steps. */
+export interface HistoryList {
+  entries: readonly HistoryItem[];
+  cursor: number;
+}
+
+const HISTORY_KINDS: ReadonlySet<unknown> = new Set<HistoryKind>(['annotation', 'text', 'page', 'other']);
+
+function nullableUint(value: unknown): number | null | undefined {
+  if (value === null || value === undefined) return null;
+  return isUint(value) ? value : undefined;
+}
+
+/** Validates the answer of `get_history`: at most `MAX_HISTORY_ENTRIES` steps and a cursor inside the list; `null` if it is not one. */
+export function parseHistoryList(value: unknown): HistoryList | null {
+  if (!isRecord(value) || !Array.isArray(value.entries) || value.entries.length > MAX_HISTORY_ENTRIES) return null;
+  const { cursor } = value;
+  if (!isUint(cursor, value.entries.length)) return null;
+  const entries: HistoryItem[] = [];
+  for (const raw of value.entries as unknown[]) {
+    if (!isRecord(raw)) return null;
+    const page = nullableUint(raw.page);
+    const annotationId = nullableUint(raw.annotationId);
+    const annotationKind = raw.annotationKind ?? null;
+    if (
+      !isUint(raw.id, Number.MAX_SAFE_INTEGER) ||
+      typeof raw.labelKey !== 'string' ||
+      raw.labelKey.length > 128 ||
+      !HISTORY_KINDS.has(raw.kind) ||
+      page === undefined ||
+      annotationId === undefined ||
+      !(annotationKind === null || (typeof annotationKind === 'string' && annotationKind.length <= 64)) ||
+      typeof raw.isTextEdit !== 'boolean'
+    )
+      return null;
+    entries.push({
+      id: raw.id,
+      labelKey: raw.labelKey,
+      kind: raw.kind as HistoryKind,
+      page,
+      annotationId,
+      annotationKind,
+      isTextEdit: raw.isTextEdit,
+    });
+  }
+  return { entries, cursor };
+}
+
+/** The undo history of a document, every step of the session (annotations, pages, text edits, jobs). Read only. */
+export async function getHistory(docId: number): Promise<HistoryList> {
+  const list = parseHistoryList(await call<unknown>('get_history', { docId }));
+  if (list === null) throw toAppError(null);
+  return list;
+}
+
 // --- The document's annotations as a list (the comments panel) -----------------------------------------------------------
 
 /** Longest excerpt of the contents in a summary, in characters (`SUMMARY_EXCERPT_CHARS`). */

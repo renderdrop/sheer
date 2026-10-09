@@ -29,6 +29,7 @@ use crate::error::{AppError, UiError};
 use crate::limits;
 use crate::model::annotation::{Annotation, AnnotationBody, ReviewState, Rgb};
 use crate::model::doc_state::{ChangeSet, DocState, Stamp};
+use crate::model::history::HistoryList;
 use crate::model::ids::AnnotId;
 use crate::model::page::unrotated;
 use crate::model::quote::{quote_of, CARD_QUOTE_MAX};
@@ -761,6 +762,24 @@ pub async fn import_warnings(
 pub async fn undo(state: State<'_, AppState>, doc_id: DocumentId) -> Result<ChangeSet, UiError> {
     let state = state.inner().clone();
     blocking(move || state.undo(doc_id)).await
+}
+
+impl AppState {
+    /// The steps of the document's undo history (oldest first) and how many are applied, for the history panel. Read only; at most
+    /// `MAX_HISTORY_ENTRIES` entries.
+    pub fn get_history(&self, id: DocumentId) -> Result<HistoryList, AppError> {
+        self.model(id, |state| Ok(state.history_list()))
+    }
+}
+
+/// The undo history of a document as a list: `{ entries: [{ id, labelKey, kind, page, annotationId, annotationKind, isTextEdit }], cursor }`.
+#[tauri::command]
+pub async fn get_history(
+    state: State<'_, AppState>,
+    doc_id: DocumentId,
+) -> Result<HistoryList, UiError> {
+    let state = state.inner().clone();
+    blocking(move || state.get_history(doc_id)).await
 }
 
 /// Does the last undone step of a document's history again.

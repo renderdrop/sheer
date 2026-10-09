@@ -67,6 +67,9 @@ pub struct BibRecord {
     /// At most `limits::BIB_DOI_MAX` characters.
     #[serde(default)]
     pub doi: Option<String>,
+    /// A valid ISBN-13 or ISBN-10 (checksum), stored as digits only (a final `X` allowed on a ten); `normalized` strips hyphens/spaces.
+    #[serde(default)]
+    pub isbn: Option<String>,
     /// At most `limits::BIB_URL_MAX` characters. Never opened.
     #[serde(default)]
     pub url: Option<String>,
@@ -95,6 +98,7 @@ pub enum BibField {
     Publisher,
     Place,
     Doi,
+    Isbn,
     Url,
     Accessed,
     ShortTitle,
@@ -123,7 +127,8 @@ pub struct BibliographyInfo {
     pub dropped_by_strip: bool,
 }
 
-/// What `Job::FirstPageHints` finds on page 1 (`limits::BIB_FIRST_PAGE_CHARS_MAX` characters, `BIB_FIRST_PAGE_BUDGET`).
+/// What `Job::FirstPageHints` finds on the first pages and the imprint (`limits::BIB_FIRST_PAGE_CHARS_MAX` characters a page,
+/// `BIB_FIRST_PAGE_BUDGET`). Every field is optional; `engine/imprint.rs` fills them.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FirstPageHints {
     #[serde(default)]
@@ -132,6 +137,58 @@ pub struct FirstPageHints {
     pub year: Option<String>,
     #[serde(default)]
     pub doi: Option<String>,
+    #[serde(default)]
+    pub authors: Vec<Person>,
+    #[serde(default)]
+    pub edition: Option<String>,
+    #[serde(default)]
+    pub publisher: Option<String>,
+    #[serde(default)]
+    pub place: Option<String>,
+    /// A valid ISBN-10 or ISBN-13 (checksum), digits only. It fills the record's `isbn` and decides the kind.
+    #[serde(default)]
+    pub isbn: Option<String>,
+    #[serde(default)]
+    pub kind: Option<BibKind>,
+    #[serde(default)]
+    pub container_title: Option<String>,
+    #[serde(default)]
+    pub volume: Option<String>,
+    #[serde(default)]
+    pub issue: Option<String>,
+    #[serde(default)]
+    pub pages: Option<String>,
+}
+
+impl FirstPageHints {
+    /// Whether every field is within the record limits (the reply of the engine process is checked, not trusted).
+    pub fn within_limits(&self) -> bool {
+        let fits = |text: &Option<String>, max: usize| {
+            text.as_deref().is_none_or(|t| t.chars().count() <= max)
+        };
+        fits(&self.title, limits::BIB_HEURISTIC_TITLE_MAX)
+            && fits(&self.year, limits::BIB_YEAR_MAX)
+            && fits(&self.doi, limits::BIB_DOI_MAX)
+            && self.isbn.as_deref().is_none_or(|i| {
+                (10..=13).contains(&i.len()) && i.bytes().all(|b| b.is_ascii_digit() || b == b'X')
+            })
+            && [
+                &self.edition,
+                &self.publisher,
+                &self.place,
+                &self.container_title,
+                &self.volume,
+                &self.issue,
+                &self.pages,
+            ]
+            .into_iter()
+            .all(|text| fits(text, limits::BIB_FIELD_MAX))
+            && self.authors.len() <= limits::BIB_AUTHORS_MAX
+            && self.authors.iter().all(|p| {
+                p.family.chars().count() <= limits::BIB_PERSON_MAX
+                    && p.given.chars().count() <= limits::BIB_PERSON_MAX
+            })
+    }
 }
 
 /// What a file says about its bibliographic record, layer by layer (read once by `get_bibliography`).
@@ -249,6 +306,45 @@ pub fn is_doi_shape(text: &str) -> bool {
         && !text.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
+/// An ISBN as digits only (hyphens and spaces removed, `x` upper-cased): a valid ISBN-13 or ISBN-10 by its check digit, else `None`.
+pub fn normalize_isbn(text: &str) -> Option<String> {
+    let digits: String = text
+        .trim()
+        .chars()
+        .filter(|c| *c != '-' && *c != ' ')
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    let bytes = digits.as_bytes();
+    let valid = match bytes.len() {
+        13 => {
+            bytes.iter().all(u8::is_ascii_digit)
+                && bytes
+                    .iter()
+                    .enumerate()
+                    .map(|(i, b)| u32::from(b - b'0') * if i % 2 == 0 { 1 } else { 3 })
+                    .sum::<u32>()
+                    % 10
+                    == 0
+        }
+        10 => {
+            bytes[..9].iter().all(u8::is_ascii_digit)
+                && (bytes[9].is_ascii_digit() || bytes[9] == b'X')
+                && bytes
+                    .iter()
+                    .enumerate()
+                    .map(|(i, b)| {
+                        let v = if *b == b'X' { 10 } else { u32::from(b - b'0') };
+                        v * (10 - i as u32)
+                    })
+                    .sum::<u32>()
+                    % 11
+                    == 0
+        }
+        _ => false,
+    };
+    valid.then_some(digits)
+}
+
 /// A web address in shape only (it is never opened): `http://` or `https://`, a host, no white space.
 pub fn is_url_shape(text: &str) -> bool {
     let rest = text
@@ -296,6 +392,7 @@ impl BibRecord {
         }
         check_text(&self.year, limits::BIB_YEAR_MAX)?;
         check_text(&self.doi, limits::BIB_DOI_MAX)?;
+        check_text(&self.isbn, 24)?;
         check_text(&self.url, limits::BIB_URL_MAX)?;
         check_text(&self.accessed, limits::BIB_YEAR_MAX)?;
         check_text(&self.short_title, limits::BIB_SHORT_TITLE_MAX)?;
@@ -306,6 +403,9 @@ impl BibRecord {
                 .map(str::to_owned)
         };
         if filled(&self.doi).is_some_and(|doi| !is_doi_shape(&doi)) {
+            return Err(AppError::invalid("bibliography"));
+        }
+        if filled(&self.isbn).is_some_and(|isbn| normalize_isbn(&isbn).is_none()) {
             return Err(AppError::invalid("bibliography"));
         }
         if filled(&self.url).is_some_and(|url| !is_url_shape(&url)) {
@@ -346,6 +446,7 @@ impl BibRecord {
             publisher: tidy(&self.publisher),
             place: tidy(&self.place),
             doi: tidy(&self.doi),
+            isbn: tidy(&self.isbn).map(|isbn| normalize_isbn(&isbn).unwrap_or(isbn)),
             url: tidy(&self.url),
             accessed: tidy(&self.accessed),
             short_title: tidy(&self.short_title),
@@ -379,6 +480,14 @@ pub fn merge(
     let hint_title = hint(hints.map(|h| &h.title));
     let hint_year = hint(hints.map(|h| &h.year));
     let hint_doi = hint(hints.map(|h| &h.doi));
+    let hint_container = hint(hints.map(|h| &h.container_title));
+    let hint_volume = hint(hints.map(|h| &h.volume));
+    let hint_issue = hint(hints.map(|h| &h.issue));
+    let hint_pages = hint(hints.map(|h| &h.pages));
+    let hint_edition = hint(hints.map(|h| &h.edition));
+    let hint_publisher = hint(hints.map(|h| &h.publisher));
+    let hint_place = hint(hints.map(|h| &h.place));
+    let hint_isbn = hint(hints.map(|h| &h.isbn));
     let mut field = |field: BibField,
                      u: &Option<String>,
                      x: &Option<String>,
@@ -407,32 +516,51 @@ pub fn merge(
         &u.container_title,
         &xmp.container_title,
         &info.container_title,
-        &none,
+        &hint_container,
     );
     let volume = field(
         BibField::Volume,
         &u.volume,
         &xmp.volume,
         &info.volume,
-        &none,
+        &hint_volume,
     );
-    let issue = field(BibField::Issue, &u.issue, &xmp.issue, &info.issue, &none);
-    let pages = field(BibField::Pages, &u.pages, &xmp.pages, &info.pages, &none);
+    let issue = field(
+        BibField::Issue,
+        &u.issue,
+        &xmp.issue,
+        &info.issue,
+        &hint_issue,
+    );
+    let pages = field(
+        BibField::Pages,
+        &u.pages,
+        &xmp.pages,
+        &info.pages,
+        &hint_pages,
+    );
     let edition = field(
         BibField::Edition,
         &u.edition,
         &xmp.edition,
         &info.edition,
-        &none,
+        &hint_edition,
     );
     let publisher = field(
         BibField::Publisher,
         &u.publisher,
         &xmp.publisher,
         &info.publisher,
-        &none,
+        &hint_publisher,
     );
-    let place = field(BibField::Place, &u.place, &xmp.place, &info.place, &none);
+    let place = field(
+        BibField::Place,
+        &u.place,
+        &xmp.place,
+        &info.place,
+        &hint_place,
+    );
+    let isbn = field(BibField::Isbn, &u.isbn, &xmp.isbn, &info.isbn, &hint_isbn);
     let url = field(BibField::Url, &u.url, &xmp.url, &info.url, &none);
     let accessed = field(
         BibField::Accessed,
@@ -447,6 +575,8 @@ pub fn merge(
         (xmp.authors.clone(), BibSource::Xmp)
     } else if !info.authors.is_empty() {
         (info.authors.clone(), BibSource::Info)
+    } else if let Some(found) = hints.filter(|h| !h.authors.is_empty()) {
+        (found.authors.clone(), BibSource::Heuristic)
     } else {
         (Vec::new(), BibSource::None)
     };
@@ -460,16 +590,19 @@ pub fn merge(
             BibSource::None
         },
     );
+    let hint_kind = hints.and_then(|h| h.kind).filter(|_| user.is_none());
     sources.insert(
         BibField::Kind,
         if user.is_some() {
             BibSource::User
+        } else if hint_kind.is_some() {
+            BibSource::Heuristic
         } else {
             BibSource::None
         },
     );
     let record = BibRecord {
-        kind: u.kind,
+        kind: hint_kind.unwrap_or(u.kind),
         authors,
         title,
         year,
@@ -481,6 +614,7 @@ pub fn merge(
         publisher,
         place,
         doi,
+        isbn,
         url,
         accessed,
         short_title,
@@ -560,6 +694,90 @@ mod tests {
             serde_json::to_value(BibField::ShortTitle).unwrap(),
             json!("shortTitle")
         );
+    }
+
+    #[test]
+    fn page_hints_fill_what_metadata_leaves_empty_and_never_override_it() {
+        let hints = FirstPageHints {
+            title: Some("From the page".into()),
+            authors: vec![Person {
+                family: "Page".into(),
+                given: "A".into(),
+            }],
+            publisher: Some("Press".into()),
+            place: Some("Berlin".into()),
+            edition: Some("3".into()),
+            kind: Some(BibKind::Book),
+            ..FirstPageHints::default()
+        };
+        let info = BibRecord {
+            title: Some("From Info".into()),
+            ..BibRecord::default()
+        };
+        let (record, sources) = merge(None, &BibRecord::default(), &info, Some(&hints));
+        assert_eq!(record.title.as_deref(), Some("From Info"));
+        assert_eq!(record.publisher.as_deref(), Some("Press"));
+        assert_eq!(record.place.as_deref(), Some("Berlin"));
+        assert_eq!(record.edition.as_deref(), Some("3"));
+        assert_eq!(record.authors[0].family, "Page");
+        assert_eq!(record.kind, BibKind::Book);
+        assert_eq!(sources[&BibField::Title], BibSource::Info);
+        assert_eq!(sources[&BibField::Publisher], BibSource::Heuristic);
+        assert_eq!(sources[&BibField::Authors], BibSource::Heuristic);
+        assert_eq!(sources[&BibField::Kind], BibSource::Heuristic);
+        // A record of the user's keeps its own kind.
+        let user = BibRecord {
+            title: Some("Mine".into()),
+            ..BibRecord::default()
+        };
+        let (record, sources) = merge(Some(&user), &BibRecord::default(), &info, Some(&hints));
+        assert_eq!(record.kind, BibKind::Article);
+        assert_eq!(sources[&BibField::Kind], BibSource::User);
+    }
+
+    #[test]
+    fn the_isbn_is_validated_normalized_and_filled_from_the_page() {
+        assert_eq!(
+            normalize_isbn("978-3-16-148410-0").as_deref(),
+            Some("9783161484100")
+        );
+        assert_eq!(
+            normalize_isbn("0-8044-2957-x").as_deref(),
+            Some("080442957X")
+        );
+        assert_eq!(normalize_isbn("978-3-16-148410-1"), None);
+        assert_eq!(normalize_isbn("12345"), None);
+        let bad = BibRecord {
+            isbn: Some("978-3-16-148410-1".into()),
+            ..BibRecord::default()
+        };
+        assert!(bad.check().is_err());
+        let good = BibRecord {
+            isbn: Some(" 978-3-16-148410-0 ".into()),
+            ..BibRecord::default()
+        };
+        assert!(good.check().is_ok());
+        assert_eq!(good.normalized().isbn.as_deref(), Some("9783161484100"));
+        let wire = serde_json::to_value(good.normalized()).unwrap();
+        assert_eq!(wire["isbn"], json!("9783161484100"));
+        let back: BibRecord = serde_json::from_value(wire).unwrap();
+        assert_eq!(back, good.normalized());
+        let old: BibRecord = serde_json::from_value(json!({"title": "T"})).unwrap();
+        assert_eq!(old.isbn, None);
+        let hints = FirstPageHints {
+            isbn: Some("9783161484100".into()),
+            ..FirstPageHints::default()
+        };
+        let empty = BibRecord::default();
+        let (record, sources) = merge(None, &empty, &empty, Some(&hints));
+        assert_eq!(record.isbn.as_deref(), Some("9783161484100"));
+        assert_eq!(sources[&BibField::Isbn], BibSource::Heuristic);
+        let other = FirstPageHints {
+            isbn: Some("0306406152".into()),
+            ..hints
+        };
+        let (record, _) = merge(Some(&good.normalized()), &empty, &empty, Some(&other));
+        assert_eq!(record.isbn.as_deref(), Some("9783161484100"));
     }
 
     #[test]

@@ -250,14 +250,18 @@ pub fn headings(doc: &DocText) -> Vec<Entry> {
         }
     }
     // Levels: a section number gives its depth; otherwise the larger the size, the higher the level.
-    let mut sizes: Vec<f32> = Vec::new();
+    // Sizes are bucketed to 0.5 pt in a set, so a hostile file with many distinct sizes stays cheap.
+    let bucket = |size: f32| (size.clamp(0.0, 10_000.0) * 2.0).round() as u32;
+    let mut buckets: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
     for c in merged.iter().filter(|c| c.depth.is_none() && c.big) {
-        if !sizes.iter().any(|s| (s - c.size).abs() < 0.3) {
-            sizes.push(c.size);
-        }
+        buckets.insert(bucket(c.size));
     }
-    sizes.sort_by(|a, b| b.total_cmp(a));
-    sizes.truncate(usize::from(MAX_LEVEL - 1));
+    // Largest first, at most MAX_LEVEL - 1 levels.
+    let sizes: Vec<u32> = buckets
+        .into_iter()
+        .rev()
+        .take(usize::from(MAX_LEVEL - 1))
+        .collect();
     let sized = u8::try_from(sizes.len()).unwrap_or(MAX_LEVEL);
     let mut out: Vec<Entry> = Vec::new();
     for c in merged {
@@ -265,7 +269,7 @@ pub fn headings(doc: &DocText) -> Vec<Entry> {
             Some(d) => d,
             None if c.big => sizes
                 .iter()
-                .position(|s| (s - c.size).abs() < 0.3)
+                .position(|s| *s == bucket(c.size))
                 .and_then(|i| u8::try_from(i + 1).ok())
                 .unwrap_or(sized.max(1)),
             None => (sized + 1).min(MAX_LEVEL),
@@ -440,6 +444,23 @@ mod tests {
                 ("Bold remark", 3),
             ]
         );
+    }
+
+    #[test]
+    fn many_distinct_heading_sizes_give_at_most_the_deepest_level() {
+        let mut lines = vec![body(10.0)];
+        for n in 0..500u16 {
+            lines.push(line(
+                &format!("Heading number {n}"),
+                30.0 + f32::from(n) * 40.0,
+                13.0 + f32::from(n) * 0.5,
+                true,
+            ));
+        }
+        let h = headings(&doc(vec![page(0, lines)]));
+        assert!(!h.is_empty());
+        assert!(h.iter().all(|e| (1..=MAX_LEVEL).contains(&e.level)));
+        assert!(h.iter().any(|e| e.level == 1));
     }
 
     #[test]

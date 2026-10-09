@@ -865,6 +865,37 @@ mod tests {
     }
 
     #[test]
+    fn the_history_list_has_every_step_with_page_annotation_and_the_cursor() {
+        use crate::model::history::HistoryKind;
+        let mut state = state();
+        let made = state.execute(create_cmd(1, 10.0), &stamp(0)).unwrap();
+        let id = made.upserted[0].id;
+        state
+            .execute(
+                cmd(json!({"type": "deleteAnnotations", "ids": [id.get()]})),
+                &stamp(5_000),
+            )
+            .unwrap();
+        let list = state.history_list();
+        assert_eq!(list.cursor, 2);
+        assert_eq!(list.entries.len(), 2);
+        assert_eq!(list.entries[0].label_key, LABEL_CREATE);
+        assert_eq!(list.entries[0].kind, HistoryKind::Annotation);
+        assert_eq!(list.entries[0].page, Some(PageId::new(1)));
+        assert_eq!(list.entries[0].annotation_id, Some(id));
+        assert!(list.entries[0].annotation_kind.is_some());
+        assert_eq!(list.entries[1].label_key, LABEL_DELETE);
+        assert_eq!(list.entries[1].kind, HistoryKind::Other);
+        assert_eq!(list.entries[1].annotation_id, Some(id));
+        assert_eq!(list.entries[1].page, Some(PageId::new(1)));
+        assert!(!list.entries[1].is_text_edit);
+        state.undo(&stamp(6_000)).unwrap();
+        let list = state.history_list();
+        assert_eq!((list.cursor, list.entries.len()), (1, 2));
+        assert_eq!(list.entries[1].label_key, LABEL_DELETE);
+    }
+
+    #[test]
     fn create_refuses_a_page_the_document_does_not_have_and_a_bad_draft_changes_nothing() {
         let mut state = state();
         assert_eq!(

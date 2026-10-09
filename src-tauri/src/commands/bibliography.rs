@@ -87,7 +87,13 @@ fn hints_wanted(layers: &BibLayers) -> bool {
         .and_then(|r| r.doi.as_ref())
         .or(layers.xmp.doi.as_ref())
         .or(layers.info.doi.as_ref());
-    title.is_none() || !authors || year.is_none() || doi.is_none()
+    let publisher = layers
+        .file
+        .as_ref()
+        .and_then(|r| r.publisher.as_ref())
+        .or(layers.xmp.publisher.as_ref())
+        .or(layers.info.publisher.as_ref());
+    title.is_none() || !authors || year.is_none() || doi.is_none() || publisher.is_none()
 }
 
 fn answer(state: &DocState) -> BibliographyInfo {
@@ -195,6 +201,11 @@ mod tests {
         layers.info.year = Some("2020".into());
         assert!(hints_wanted(&layers), "no DOI: the page may print one");
         layers.info.doi = Some("10.1000/x".into());
+        assert!(
+            hints_wanted(&layers),
+            "no publisher: the imprint may name one"
+        );
+        layers.info.publisher = Some("P".into());
         assert!(!hints_wanted(&layers));
     }
 

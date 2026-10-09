@@ -7,7 +7,13 @@
 //! Pure: the lines come from an OCR layer or the engine's reading of the page (`commands::text_pdf`), the blocks go to
 //! `pdfwrite::text_pdf`. Every text here came from a hostile file or an untrusted recognizer, so it is only cleaned and counted.
 
+use std::collections::{BTreeSet, HashMap};
+
+use crate::error::AppError;
 use crate::limits;
+
+/// Most distinct heading sizes (0.5 pt buckets) given a level of their own; the rest are level 3.
+const HEADING_SIZES_MAX: usize = 256;
 
 /// One line of a page as it was recognized: its text, its size (the line's height, points), its box `[x0, y0, x1, y1]` (points, y
 /// down) and whether all of it is bold (the engine knows; OCR never says).
@@ -73,7 +79,18 @@ struct Clean {
     chars: usize,
 }
 
-/// Control characters out, any run of white space one space, trimmed.
+/// Unicode format characters (category Cf) that change how text is shown or ordered, never what it says: Arabic
+/// marks (the soft hyphen stays: `join` reads it as a line-end hyphen), zero-width joiners and marks, bidi embeddings, overrides and isolates, invisible operators, the BOM, interlinear
+/// annotation and tag characters.
+fn is_format(c: char) -> bool {
+    matches!(c,
+        '\u{0600}'..='\u{0605}' | '\u{061C}' | '\u{06DD}' | '\u{070F}' | '\u{08E2}'
+        | '\u{180E}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
+        | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{110BD}' | '\u{110CD}'
+        | '\u{1BCA0}'..='\u{1BCA3}' | '\u{1D173}'..='\u{1D17A}' | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
+}
+
+/// Control and format characters out, any run of white space one space, trimmed.
 fn clean_text(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut space = false;
@@ -82,7 +99,7 @@ fn clean_text(text: &str) -> String {
             space = !out.is_empty();
             continue;
         }
-        if c.is_control() || matches!(c, '\u{FEFF}' | '\u{FFFD}') {
+        if c.is_control() || is_format(c) || c == '\u{FFFD}' {
             continue;
         }
         if space {
@@ -139,20 +156,27 @@ fn body_size(pages: &[Vec<Clean>]) -> f32 {
 
 /// The level of every heading size: sorted from the largest, a size within [`LEVEL_RATIO`] of the first of its group joins it, three
 /// groups at most (the rest are level 3).
-fn heading_levels(mut sizes: Vec<f32>) -> Vec<(f32, u8)> {
-    sizes.sort_by(|a, b| b.total_cmp(a));
-    sizes.dedup();
-    let mut out = Vec::with_capacity(sizes.len());
+fn heading_levels(sizes: impl Iterator<Item = f32>) -> HashMap<u32, u8> {
+    // Sizes are bucketed to 0.5 pt, so a hostile file cannot make the lookup large.
+    let buckets: BTreeSet<u32> = sizes.map(size_bucket).collect();
+    let mut out = HashMap::with_capacity(buckets.len().min(HEADING_SIZES_MAX));
     let mut level = 0u8;
     let mut group_top = f32::INFINITY;
-    for size in sizes {
+    // Largest first; sizes beyond the cap are not entered and read as level 3.
+    for bucket in buckets.into_iter().rev().take(HEADING_SIZES_MAX) {
+        let size = bucket as f32 / 2.0;
         if size < group_top * LEVEL_RATIO {
             level = (level + 1).min(3);
             group_top = size;
         }
-        out.push((size, level));
+        out.insert(bucket, level);
     }
     out
+}
+
+/// The half-point bucket of a size (sizes are at most 1 000 after `clean_page`).
+fn size_bucket(size: f32) -> u32 {
+    (size.clamp(0.0, 1_000.0) * 2.0).round() as u32
 }
 
 /// A page number or a running number alone on the first or last line: digits (or a short roman numeral) with dashes around.
@@ -210,7 +234,20 @@ fn median(mut values: Vec<f32>) -> f32 {
 /// The blocks of `pages`. With `join_pages`, a paragraph that runs over a page break (the page's last body text does not end a
 /// sentence and the next page goes on in lower case) is one block, on the earlier page.
 pub fn flow(pages: &[SourcePage], join_pages: bool) -> Flow {
-    let mut cleaned: Vec<Vec<Clean>> = pages.iter().map(clean_page).collect();
+    flow_checked(pages, join_pages, &|| Ok(())).unwrap_or_default()
+}
+
+/// [`flow`] that asks `check` between pages (and between the lines of a long page), so a cancelled job stops; its error is returned.
+pub fn flow_checked(
+    pages: &[SourcePage],
+    join_pages: bool,
+    check: &dyn Fn() -> Result<(), AppError>,
+) -> Result<Flow, AppError> {
+    let mut cleaned: Vec<Vec<Clean>> = Vec::with_capacity(pages.len());
+    for page in pages {
+        check()?;
+        cleaned.push(clean_page(page));
+    }
     // Running page numbers out: alone on the first or the last line of a page with more lines.
     for lines in &mut cleaned {
         if lines.len() > 2 {
@@ -226,20 +263,17 @@ pub fn flow(pages: &[SourcePage], join_pages: bool) -> Flow {
     let is_heading_size = |line: &Clean| {
         body > 0.0 && line.size >= body * HEADING_RATIO && line.chars <= HEADING_CHARS_MAX
     };
+    check()?;
     let levels = heading_levels(
         cleaned
             .iter()
             .flatten()
             .filter(|l| is_heading_size(l))
-            .map(|l| l.size)
-            .collect(),
+            .map(|l| l.size),
     );
     let kind_of = |line: &Clean| -> BlockKind {
         if is_heading_size(line) {
-            let level = levels
-                .iter()
-                .find(|(size, _)| *size == line.size)
-                .map_or(3, |(_, level)| *level);
+            let level = levels.get(&size_bucket(line.size)).copied().unwrap_or(3);
             return BlockKind::Heading(level.clamp(1, 3));
         }
         if line.bold
@@ -258,6 +292,7 @@ pub fn flow(pages: &[SourcePage], join_pages: bool) -> Flow {
     let mut out = Flow::default();
     let mut budget = limits::TEXT_PDF_CHARS_MAX;
     for lines in &cleaned {
+        check()?;
         let mut blocks: Vec<Block> = Vec::new();
         let kinds: Vec<BlockKind> = lines.iter().map(kind_of).collect();
         // The page's usual gap between two lines of one kind, and its text column.
@@ -335,7 +370,7 @@ pub fn flow(pages: &[SourcePage], join_pages: bool) -> Flow {
         }
         out.pages.push(blocks);
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -519,6 +554,45 @@ mod tests {
         assert!(flow.truncated);
         // The budget counts the recognized characters; the spaces that join lines come on top.
         assert!(total <= limits::TEXT_PDF_CHARS_MAX + 5 * limits::MAX_SMART_LINES_PER_PAGE);
+    }
+
+    #[test]
+    fn bidi_overrides_and_other_format_characters_are_dropped() {
+        assert_eq!(
+            clean_text("pa\u{202E}yl\u{2066}oa\u{2069}d\u{200F}\u{061C}\u{E0041}!"),
+            "payload!"
+        );
+    }
+
+    #[test]
+    fn many_distinct_heading_sizes_stay_bounded_and_read_as_level_three() {
+        let mut lines = vec![body("Body text of the document goes here.", 10.0)];
+        for n in 0..2_000u16 {
+            lines.push(line(
+                "Heading",
+                12.5 + f32::from(n) * 0.5,
+                20.0 + f32::from(n) * 40.0,
+                50.0,
+                200.0,
+            ));
+        }
+        let flow = flow(&[SourcePage { lines }], false);
+        let kinds: Vec<BlockKind> = flow.pages[0].iter().map(|b| b.kind).collect();
+        assert_eq!(kinds.last(), Some(&BlockKind::Heading(1)));
+        assert!(kinds.contains(&BlockKind::Heading(3)));
+        assert!(kinds.iter().all(|k| *k != BlockKind::Heading(0)));
+    }
+
+    #[test]
+    fn a_cancelled_flow_returns_the_typed_error() {
+        let page = SourcePage {
+            lines: vec![body("Some text.", 10.0)],
+        };
+        let err = flow_checked(&[page], false, &|| {
+            Err(AppError::new(crate::error::ErrorCode::Cancelled))
+        })
+        .unwrap_err();
+        assert_eq!(err.code(), crate::error::ErrorCode::Cancelled);
     }
 
     #[test]

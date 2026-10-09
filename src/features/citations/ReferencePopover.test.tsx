@@ -8,7 +8,7 @@ import { useUi } from '../../stores/ui';
 import { useReferenceInspector } from '../properties/openReference';
 import { setup } from '../../test/render';
 import { invalidateBibliography } from './bibliography';
-import { ReferenceButton } from './ReferencePopover';
+import { ReferenceButton, resetIncompleteNotices } from './ReferencePopover';
 import { STYLE_KEY, useCitationPrefs } from './style';
 
 const api = vi.hoisted(() => ({ getBibliography: vi.fn(), listCitations: vi.fn(), saveCitationList: vi.fn() }));
@@ -46,6 +46,7 @@ const cite = (id: number) => ({
 
 beforeEach(() => {
   invalidateBibliography(1);
+  resetIncompleteNotices();
   localStorage.clear();
   useCitationPrefs.setState({ style: undefined, format: 'txt' });
   useUi.setState({ toast: null, propsOpen: false });
@@ -84,6 +85,17 @@ describe('ReferenceButton', () => {
     api.getBibliography.mockResolvedValue(info({ year: null }));
     await open();
     await waitFor(() => expect(screen.getByText('Some details are missing.')).toBeTruthy());
+  });
+
+  it('says details are missing only once per document', async () => {
+    api.getBibliography.mockResolvedValue(info({ year: null }));
+    const first = await open();
+    await waitFor(() => expect(screen.getByText('Some details are missing.')).toBeTruthy());
+    first.unmount();
+    invalidateBibliography(1);
+    await open();
+    await waitFor(() => expect(screen.getByText(/On quotations/)).toBeTruthy());
+    expect(screen.queryByText('Some details are missing.')).toBeNull();
   });
 
   it('disables the list buttons without citations and says why', async () => {

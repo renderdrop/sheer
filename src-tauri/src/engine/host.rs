@@ -381,7 +381,7 @@ impl Executor {
                     engine_index,
                     reply,
                 })?;
-                (WireReply::FirstPageHints(hints), Blob::None)
+                (WireReply::FirstPageHints(Box::new(hints)), Blob::None)
             }
             R::ImportAnnotations { id, page_index } => {
                 let found = self.ask(|reply| Job::ImportAnnotations {

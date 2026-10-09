@@ -50,6 +50,7 @@ export const BIB_TEXT_FIELDS = [
   'publisher',
   'place',
   'doi',
+  'isbn',
   'url',
   'accessed',
 ] as const;
@@ -94,6 +95,7 @@ export function emptyBibRecord(): BibRecord {
     publisher: null,
     place: null,
     doi: null,
+    isbn: null,
     url: null,
     accessed: null,
   };
@@ -110,6 +112,7 @@ const TEXT_FIELD_MAX: Record<BibTextField, number> = {
   publisher: BIB_FIELD_MAX,
   place: BIB_FIELD_MAX,
   doi: BIB_DOI_MAX,
+  isbn: 24,
   url: BIB_URL_MAX,
   accessed: 10,
 };

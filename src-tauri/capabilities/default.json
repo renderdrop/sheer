@@ -64,6 +64,7 @@
     "allow-release-source",
     "allow-undo",
     "allow-redo",
+    "allow-get-history",
     "allow-save-document",
     "allow-save-document-as",
     "allow-extract-pages",

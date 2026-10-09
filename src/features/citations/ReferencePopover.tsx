@@ -1,5 +1,5 @@
 import { BookMarked, ChevronDown, TriangleAlert } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import {
   CITATION_FILE_FORMATS,
@@ -72,6 +72,24 @@ function useCitationCount(docId: DocId): number | undefined {
   return count;
 }
 
+/**
+ * "Some details are missing" appears once per document, not per field or open: the first popover that sees the record incomplete
+ * owns the notice (by its `useId`); a later popover of the same document stays quiet. The claim is idempotent, so a repeated render
+ * (StrictMode) of the owner still shows it.
+ */
+const NOTICE_OWNER = new Map<number, string>();
+
+/** Test hook: forgets which documents were told. */
+export function resetIncompleteNotices(): void {
+  NOTICE_OWNER.clear();
+}
+
+function useIncompleteNoticeOnce(docId: number, incomplete: boolean): boolean {
+  const me = useId();
+  if (incomplete && !NOTICE_OWNER.has(docId)) NOTICE_OWNER.set(docId, me);
+  return incomplete && NOTICE_OWNER.get(docId) === me;
+}
+
 function ReferenceBody({
   docId,
   close,
@@ -94,6 +112,7 @@ function ReferenceBody({
     [info, style, lang],
   );
   const incomplete = info !== undefined && isReferenceIncomplete(info.record);
+  const notice = useIncompleteNoticeOnce(docId, incomplete);
   const blank = info !== undefined && isReferenceBlank(info.record);
   const empty = count === 0;
   const unknown = count === undefined;
@@ -151,7 +170,7 @@ function ReferenceBody({
             )}
           </div>
         </div>
-        {incomplete && (
+        {notice && (
           <p className="t-caption m-0 flex items-center gap-1 text-text">
             <Icon icon={TriangleAlert} />
             {t('reference.missing')}

@@ -16,9 +16,9 @@ import type { PlainKey } from '../../i18n';
 
 /** The text fields shown after Year, per type (DESIGN 3.7 C5 table). `accessed` is added by `visibleFields` once a URL is there. */
 export const FIELDS_BY_KIND: Record<BibKind, readonly BibTextField[]> = {
-  book: ['edition', 'publisher', 'place', 'doi', 'url'],
+  book: ['edition', 'publisher', 'place', 'isbn', 'doi', 'url'],
   article: ['containerTitle', 'volume', 'issue', 'pages', 'doi', 'url'],
-  chapter: ['containerTitle', 'pages', 'edition', 'publisher', 'place', 'doi'],
+  chapter: ['containerTitle', 'pages', 'edition', 'publisher', 'place', 'isbn', 'doi'],
   report: ['publisher', 'place', 'doi', 'url'],
   webPage: ['containerTitle', 'url', 'accessed'],
   thesis: ['publisher', 'place', 'url'],
@@ -55,6 +55,8 @@ export function labelKey(kind: BibKind, field: BibTextField): PlainKey {
       return 'ref.edition';
     case 'place':
       return 'ref.place';
+    case 'isbn':
+      return 'ref.isbn';
     case 'doi':
       return 'ref.doi';
     case 'url':
@@ -101,6 +103,18 @@ export function visibleFields(kind: BibKind, url: string): readonly BibTextField
 const YEAR = /^(\d{4}[a-z]?|n\.d\.|o\. ?J\.)$/;
 const DOI = /^10\.[^\s/]+\/\S+$/;
 const URL_FORM = /^https?:\/\/\S+$/i;
+
+/** An ISBN-10 or ISBN-13 with its check digit; hyphens and spaces are allowed. */
+export function isValidIsbn(value: string): boolean {
+  const d = value.replace(/[- ]/g, '').toUpperCase();
+  if (/^[0-9]{13}$/.test(d)) {
+    return [...d].reduce((sum, c, i) => sum + Number(c) * (i % 2 === 0 ? 1 : 3), 0) % 10 === 0;
+  }
+  if (/^[0-9]{9}[0-9X]$/.test(d)) {
+    return [...d].reduce((sum, c, i) => sum + (c === 'X' ? 10 : Number(c)) * (10 - i), 0) % 11 === 0;
+  }
+  return false;
+}
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** The error string key of a value, or `null` if it is fine (an empty value always is). */
@@ -109,6 +123,7 @@ export function validate(field: BibTextField, value: string): PlainKey | null {
   if (v === '') return null;
   if (field === 'year') return YEAR.test(v) ? null : 'ref.invalid.year';
   if (field === 'doi') return DOI.test(v) ? null : 'ref.invalid.doi';
+  if (field === 'isbn') return isValidIsbn(v) ? null : 'ref.invalid.isbn';
   if (field === 'url') return URL_FORM.test(v) ? null : 'ref.invalid.url';
   if (field === 'accessed') return DATE.test(v) ? null : 'ref.invalid.year';
   return null;

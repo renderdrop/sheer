@@ -165,6 +165,25 @@ fn lines_of_text(page: &PageText) -> SourcePage {
     SourcePage { lines }
 }
 
+/// The running total of the rendered pictures; more than the output may hold is a limit error before the document is built.
+fn add_image_bytes(total: usize, add: usize) -> Result<usize, AppError> {
+    total
+        .checked_add(add)
+        .filter(|sum| *sum <= limits::TEXT_PDF_MAX)
+        .ok_or_else(|| AppError::limit("textPdf", limits::TEXT_PDF_MAX as u64))
+}
+
+/// Counts the characters of `page` into `total`; true when the text limit is reached (the rest of the document is left out).
+fn count_chars(page: &SourcePage, total: &mut usize) -> bool {
+    for line in &page.lines {
+        *total = total.saturating_add(line.text.chars().count());
+        if *total >= limits::TEXT_PDF_CHARS_MAX {
+            return true;
+        }
+    }
+    false
+}
+
 fn file_name(stem: &str, lang: &str) -> String {
     if lang == "de" {
         format!("{stem} – Text.pdf")
@@ -276,6 +295,7 @@ impl AppState {
         let total = u32::try_from(plan.pages.len()).unwrap_or(u32::MAX);
         let mut out = Vec::with_capacity(plan.pages.len());
         let mut lang = None;
+        let mut chars = 0usize;
         for (done, page) in plan.pages.iter().enumerate() {
             ctx.check()?;
             ctx.progress(Phase::Read, u32::try_from(done).unwrap_or(u32::MAX), total);
@@ -301,7 +321,12 @@ impl AppState {
                     Err(error) => return Err(error),
                 },
             };
+            let full = count_chars(&source, &mut chars);
             out.push(source);
+            if full {
+                // `flow` marks the cut; the pages after this one are not read.
+                break;
+            }
         }
         ctx.progress(Phase::Read, total, total);
         Ok((out, lang))
@@ -318,6 +343,7 @@ impl AppState {
         let doc = guard.engine();
         let total = u32::try_from(plan.pages.len()).unwrap_or(u32::MAX);
         let mut out = Vec::with_capacity(plan.pages.len());
+        let mut total_bytes = 0usize;
         for (done, page) in plan.pages.iter().enumerate() {
             ctx.check()?;
             let drawn = if page.shape.rotation % 180 == 90 {
@@ -339,6 +365,7 @@ impl AppState {
                 .render_export(doc, engine_index, fitted.dpi, false, 0)?;
             let grey = matches!(raster.pixels, RasterPixels::Gray8(_));
             let jpeg = encode(&raster, ImageFormat::Jpeg, limits::TEXT_PDF_IMAGE_QUALITY)?;
+            total_bytes = add_image_bytes(total_bytes, jpeg.len())?;
             out.push(Some(PageImage {
                 jpeg,
                 width_px: raster.width,
@@ -368,7 +395,7 @@ impl AppState {
         ctx.check()?;
         let info = self.info(id).ok_or(AppError::not_found("document"))?;
         let (pages, lang) = self.text_pdf_pages(id, plan, ctx)?;
-        let flowed = text_flow::flow(&pages, !plan.keep_images);
+        let flowed = text_flow::flow_checked(&pages, !plan.keep_images, &|| ctx.check())?;
         drop(pages);
         if flowed.pages.iter().all(Vec::is_empty) {
             return Ok(JobDone {
@@ -381,13 +408,14 @@ impl AppState {
         } else {
             Vec::new()
         };
-        let sections: Vec<Section> = flowed
+        // The pictures are moved into their sections, not copied.
+        let mut images = images.into_iter();
+        let mut sections: Vec<Section> = flowed
             .pages
             .into_iter()
-            .enumerate()
-            .map(|(at, blocks)| Section {
+            .map(|blocks| Section {
                 blocks,
-                image: images.get(at).cloned().flatten(),
+                image: images.next().flatten(),
             })
             .collect();
         drop(images);
@@ -395,8 +423,8 @@ impl AppState {
         let title = file_stem(&info.display_name);
         let total = sections.len();
         let built = text_pdf::build(
-            &TextPdfInput {
-                sections: &sections,
+            &mut TextPdfInput {
+                sections: &mut sections,
                 font: plan.font,
                 keep_images: plan.keep_images,
                 title: &title,
@@ -678,6 +706,30 @@ mod tests {
         );
         drop(first);
         assert!(Running::take(id).is_ok());
+    }
+
+    #[test]
+    fn the_picture_bytes_and_the_text_are_bounded_with_typed_errors() {
+        assert_eq!(add_image_bytes(10, 5).unwrap(), 15);
+        let err = add_image_bytes(limits::TEXT_PDF_MAX - 1, 2).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::LimitExceeded);
+        assert_eq!(
+            add_image_bytes(usize::MAX, 1).unwrap_err().code(),
+            ErrorCode::LimitExceeded
+        );
+        let page = SourcePage {
+            lines: vec![SourceLine {
+                text: "x".repeat(1_000),
+                size: 10.0,
+                rect: [0.0; 4],
+                bold: false,
+            }],
+        };
+        let mut total = 0;
+        assert!(!count_chars(&page, &mut total));
+        assert_eq!(total, 1_000);
+        total = limits::TEXT_PDF_CHARS_MAX - 10;
+        assert!(count_chars(&page, &mut total));
     }
 
     #[test]

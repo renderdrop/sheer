@@ -18,7 +18,7 @@ use crate::documents::sanitize_text;
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
 use crate::model::bibliography::{
-    is_doi_shape, is_iso_date, is_url_shape, BibKind, BibRecord, Person,
+    is_doi_shape, is_iso_date, is_url_shape, normalize_isbn, BibKind, BibRecord, Person,
 };
 
 /// What one source of the file says: the same shape as the record (`kind` stays the default and is not used).
@@ -90,7 +90,7 @@ type Field = (
     usize,
 );
 
-const TEXT_FIELDS: [Field; 13] = [
+const TEXT_FIELDS: [Field; 14] = [
     ("T", |r| &mut r.title, limits::BIB_FIELD_MAX),
     ("Y", |r| &mut r.year, limits::BIB_YEAR_MAX),
     ("C", |r| &mut r.container_title, limits::BIB_FIELD_MAX),
@@ -101,6 +101,7 @@ const TEXT_FIELDS: [Field; 13] = [
     ("Pub", |r| &mut r.publisher, limits::BIB_FIELD_MAX),
     ("Pl", |r| &mut r.place, limits::BIB_FIELD_MAX),
     ("DOI", |r| &mut r.doi, limits::BIB_DOI_MAX),
+    ("ISBN", |r| &mut r.isbn, 24),
     ("URL", |r| &mut r.url, limits::BIB_URL_MAX),
     ("Acc", |r| &mut r.accessed, limits::BIB_YEAR_MAX),
     ("ST", |r| &mut r.short_title, limits::BIB_SHORT_TITLE_MAX),
@@ -111,6 +112,7 @@ fn enforce_shapes(record: &mut BibRecord) {
     if record.doi.as_deref().is_some_and(|doi| !is_doi_shape(doi)) {
         record.doi = None;
     }
+    record.isbn = record.isbn.as_deref().and_then(normalize_isbn);
     if record.url.as_deref().is_some_and(|url| !is_url_shape(url)) {
         record.url = None;
     }
@@ -871,6 +873,34 @@ mod tests {
             read_back(hostile).short_title.unwrap().chars().count(),
             limits::BIB_SHORT_TITLE_MAX
         );
+    }
+
+    #[test]
+    fn the_isbn_is_stored_as_isbn_and_older_files_read_without_it() {
+        let read_back = |dict: Dictionary| {
+            let mut doc = Document::with_version("1.7");
+            let mut info = Dictionary::new();
+            info.set("SHR_Bib", Object::Dictionary(dict));
+            let id = doc.add_object(Object::Dictionary(info));
+            doc.trailer.set("Info", Object::Reference(id));
+            read(&doc).unwrap().record.unwrap()
+        };
+        let record = BibRecord {
+            title: Some("T".into()),
+            isbn: Some("9783161484100".into()),
+            ..BibRecord::default()
+        };
+        assert!(user_dictionary(&record).has(b"ISBN"));
+        assert_eq!(read_back(user_dictionary(&record)), record);
+        let plain = BibRecord {
+            isbn: None,
+            ..record.clone()
+        };
+        assert!(!user_dictionary(&plain).has(b"ISBN"));
+        assert_eq!(read_back(user_dictionary(&plain)).isbn, None);
+        let mut hostile = user_dictionary(&plain);
+        hostile.set("ISBN", text_string("9783161484101"));
+        assert_eq!(read_back(hostile).isbn, None);
     }
 
     #[test]

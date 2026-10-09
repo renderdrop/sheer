@@ -11,7 +11,7 @@ use serde::Serialize;
 use super::annotation::{Annotation, AnnotationBody, Imported, PdfOrigin, Sync};
 use super::command::{DocCommand, LABEL_PROTECT_REMOVE};
 use super::form::{FieldId, FieldState, FieldUndo, FieldValue, FormInfo, FormModel, ReadForm};
-use super::history::{History, HistoryState};
+use super::history::{History, HistoryList, HistoryState, StepMeta};
 use super::ids::AnnotId;
 use super::metadata::MetadataState;
 use super::page::{PageSlot, PageSlotInfo, PageSource};
@@ -63,6 +63,15 @@ pub struct Entry {
     pub persisted: Option<PdfOrigin>,
     /// Deleted in this session but in the file: kept, so that saving removes it from the file and undo brings it back.
     pub tombstone: bool,
+}
+
+/// The kind tag of an annotation (`highlight`, `ink`, ...), as it is on the wire.
+fn annotation_kind(annotation: &Annotation) -> Option<String> {
+    serde_json::to_value(&annotation.body)
+        .ok()?
+        .get("kind")?
+        .as_str()
+        .map(str::to_owned)
 }
 
 /// The content of one id: `None` is no entry at all. The universal exact inverse of any change is a list of these.
@@ -295,6 +304,53 @@ impl DocState {
 
     pub fn history_state(&self) -> HistoryState {
         self.history.state()
+    }
+
+    /// Every step of the history for the panel, oldest first, with the cursor between the applied and the undone steps.
+    pub fn history_list(&self) -> HistoryList {
+        self.history.list()
+    }
+
+    /// What `command` concerns, read before it runs (a deleted annotation is not there afterwards).
+    fn step_meta(&self, command: &DocCommand) -> StepMeta {
+        let of_annotation = |id: AnnotId| match self.annotation(id) {
+            Some(annotation) => StepMeta {
+                page: Some(annotation.page_id),
+                annotation: Some(id),
+                annotation_kind: annotation_kind(annotation),
+            },
+            None => StepMeta {
+                annotation: Some(id),
+                ..StepMeta::default()
+            },
+        };
+        let of_page = |page: Option<&PageId>| StepMeta {
+            page: page.copied(),
+            ..StepMeta::default()
+        };
+        match command {
+            DocCommand::CreateAnnotation { draft } => of_page(Some(&draft.page_id)),
+            DocCommand::UpdateAnnotation { id, .. } => of_annotation(*id),
+            DocCommand::DeleteAnnotations { ids } | DocCommand::MoveAnnotations { ids, .. } => {
+                ids.first().map(|id| of_annotation(*id)).unwrap_or_default()
+            }
+            DocCommand::EditTextLine { page_id, .. }
+            | DocCommand::RestoreTextEdit { page_id, .. } => of_page(Some(page_id)),
+            DocCommand::RotatePages { pages, .. }
+            | DocCommand::DeletePages { pages }
+            | DocCommand::MovePages { pages, .. }
+            | DocCommand::CropPages { pages, .. } => of_page(pages.first()),
+            DocCommand::ApplyOcr { layers } => of_page(layers.first().map(|(page, _)| page)),
+            DocCommand::RestoreRedaction { slots, .. } => {
+                of_page(slots.first().map(|slot| &slot.id))
+            }
+            DocCommand::Batch { commands, .. } => commands
+                .iter()
+                .map(|inner| self.step_meta(inner))
+                .find(|meta| *meta != StepMeta::default())
+                .unwrap_or_default(),
+            _ => StepMeta::default(),
+        }
     }
 
     /// There are changes that are not saved.
@@ -858,10 +914,25 @@ impl DocState {
             }
             other => other.label(),
         };
+        let mut meta = self.step_meta(&command);
         let (inverse, delta) = command.run(self, stamp)?;
+        // A new annotation is known only now.
+        if meta.annotation.is_none()
+            && matches!(
+                command,
+                DocCommand::CreateAnnotation { .. } | DocCommand::Batch { .. }
+            )
+        {
+            if let Some(made) = delta.upserted.values().next() {
+                meta.annotation = Some(made.id);
+                meta.page = Some(made.page_id);
+                meta.annotation_kind = annotation_kind(made);
+            }
+        }
         self.rev += 1;
         self.history
             .record(label, inverse, command.coalesce_key(), stamp.now_ms);
+        self.history.note_top(meta);
         Ok(self.change_set(delta))
     }
 

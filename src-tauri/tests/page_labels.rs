@@ -129,8 +129,17 @@ fn page_one_gives_title_year_and_doi() {
     assert_eq!(hints.title.as_deref(), Some("On the Nature of Examples"));
     assert_eq!(hints.year.as_deref(), Some("2021"));
     assert_eq!(hints.doi.as_deref(), Some("10.1234/abc.5678"));
-    // Page 2 has nothing of the kind; a page that does not exist is an error, not a panic.
-    assert_eq!(state.engine().first_page_hints(id, 1).unwrap().doi, None);
+    // The hints describe the document (F19.21: first eight and last two pages are read whatever page is asked for), so page 2
+    // gives the same DOI; a page that does not exist is an error, not a panic.
+    assert_eq!(
+        state
+            .engine()
+            .first_page_hints(id, 1)
+            .unwrap()
+            .doi
+            .as_deref(),
+        Some("10.1234/abc.5678")
+    );
     assert!(state.engine().first_page_hints(id, 9).is_err());
     state.close_document(id).unwrap();
 }

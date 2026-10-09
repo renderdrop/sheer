@@ -553,7 +553,7 @@ pub enum WireReply {
     PageChars(Vec<crate::model::text_edit::CharGeom>),
     PageLinks(Vec<WireLink>),
     PageLabels(Vec<Option<String>>),
-    FirstPageHints(crate::model::bibliography::FirstPageHints),
+    FirstPageHints(Box<crate::model::bibliography::FirstPageHints>),
     SmartText(crate::smartlinks::model::PageText),
     Annotations(Vec<Imported>),
     /// `SetAnnotationsHidden`, `SetPageRotations`, `SetCropBox`, `CloseSnapshot`, `TruncatePages`, `Release` without snapshot, `Close`.

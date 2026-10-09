@@ -33,6 +33,8 @@ pub struct Analysis {
     pub notes: FootnoteIndex,
     pub refs: RefIndex,
     pub lit: LitIndex,
+    /// The merged outline (contents entries and detected headings), built once per revision.
+    pub outline: Vec<super::outline::Entry>,
 }
 
 /// The pages read of a document and what was learned from them.
@@ -53,13 +55,16 @@ pub fn analyze(doc: &DocText) -> Analysis {
     let mut norms = Norms::new(doc);
     let map = pages::learn(doc, &entries, &mut norms);
     let toc = toc::links(doc, &entries, &map, &mut norms);
-    Analysis {
+    let mut analysis = Analysis {
         map,
         toc,
         notes: footnotes::build_footnote_index(doc),
         refs: references::build_ref_index(doc, &entries),
         lit: literature::build_lit_index(doc),
-    }
+        outline: Vec::new(),
+    };
+    analysis.outline = super::outline::outline(doc, &analysis);
+    analysis
 }
 
 fn centre_y(l: &SmartLink) -> f32 {

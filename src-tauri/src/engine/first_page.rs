@@ -15,6 +15,7 @@ use std::time::Instant;
 
 use pdfium_render::prelude::*;
 
+use super::imprint;
 use super::space::{load_page, page_box, page_count};
 use super::text::{char_box, text_chars};
 use crate::documents::sanitize_text;
@@ -39,22 +40,43 @@ fn size_key(points: f32) -> Option<i32> {
     (points.is_finite() && points > 0.0 && points < 2_000.0).then(|| (points * 2.0).round() as i32)
 }
 
-/// Reads page `engine_index` (file order) and finds the hints.
+/// Reads the pages that can name the work (the first eight, which hold the title page and an imprint, and the last two) and finds
+/// the hints. `engine_index` is always read too.
 pub(super) fn read_hints(
     document: &PdfDocument<'_>,
     engine_index: u32,
 ) -> Result<FirstPageHints, AppError> {
     let started = Instant::now();
     let count = page_count(document)?;
-    let index = limits::validate_page_index(engine_index, count)?;
-    let page = load_page(document, index)?;
-    let page_box = page_box(&page)?;
-    if started.elapsed() > limits::BIB_FIRST_PAGE_BUDGET {
-        return Ok(FirstPageHints::default());
+    let first = limits::validate_page_index(engine_index, count)?;
+    let mut wanted: Vec<u32> = (0..count.min(8)).collect();
+    wanted.extend(count.saturating_sub(2).max(8)..count);
+    if !wanted.contains(&first) {
+        wanted.push(first);
     }
-    let Ok(text_page) = page.text() else {
-        return Ok(FirstPageHints::default());
-    };
+    let mut pages = Vec::new();
+    for index in wanted {
+        if started.elapsed() > limits::BIB_FIRST_PAGE_BUDGET {
+            break;
+        }
+        let Ok(page) = load_page(document, index) else {
+            continue;
+        };
+        // A page without readable text is skipped: the others may still say enough.
+        if let Some(lines) = read_lines(&page, started) {
+            pages.push(imprint::PageLines {
+                index: index as usize,
+                lines,
+            });
+        }
+    }
+    Ok(imprint::hints_from_pages(&pages))
+}
+
+/// The lines of one page, within the character and time limits; `None` if the page has no readable text.
+fn read_lines(page: &PdfPage<'_>, started: Instant) -> Option<Vec<Line>> {
+    let page_box = page_box(page).ok()?;
+    let text_page = page.text().ok()?;
     let characters = text_page.chars();
 
     let mut lines: Vec<Line> = Vec::new();
@@ -125,31 +147,20 @@ pub(super) fn read_hints(
         }
     }
     flush(&mut text, &mut sizes, &mut first, &mut kept);
-    Ok(hints_from_lines(&lines))
+    Some(lines)
 }
 
-/// The hints of the lines of page 1.
+/// The hints of the lines of one page (the unit tests of the title, year and DOI rules).
+#[cfg(test)]
 pub(super) fn hints_from_lines(lines: &[Line]) -> FirstPageHints {
-    let joined = lines
-        .iter()
-        .map(|line| line.text.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-    let (doi, doi_span) = find_doi(&joined).unzip();
-    // A year inside the DOI ("10.1016/j.x.2020.01") is no year of the work: blank the DOI out first.
-    let rest = match &doi_span {
-        Some(span) => format!("{} {}", &joined[..span.start], &joined[span.end..]),
-        None => joined,
-    };
-    FirstPageHints {
-        title: find_title(lines),
-        year: find_year(&rest),
-        doi,
-    }
+    imprint::hints_from_pages(&[imprint::PageLines {
+        index: 0,
+        lines: lines.to_vec(),
+    }])
 }
 
 /// The run of lines in the largest size, if that size is larger than the body's.
-fn find_title(lines: &[Line]) -> Option<String> {
+pub(super) fn find_title_at(lines: &[Line]) -> Option<(String, usize, usize)> {
     let mut by_size: HashMap<i32, u64> = HashMap::new();
     for line in lines {
         let n = line.text.chars().filter(|c| !c.is_whitespace()).count() as u64;
@@ -159,7 +170,10 @@ fn find_title(lines: &[Line]) -> Option<String> {
         .iter()
         .max_by_key(|&(&size, &count)| (count, std::cmp::Reverse(size)))?;
     let eligible = |line: &Line| {
-        line.text.chars().filter(|c| c.is_alphabetic()).count() >= 3 && line.size > body
+        line.text.chars().filter(|c| c.is_alphabetic()).count() >= 4
+            && line.text.chars().filter(|c| c.is_alphabetic()).count() * 2
+                >= line.text.chars().filter(|c| !c.is_whitespace()).count()
+            && line.size > body
     };
     let largest = lines
         .iter()
@@ -171,7 +185,8 @@ fn find_title(lines: &[Line]) -> Option<String> {
         .position(|line| eligible(line) && line.size == largest)?;
     let mut title = lines[start].text.clone();
     let mut last_y = lines[start].y;
-    for line in &lines[start + 1..] {
+    let mut end = start;
+    for (offset, line) in lines[start + 1..].iter().enumerate() {
         let gap = line.y - last_y;
         // `size` is in half points: 0.8 of it is 1.6 lines.
         if line.size != largest
@@ -183,10 +198,11 @@ fn find_title(lines: &[Line]) -> Option<String> {
         title.push(' ');
         title.push_str(&line.text);
         last_y = line.y;
+        end = start + 1 + offset;
     }
     let flat = sanitize_text(title.trim(), limits::BIB_HEURISTIC_TITLE_MAX);
     let flat = flat.trim();
-    (!flat.is_empty()).then(|| flat.to_owned())
+    (!flat.is_empty()).then(|| (flat.to_owned(), start, end))
 }
 
 /// Month names and usual abbreviations (English and German), lower case.
@@ -230,7 +246,7 @@ const MONTHS: [&str; 36] = [
 ];
 
 /// The first year (1900 to 2100) standing as a word of its own, near a copyright sign, "copyright", a month name or in parentheses.
-fn find_year(text: &str) -> Option<String> {
+pub(super) fn find_year(text: &str) -> Option<String> {
     let chars: Vec<char> = text.chars().collect();
     let mut i = 0;
     while i + 4 <= chars.len() {
@@ -259,9 +275,24 @@ fn year_context(chars: &[char], at: usize) -> bool {
     let after: String = chars[at + 4..(at + 4 + 6).min(chars.len())]
         .iter()
         .collect();
-    before.contains('\u{a9}')
-        || before.contains("(c)")
-        || before.contains("copyright")
+    // A copyright line may name the holder before the year ("(c) The Authors, exclusively licensed to X 2024").
+    let wide: String = chars[at.saturating_sub(90)..at]
+        .iter()
+        .collect::<String>()
+        .to_lowercase();
+    let licence: String = chars[at.saturating_sub(160)..at]
+        .iter()
+        .collect::<String>()
+        .to_lowercase();
+    licence.contains("lizenziert")
+        || licence.contains("licensed to")
+        || wide.contains('\u{a9}')
+        || wide.contains("(c)")
+        || wide.contains("copyright")
+        || before.contains("auflage")
+        || before.contains("edition")
+        || before.contains("aufl.")
+        || before.contains("erschienen")
         || before
             .rsplit(|c: char| !c.is_alphabetic())
             .filter(|word| !word.is_empty())
@@ -271,7 +302,7 @@ fn year_context(chars: &[char], at: usize) -> bool {
 }
 
 /// The first DOI of `text` and where it is (byte range).
-fn find_doi(text: &str) -> Option<(String, std::ops::Range<usize>)> {
+pub(super) fn find_doi(text: &str) -> Option<(String, std::ops::Range<usize>)> {
     let bytes = text.as_bytes();
     let mut from = 0;
     while let Some(found) = text[from..].find("10.") {

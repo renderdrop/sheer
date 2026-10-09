@@ -24,9 +24,17 @@ const article = (): BibRecord => ({
 
 describe('visibleFields (C5 table)', () => {
   it('shows the fields of each type after Year', () => {
-    expect(visibleFields('book', '')).toEqual(['edition', 'publisher', 'place', 'doi', 'url']);
+    expect(visibleFields('book', '')).toEqual(['edition', 'publisher', 'place', 'isbn', 'doi', 'url']);
     expect(visibleFields('article', '')).toEqual(['containerTitle', 'volume', 'issue', 'pages', 'doi', 'url']);
-    expect(visibleFields('chapter', '')).toEqual(['containerTitle', 'pages', 'edition', 'publisher', 'place', 'doi']);
+    expect(visibleFields('chapter', '')).toEqual([
+      'containerTitle',
+      'pages',
+      'edition',
+      'publisher',
+      'place',
+      'isbn',
+      'doi',
+    ]);
     expect(visibleFields('report', '')).toEqual(['publisher', 'place', 'doi', 'url']);
     expect(visibleFields('webPage', '')).toEqual(['containerTitle', 'url', 'accessed']);
     expect(visibleFields('thesis', '')).toEqual(['publisher', 'place', 'url']);
@@ -43,6 +51,13 @@ describe('validate', () => {
   it('accepts a 4 digit year, a suffix, and the n.d. forms', () => {
     for (const ok of ['2021', '2020a', 'n.d.', 'o. J.', '']) expect(validate('year', ok)).toBeNull();
     for (const bad of ['21', '20211', 'abcd', '2021 b']) expect(validate('year', bad)).toBe('ref.invalid.year');
+  });
+
+  it('checks an ISBN by its check digit', () => {
+    expect(validate('isbn', '978-3-16-148410-0')).toBeNull();
+    expect(validate('isbn', '0-8044-2957-X')).toBeNull();
+    expect(validate('isbn', '978-3-16-148410-1')).toBe('ref.invalid.isbn');
+    expect(validate('isbn', '')).toBeNull();
   });
 
   it('wants a DOI that starts with 10. and a URL that is http(s)', () => {

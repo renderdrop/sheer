@@ -10,8 +10,9 @@ use std::collections::VecDeque;
 
 use serde::Serialize;
 
-use super::command::DocCommand;
+use super::command::{DocCommand, LABEL_CREATE, LABEL_EDIT_TEXT, LABEL_UPDATE};
 use super::ids::AnnotId;
+use crate::documents::PageId;
 use crate::limits;
 
 /// What the UI needs to draw its Undo and Redo commands.
@@ -35,6 +36,7 @@ pub(crate) struct HistoryEntry {
     pub command: DocCommand,
     coalesce: Option<(AnnotId, String)>,
     last_ms: u64,
+    meta: StepMeta,
     serial: u64,
     /// What the step holds, estimated (see [`command_bytes`]).
     bytes: usize,
@@ -150,6 +152,64 @@ fn command_bytes(command: &DocCommand) -> usize {
     }
 }
 
+/// What a step concerns, noted when it is recorded (the stacks hold only the inverse commands).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct StepMeta {
+    pub page: Option<PageId>,
+    pub annotation: Option<AnnotId>,
+    /// The kind of the annotation (`highlight`, `ink`, ...).
+    pub annotation_kind: Option<String>,
+}
+
+/// The group a step belongs to in the history panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HistoryKind {
+    /// An annotation was created or edited.
+    Annotation,
+    /// A text edit of existing page text.
+    Text,
+    /// Pages: rotate, delete, move, insert, crop.
+    Page,
+    Other,
+}
+
+/// One step of the history as the UI lists it (`get_history`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryItem {
+    /// Stable while the step stays on the stacks; changes when an edit is folded into the step.
+    pub id: u64,
+    /// A key of the UI catalogs (`annotation.create`, `page.rotate`, a batch's own label, ...).
+    pub label_key: String,
+    pub kind: HistoryKind,
+    pub page: Option<PageId>,
+    pub annotation_id: Option<AnnotId>,
+    pub annotation_kind: Option<String>,
+    pub is_text_edit: bool,
+}
+
+/// Every step of the history, oldest first: the steps that can be undone, then the ones that can be redone. `cursor` is how many are
+/// applied (the steps from there on are redo steps).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryList {
+    pub entries: Vec<HistoryItem>,
+    pub cursor: usize,
+}
+
+fn kind_of(label: &str) -> HistoryKind {
+    if label == LABEL_CREATE || label == LABEL_UPDATE {
+        HistoryKind::Annotation
+    } else if label == LABEL_EDIT_TEXT {
+        HistoryKind::Text
+    } else if label.starts_with("page.") {
+        HistoryKind::Page
+    } else {
+        HistoryKind::Other
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct History {
     undo: VecDeque<HistoryEntry>,
@@ -212,10 +272,42 @@ impl History {
             command: inverse,
             coalesce,
             last_ms: now_ms,
+            meta: StepMeta::default(),
             serial,
             bytes,
         });
         self.trim(limits::MAX_HISTORY_ENTRIES, limits::MAX_HISTORY_BYTES);
+    }
+
+    /// Notes what the step on top of the undo stack concerns (nothing changes when it was extended and already has a note).
+    pub fn note_top(&mut self, meta: StepMeta) {
+        if let Some(top) = self.undo.back_mut() {
+            if top.meta == StepMeta::default() {
+                top.meta = meta;
+            }
+        }
+    }
+
+    /// The steps for the history panel, bounded to `MAX_HISTORY_ENTRIES`: the newest undo steps, then the redo steps (the next one to
+    /// redo first).
+    pub fn list(&self) -> HistoryList {
+        let redo_cap = limits::MAX_HISTORY_ENTRIES
+            .saturating_sub(self.undo.len().min(limits::MAX_HISTORY_ENTRIES));
+        let skip = self.undo.len().saturating_sub(limits::MAX_HISTORY_ENTRIES);
+        let item = |entry: &HistoryEntry| HistoryItem {
+            id: entry.serial,
+            label_key: entry.label.clone(),
+            kind: kind_of(&entry.label),
+            page: entry.meta.page,
+            annotation_id: entry.meta.annotation,
+            annotation_kind: entry.meta.annotation_kind.clone(),
+            is_text_edit: entry.label == LABEL_EDIT_TEXT,
+        };
+        let applied: Vec<HistoryItem> = self.undo.iter().skip(skip).map(item).collect();
+        let cursor = applied.len();
+        let mut entries = applied;
+        entries.extend(self.redo.iter().rev().take(redo_cap).map(item));
+        HistoryList { entries, cursor }
     }
 
     /// Drops the oldest steps while there are more than `max_entries` or they hold more than `max_bytes` (the newest stays).
@@ -303,6 +395,37 @@ mod tests {
 
     fn key(id: u32, name: &str) -> Option<(AnnotId, String)> {
         Some((AnnotId::new(id), name.to_owned()))
+    }
+
+    #[test]
+    fn the_list_is_bounded_and_puts_the_redo_steps_after_the_cursor() {
+        let mut history = History::new();
+        for n in 0..limits::MAX_HISTORY_ENTRIES + 5 {
+            history.record(format!("s{n}"), nothing(), None, 0);
+        }
+        // Trimmed on record to the cap already.
+        let list = history.list();
+        assert_eq!(list.entries.len(), limits::MAX_HISTORY_ENTRIES);
+        assert_eq!(list.cursor, limits::MAX_HISTORY_ENTRIES);
+        let entry = history.pop_undo().unwrap();
+        history.push_redo(entry, nothing());
+        let list = history.list();
+        assert_eq!(list.entries.len(), limits::MAX_HISTORY_ENTRIES);
+        assert_eq!(list.cursor, limits::MAX_HISTORY_ENTRIES - 1);
+        assert_eq!(
+            list.entries.last().map(|e| e.label_key.as_str()),
+            Some(format!("s{}", limits::MAX_HISTORY_ENTRIES + 4).as_str())
+        );
+        assert!(!list.entries[0].is_text_edit);
+    }
+
+    #[test]
+    fn a_text_edit_step_is_marked() {
+        let mut history = History::new();
+        history.record(LABEL_EDIT_TEXT.to_owned(), nothing(), None, 0);
+        let list = history.list();
+        assert!(list.entries[0].is_text_edit);
+        assert_eq!(list.entries[0].kind, HistoryKind::Text);
     }
 
     #[test]

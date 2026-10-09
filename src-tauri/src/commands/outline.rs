@@ -81,7 +81,7 @@ impl AppState {
             }
             return nodes;
         }
-        let entries = smart_outline::outline(&ready.doc, &ready.analysis);
+        let entries = ready.analysis.outline.clone();
         if entries.is_empty() {
             return nodes;
         }

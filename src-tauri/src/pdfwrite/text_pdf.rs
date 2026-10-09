@@ -87,9 +87,9 @@ pub struct Section {
 }
 
 /// What the document is built from.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TextPdfInput<'a> {
-    pub sections: &'a [Section],
+    pub sections: &'a mut [Section],
     pub font: TextPdfFont,
     /// Each section on new sheets, its picture after it.
     pub keep_images: bool,
@@ -404,7 +404,7 @@ fn media_box(size: [f32; 2]) -> Object {
 
 /// Builds the document. `progress(done, total)` is called per section and may stop the build with its error (a cancelled job).
 pub fn build(
-    input: &TextPdfInput<'_>,
+    input: &mut TextPdfInput<'_>,
     progress: &mut dyn FnMut(usize, usize) -> Result<(), AppError>,
 ) -> Result<TextPdf, AppError> {
     let mut layout = Layout {
@@ -432,7 +432,7 @@ pub fn build(
     write_document(input, &layout)
 }
 
-fn write_document(input: &TextPdfInput<'_>, layout: &Layout) -> Result<TextPdf, AppError> {
+fn write_document(input: &mut TextPdfInput<'_>, layout: &Layout) -> Result<TextPdf, AppError> {
     let mut doc = Document::with_version("1.7");
     let tree = doc.new_object_id();
 
@@ -483,7 +483,10 @@ fn write_document(input: &TextPdfInput<'_>, layout: &Layout) -> Result<TextPdf, 
                 (content, Object::Reference(text_resources), PAGE)
             }
             Sheet::Image(section) => {
-                let Some(image) = input.sections.get(*section).and_then(|s| s.image.as_ref())
+                let Some(image) = input
+                    .sections
+                    .get_mut(*section)
+                    .and_then(|s| s.image.as_mut())
                 else {
                     return Err(AppError::new(ErrorCode::Internal));
                 };
@@ -501,7 +504,7 @@ fn write_document(input: &TextPdfInput<'_>, layout: &Layout) -> Result<TextPdf, 
                 dict.set("ColorSpace", Object::Name(space.to_vec()));
                 dict.set("BitsPerComponent", 8);
                 dict.set("Filter", Object::Name(b"DCTDecode".to_vec()));
-                let xobject = doc.add_object(Stream::new(dict, image.jpeg.clone()));
+                let xobject = doc.add_object(Stream::new(dict, std::mem::take(&mut image.jpeg)));
                 let mut images = Dictionary::new();
                 images.set("Im1", Object::Reference(xobject));
                 let mut resources = Dictionary::new();
@@ -577,9 +580,10 @@ mod tests {
     }
 
     fn build_with(sections: &[Section], font: TextPdfFont, keep_images: bool) -> TextPdf {
+        let mut owned = sections.to_vec();
         build(
-            &TextPdfInput {
-                sections,
+            &mut TextPdfInput {
+                sections: &mut owned,
                 font,
                 keep_images,
                 title: "Scan",
@@ -777,8 +781,8 @@ mod tests {
         let doc = crate::pdfwrite::load_untrusted(&built.bytes).unwrap();
         assert!(doc.extract_text(&[1]).unwrap().contains("Text ?? end"));
         let error = build(
-            &TextPdfInput {
-                sections: &[Section::default()],
+            &mut TextPdfInput {
+                sections: &mut [Section::default()],
                 font: TextPdfFont::Inter,
                 keep_images: false,
                 title: "",
@@ -835,10 +839,10 @@ mod tests {
 
     #[test]
     fn a_stopping_progress_hook_stops_the_build() {
-        let sections = [Section::default(), Section::default()];
+        let mut sections = [Section::default(), Section::default()];
         let error = build(
-            &TextPdfInput {
-                sections: &sections,
+            &mut TextPdfInput {
+                sections: &mut sections,
                 font: TextPdfFont::Tinos,
                 keep_images: false,
                 title: "x",

@@ -708,10 +708,10 @@ pub const BIB_HEURISTIC_TITLE_MAX: usize = 300;
 pub const BIB_XMP_DEPTH_MAX: usize = 32;
 /// Most events the XMP read processes.
 pub const BIB_XMP_EVENTS_MAX: usize = 200_000;
-/// Most characters of page 1 the first-page heuristic looks at.
+/// Most characters of one page the first-page heuristic looks at.
 pub const BIB_FIRST_PAGE_CHARS_MAX: usize = 20_000;
 /// Time budget of the first-page heuristic.
-pub const BIB_FIRST_PAGE_BUDGET: Duration = Duration::from_secs(1);
+pub const BIB_FIRST_PAGE_BUDGET: Duration = Duration::from_secs(3);
 /// Longest page label in characters.
 pub const PAGE_LABEL_MAX: usize = 64;
 /// Most pages `Job::PageLabels` reads labels of.

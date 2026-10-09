@@ -1,22 +1,31 @@
 import { History, Trash2 } from 'lucide-react';
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import { IconButton } from '../../components';
 import { cx } from '../../components/cx';
-import { useLocale, useT, type Translate } from '../../i18n';
+import { isPlainKey, useLocale, useT, type Translate } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { usePages } from '../../stores/pages';
 import { InspectorFrame } from '../inspector/InspectorFrame';
 import { useToolInspector } from '../inspector/toolInspector';
-import { deleteFromHistory, installHistoryLog, jumpTo, logOf, useHistoryLog, type HistoryEntry } from './log';
+import {
+  deleteFromHistory,
+  installHistoryLog,
+  jumpTo,
+  logOf,
+  refreshHistory,
+  useHistoryLog,
+  type HistoryEntry,
+} from './log';
 
 installHistoryLog();
 
 /** "Highlight · p. 3": the kind or operation, then the page when the step has one. */
 export function entryLabel(t: Translate, entry: HistoryEntry, pageNumber: number | null): string {
   let what: string;
-  if (entry.batchLabel !== null && entry.what === 'batch') what = entry.batchLabel;
+  if (entry.batchLabel !== null && entry.what === 'batch')
+    what = isPlainKey(entry.batchLabel) ? t(entry.batchLabel) : entry.batchLabel;
   else if (entry.group === 'annotation' && entry.what !== 'update') {
     what = t(`historyList.kind.${entry.what}` as 'historyList.kind.highlight');
   } else what = t(`historyList.op.${entry.what}` as 'historyList.op.change');
@@ -105,6 +114,11 @@ export function HistoryPanel() {
   const [announce, setAnnounce] = useState('');
   const refs = useRef(new Map<number, HTMLButtonElement>());
   const [focusIndex, setFocusIndex] = useState(0);
+
+  // The backend's list may hold steps from before the panel was open.
+  useEffect(() => {
+    if (docId !== null) void refreshHistory(docId);
+  }, [docId]);
 
   const formatter = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' });
   const pageNumber = (pageId: number | null): number | null => {

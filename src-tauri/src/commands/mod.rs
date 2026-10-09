@@ -20,6 +20,7 @@
 //! | `search`, `cancel_search` | `docId`, `query: { text, matchCase, wholeWord, maxHits }`, `onEvent: Channel<SearchEvent>`; `searchId` | the id of the search; the hits arrive on the channel, see [`search`] |
 //! | `get_page_links`, `open_link` | `docId`, `pageId` (and `linkIndex`) | the links of a page; opening one asks the user in a native dialog first, see [`links`] |
 //! | `list_annotations`, `list_document_annotations`, `apply_command` (see [`pages`]), `undo`, `redo` | `docId`, and `pageId` or `command` | the annotations of a page; the `ChangeSet` of a command, an undo or a redo, see [`annotations`] |
+//! | `get_history` | `docId` | `{ entries: [{ id, labelKey, kind, page, annotationId, annotationKind, isTextEdit }], cursor }`, the undo history for the history panel, see [`annotations`] |
 //! | `close_document` | `docId: number`, `discard?: boolean` | nothing; unsaved changes without `discard` are `unsaved_changes`, see [`save`] |
 //! | `save_document`, `save_document_as` | `docId`, `ack?` (and `opts?`) | the `SaveResult` (`null` if the Save As dialog was cancelled), see [`save`] |
 //! | `unlock_document` | `docId`, `password: string` (1 to 1024 bytes) | the `DocumentInfo` once the encrypted file is open; a wrong password is `password_required` (retry waits 1 s after the third, in Rust) |

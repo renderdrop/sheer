@@ -236,6 +236,7 @@ pub fn run() -> Result<(), AppError> {
             commands::pages::release_source,
             commands::annotations::undo,
             commands::annotations::redo,
+            commands::annotations::get_history,
             commands::save::save_document,
             commands::save::save_document_as,
             commands::jobs::extract_pages,

@@ -88,6 +88,7 @@ fn main() {
         "release_source",
         "undo",
         "redo",
+        "get_history",
         "save_document",
         "save_document_as",
         "extract_pages",

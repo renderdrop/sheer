@@ -42,6 +42,7 @@ const MAX_LEN: Record<BibTextField, number> = {
   publisher: BIB_FIELD_MAX,
   place: BIB_FIELD_MAX,
   doi: BIB_DOI_MAX,
+  isbn: 24,
   url: BIB_URL_MAX,
   accessed: 10,
 };

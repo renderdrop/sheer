@@ -1,19 +1,21 @@
 import { create } from 'zustand';
 
-import type { ChangeSet, DocCommand } from '../../api/annotations';
+import { getHistory, type HistoryItem } from '../../api/annotations';
 import { toAppError } from '../../api/errors';
-import { onChangeSet, onHistoryEvent, useAnnotations } from '../../stores/annotations';
+import { onChangeSet, useAnnotations } from '../../stores/annotations';
 import { useUi } from '../../stores/ui';
 
 /**
- * The change list of the history panel (F19.23, ADR-143). The backend keeps the undo stack but tells only the label of its next
- * step, so this list is the session's own record of the steps that ran through the annotations store, per document: a command adds
- * an entry (and drops the ones after the cursor, as the backend drops its redo steps), an undo or redo moves the cursor. Jumping is
- * a run of undo or redo steps in order, never a reorder, so text edits (which depend on each other) stay consistent.
+ * The change list of the history panel (F19.23, ADR-143). The list is the backend's own undo history (`get_history`): every step of
+ * the session is in it, whichever way it was made (annotations, page operations, text edits, redaction, recognition), and the
+ * cursor says how many are applied. It is read again after every change set the annotations store delivers (a command, an undo, a
+ * redo, a job's result). Jumping is a run of undo or redo steps in order, never a reorder, so text edits (which depend on each
+ * other) stay consistent.
  */
 export type EntryGroup = 'annotation' | 'text' | 'page' | 'other';
 
 export interface HistoryEntry {
+  /** The step's serial number in the backend; it changes when an edit is folded into the step. */
   id: number;
   /** The label key part: an annotation kind (`highlight`) or an operation (`delete`, `move`, ...). */
   what: string;
@@ -22,10 +24,9 @@ export interface HistoryEntry {
   pageId: number | null;
   /** The annotation a create or edit step concerns; null for the others. */
   annotationId: number | null;
-  /** The label of a batch, as the backend knows it. */
+  /** The label of a batch or another step without a name of its own here, as the backend knows it. */
   batchLabel: string | null;
-  /** The coalescing key of an edit, so that its follow-up edits do not add entries. */
-  coalesce: string | null;
+  /** When the list first showed the step. */
   time: number;
 }
 
@@ -41,7 +42,6 @@ interface LogState {
 
 export const useHistoryLog = create<LogState>()(() => ({ byDoc: {} }));
 
-let nextId = 1;
 const EMPTY: DocLog = { entries: [], cursor: 0 };
 
 /** The log of a document, or the empty one. */
@@ -49,96 +49,101 @@ export function logOf(state: LogState, docId: number | null): DocLog {
   return (docId === null ? undefined : state.byDoc[docId]) ?? EMPTY;
 }
 
-function describe(docId: number, command: DocCommand, changes: ChangeSet): Omit<HistoryEntry, 'id' | 'time'> {
-  const base = { pageId: null, annotationId: null, batchLabel: null, coalesce: null, group: 'other' as EntryGroup };
-  const known = (id: number) => useAnnotations.getState().byDoc[docId]?.byId[id];
-  switch (command.type) {
-    case 'createAnnotation': {
-      const made = changes.upserted[0]?.id ?? changes.content?.[0]?.id ?? null;
-      return {
-        ...base,
-        what: command.draft.kind,
-        group: 'annotation',
-        pageId: command.draft.pageId,
-        annotationId: made,
-      };
-    }
-    case 'updateAnnotation':
-      return {
-        ...base,
-        what: 'update',
-        group: 'annotation',
-        annotationId: command.id,
-        pageId: known(command.id)?.pageId ?? null,
-        coalesce: command.coalesce ?? null,
-      };
-    case 'deleteAnnotations':
-      return { ...base, what: 'delete' };
-    case 'moveAnnotations':
-      return { ...base, what: 'move', pageId: known(command.ids[0] ?? -1)?.pageId ?? null };
-    case 'batch':
-      return { ...base, what: 'batch', batchLabel: command.label };
-    case 'editTextLine':
-      return { ...base, what: 'text', group: 'text', pageId: command.pageId };
-    case 'setFieldValue':
-      return { ...base, what: 'field' };
-    case 'cropPages':
-      return { ...base, what: 'crop', group: 'page' };
-    case 'rotatePages':
-    case 'deletePages':
-    case 'movePages':
-    case 'insertBlankPage':
-    case 'insertPages':
-      return { ...base, what: 'page', group: 'page' };
-    case 'markRedactions':
-      return { ...base, what: 'redact' };
-    default:
-      return { ...base, what: 'change' };
+const OPERATIONS: Readonly<Record<string, string>> = {
+  'annotation.update': 'update',
+  'annotation.delete': 'delete',
+  'annotation.move': 'move',
+  'field.set': 'field',
+  'page.crop': 'crop',
+  'redact.mark': 'redact',
+};
+
+/** What the panel shows of a backend step. */
+function describe(item: HistoryItem): Omit<HistoryEntry, 'id' | 'time'> {
+  const base = { pageId: item.page, annotationId: null, batchLabel: null, group: 'other' as EntryGroup };
+  if (item.labelKey === 'annotation.create') {
+    return {
+      ...base,
+      what: item.annotationKind ?? 'change',
+      group: 'annotation',
+      annotationId: item.annotationId,
+    };
   }
+  if (item.labelKey === 'annotation.update') {
+    return { ...base, what: 'update', group: 'annotation', annotationId: item.annotationId };
+  }
+  if (item.isTextEdit) return { ...base, what: 'text', group: 'text' };
+  const operation = OPERATIONS[item.labelKey];
+  if (operation !== undefined) return { ...base, what: operation, group: item.kind === 'page' ? 'page' : 'other' };
+  if (item.kind === 'page') return { ...base, what: 'page', group: 'page' };
+  return { ...base, what: 'batch', batchLabel: item.labelKey };
 }
 
-function put(docId: number, log: DocLog): void {
-  useHistoryLog.setState((state) => ({ byDoc: { ...state.byDoc, [docId]: log } }));
+/** When each step was first seen, by document and step id. */
+const seen = new Map<number, Map<number, number>>();
+/** Bumped when a document closes, so that an answer in flight does not bring its log back. */
+const generation = new Map<number, number>();
+
+async function load(docId: number): Promise<void> {
+  const before = generation.get(docId) ?? 0;
+  let list;
+  try {
+    list = await getHistory(docId);
+  } catch {
+    // The list keeps what it had; the next change reads it again.
+    return;
+  }
+  if ((generation.get(docId) ?? 0) !== before) return;
+  const times = seen.get(docId) ?? new Map<number, number>();
+  const next = new Map<number, number>();
+  const now = Date.now();
+  const entries = list.entries.map((item): HistoryEntry => {
+    const time = times.get(item.id) ?? now;
+    next.set(item.id, time);
+    return { ...describe(item), id: item.id, time };
+  });
+  seen.set(docId, next);
+  useHistoryLog.setState((state) => ({ byDoc: { ...state.byDoc, [docId]: { entries, cursor: list.cursor } } }));
 }
 
-/** Brings the cursor in line with what the backend says can still be undone or redone (a step that bypassed the store). */
-function settle(log: DocLog, changes: ChangeSet): DocLog {
-  let cursor = log.cursor;
-  if (!changes.history.canRedo) cursor = log.entries.length;
-  if (!changes.history.canUndo) cursor = 0;
-  return cursor === log.cursor ? log : { ...log, cursor };
+const active = new Map<number, Promise<void>>();
+const queued = new Map<number, Promise<void>>();
+
+/**
+ * Reads the backend's history of a document into the log. Reads never overlap: one that comes while another runs waits for it and
+ * is shared by all who ask meanwhile, so the last answer to be stored is the newest one.
+ */
+export function refreshHistory(docId: number): Promise<void> {
+  const waiting = queued.get(docId);
+  if (waiting !== undefined) return waiting;
+  const start = (): Promise<void> => {
+    queued.delete(docId);
+    const run = load(docId).finally(() => {
+      if (active.get(docId) === run) active.delete(docId);
+    });
+    active.set(docId, run);
+    return run;
+  };
+  const running = active.get(docId);
+  if (running === undefined) return start();
+  const next = running.then(start, start);
+  queued.set(docId, next);
+  return next;
 }
 
 let installed = false;
 
-/** Follows the annotations store; once. */
+/** Follows the annotations store's change sets; once. */
 export function installHistoryLog(): void {
   if (installed) return;
   installed = true;
-  onHistoryEvent((docId, event) => {
-    const log = logOf(useHistoryLog.getState(), docId);
-    if (event.type === 'apply') {
-      const info = describe(docId, event.command, event.changes);
-      const kept = log.entries.slice(0, log.cursor);
-      const last = kept[kept.length - 1];
-      // The backend folds an edit with the same key into the step before it.
-      if (info.coalesce !== null && last?.coalesce === info.coalesce && last.annotationId === info.annotationId) {
-        put(docId, { entries: kept, cursor: kept.length });
-        return;
-      }
-      const entries = [...kept, { ...info, id: nextId++, time: Date.now() }];
-      put(docId, { entries, cursor: entries.length });
-      return;
-    }
-    if (!event.moved) {
-      put(docId, settle(log, event.changes));
-      return;
-    }
-    const cursor = Math.min(log.entries.length, Math.max(0, log.cursor + (event.type === 'undo' ? -1 : 1)));
-    put(docId, settle({ ...log, cursor }, event.changes));
-  });
   onChangeSet((docId, changes) => {
-    if (changes !== null) return;
+    if (changes !== null) {
+      void refreshHistory(docId);
+      return;
+    }
+    generation.set(docId, (generation.get(docId) ?? 0) + 1);
+    seen.delete(docId);
     useHistoryLog.setState((state) => {
       if (state.byDoc[docId] === undefined) return state;
       return { byDoc: Object.fromEntries(Object.entries(state.byDoc).filter(([id]) => Number(id) !== docId)) };
@@ -163,6 +168,7 @@ export async function jumpTo(docId: number, index: number): Promise<boolean> {
       if (log.cursor === target) return true;
       const before = log.cursor;
       await (log.cursor > target ? store.undo(docId) : store.redo(docId));
+      await refreshHistory(docId);
       // A step that moved nothing would loop for ever.
       if (logOf(useHistoryLog.getState(), docId).cursor === before) return false;
     }

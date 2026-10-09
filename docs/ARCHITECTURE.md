@@ -163,6 +163,7 @@ get_annotation_quote(doc_id: DocId, annotation_id: AnnotId) -> Option<String>   
 apply_command(doc_id: DocId, command: DocCommand) -> ChangeSet   // M3: was apply_annotation_command; annotation and page variants (see "Pages")
 undo(doc_id: DocId) -> ChangeSet          // nothing to undo: an empty ChangeSet with the current rev
 redo(doc_id: DocId) -> ChangeSet
+get_history(doc_id: DocId) -> HistoryList  // F19.23, read only: { entries: [{ id: u64 /* serial of the step */, labelKey, kind: "annotation"|"text"|"page"|"other", page: PageId?, annotationId: AnnotId?, annotationKind: string?, isTextEdit }], cursor: usize }; oldest first, the undo steps then the redo steps (next redo first), at most 500 entries (MAX_HISTORY_ENTRIES); `cursor` = applied steps; every step of the session is listed (annotations, page operations, text edits, redaction, OCR), not only those through the annotations store
 ```
 
 Key types (serde `camelCase`; ts-rs generates the TS):
