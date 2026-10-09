@@ -834,6 +834,362 @@ fn find_authors(lines: &[Line], title_end: usize, title_start: usize) -> Vec<Per
     found
 }
 
+// --- authors of slide decks, reports and official texts ---
+
+/// Degrees that trail a name ("M. Sc.", "MBA"); the leading titles are `ACADEMIC`.
+const DEGREES: [&str; 12] = [
+    "m", "sc", "b", "a", "ba", "ma", "msc", "bsc", "mba", "eng", "arch", "fh",
+];
+
+/// Labels that name the author or issuer of a text (ASCII lower case); the flag marks a label of an issuing body.
+const AUTHOR_LABELS: [(&str, bool); 14] = [
+    ("projektleitung", false),
+    ("bearbeitet von", false),
+    ("bearbeiter", false),
+    ("bearbeitung", false),
+    ("verfasser", false),
+    ("autoren", false),
+    ("autor", false),
+    ("authors", false),
+    ("author", false),
+    ("presented by", false),
+    ("referent", false),
+    ("herausgeber", true),
+    ("published by", true),
+    ("issued by", true),
+];
+
+/// Lines read on a page for author labels and person candidates, and the most tokens of one scanned line.
+const SCAN_LINES: usize = 30;
+const SCAN_TOKENS: usize = 60;
+
+fn is_degree(token: &str) -> bool {
+    let low = lower(token.trim_matches(','));
+    let parts: Vec<&str> = low.split(['.', '-']).filter(|p| !p.is_empty()).collect();
+    !parts.is_empty()
+        && parts
+            .iter()
+            .all(|p| DEGREES.contains(p) || ACADEMIC.contains(p))
+}
+
+/// Cuts a line into segments at commas, semicolons, bars, dashes, bullets, "und"/"and"/"&" and "(Hrsg.)".
+fn segments(text: &str) -> Vec<Vec<&str>> {
+    let mut out: Vec<Vec<&str>> = vec![Vec::new()];
+    for token in text.split_whitespace().take(SCAN_TOKENS) {
+        let boundary_only = token.chars().all(|c| {
+            matches!(
+                c,
+                '-' | '\u{2013}' | '\u{2014}' | '|' | '\u{2022}' | '\u{b7}' | '/'
+            )
+        });
+        let low = lower(token);
+        let editor = low.starts_with("(hrsg") || low.starts_with("(hg") || low.starts_with("(ed");
+        if boundary_only || editor || matches!(low.as_str(), "und" | "and" | "&") {
+            out.push(Vec::new());
+            continue;
+        }
+        let trailing = token.ends_with([',', ';']);
+        let core = token
+            .trim_start_matches(['-', '\u{2013}', '\u{2014}', '\u{a9}'])
+            .trim_end_matches([',', ';']);
+        if let Some(last) = out.last_mut() {
+            if !core.is_empty() {
+                last.push(core);
+            }
+        }
+        if trailing {
+            out.push(Vec::new());
+        }
+    }
+    out.retain(|s| !s.is_empty());
+    out
+}
+
+/// A person from one segment: leading titles and trailing degrees are dropped. The flag tells whether a title led the name.
+fn segment_person(segment: &[&str]) -> Option<(Person, bool)> {
+    let lead = segment.iter().take_while(|t| is_academic_title(t)).count();
+    let mut end = segment.len();
+    while end > lead && is_degree(segment[end - 1]) {
+        end -= 1;
+    }
+    let tokens = segment.get(lead..end)?;
+    if !(2..=4).contains(&tokens.len()) {
+        return None;
+    }
+    one_person(&tokens.join(" ")).map(|p| (p, lead > 0))
+}
+
+/// Topic and role words (lower case) that make a repeated capitalised pair a heading, not a name.
+const HEADING_WORDS: [&str; 24] = [
+    "development",
+    "management",
+    "strategy",
+    "services",
+    "solutions",
+    "consulting",
+    "digital",
+    "business",
+    "technology",
+    "research",
+    "design",
+    "marketing",
+    "sales",
+    "entwicklung",
+    "beratung",
+    "planung",
+    "projekt",
+    "projekte",
+    "forschung",
+    "vertrieb",
+    "leitung",
+    "team",
+    "systems",
+    "agenda",
+];
+
+fn heading_like(person: &Person) -> bool {
+    person
+        .given
+        .split_whitespace()
+        .chain(person.family.split_whitespace())
+        .any(|w| HEADING_WORDS.contains(&bare(w).as_str()))
+}
+
+fn same_person(a: &Person, b: &Person) -> bool {
+    lower(&a.family) == lower(&b.family) && lower(&a.given) == lower(&b.given)
+}
+
+/// The persons after an author label, up to the next label; a segment that is no name ends the list.
+fn labelled_persons(rest: &str) -> Vec<Person> {
+    // The next label ("Bearbeitung:") ends this one.
+    let mut cut = rest;
+    let mut at = 0;
+    for token in rest.split_whitespace().skip(1) {
+        let Some(found) = rest.get(at..).and_then(|r| r.find(token)) else {
+            break;
+        };
+        at += found + token.len();
+        if token.ends_with(':') && token.chars().filter(|c| c.is_alphabetic()).count() > 3 {
+            cut = rest.get(..at - token.len()).unwrap_or(rest);
+            break;
+        }
+    }
+    let mut persons: Vec<Person> = Vec::new();
+    for (i, segment) in segments(cut).iter().enumerate() {
+        match segment_person(segment) {
+            Some((person, _)) => {
+                if !persons.iter().any(|p| same_person(p, &person)) {
+                    persons.push(person);
+                }
+            }
+            None if segment.iter().all(|t| is_academic_title(t) || is_degree(t)) => {}
+            None if persons.is_empty() && i < 2 => {}
+            None => break,
+        }
+        if persons.len() >= limits::BIB_AUTHORS_MAX {
+            break;
+        }
+    }
+    persons
+}
+
+/// Authors named by a label ("Projektleitung:", "Herausgeber:", "Published by") on the front pages; an issuing body may be a
+/// corporate author.
+fn labelled_authors(front: &[&PageLines]) -> Vec<Person> {
+    for page in front {
+        for (row, line) in page.lines.iter().enumerate().take(SCAN_LINES) {
+            if line.text.chars().count() > 400 {
+                continue;
+            }
+            let ascii = line.text.to_ascii_lowercase();
+            for (label, issuer) in AUTHOR_LABELS {
+                let Some(at) = ascii.find(label) else {
+                    continue;
+                };
+                let before_ok = ascii
+                    .get(..at)
+                    .and_then(|b| b.chars().last())
+                    .is_none_or(|c| !c.is_alphabetic());
+                let after = at + label.len();
+                let after_ok = ascii
+                    .get(after..)
+                    .and_then(|a| a.chars().next())
+                    .is_none_or(|c| !c.is_alphabetic());
+                if !before_ok || !after_ok {
+                    continue;
+                }
+                let rest = line.text.get(after..).unwrap_or("");
+                let rest = rest.trim_start_matches(|c: char| c.is_whitespace() || c == ':');
+                let rest = rest
+                    .strip_prefix("von ")
+                    .or_else(|| rest.strip_prefix("by "))
+                    .unwrap_or(rest);
+                // A label alone on its line owns the lines below it, up to the next label.
+                let below: String;
+                let rest = if rest.trim().is_empty() {
+                    below = page
+                        .lines
+                        .iter()
+                        .skip(row + 1)
+                        .take(4)
+                        .take_while(|l| !l.text.trim_end().ends_with(':'))
+                        .map(|l| l.text.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    below.as_str()
+                } else {
+                    rest
+                };
+                let persons = labelled_persons(rest);
+                if !persons.is_empty() {
+                    return persons;
+                }
+                if issuer {
+                    if let Some(name) = authority_in(rest) {
+                        return vec![Person {
+                            family: name,
+                            given: String::new(),
+                        }];
+                    }
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Slide decks and reports: a name on the first page that the other front pages repeat (header, footer, speaker slide) and that
+/// stands with a title, a role or a copyright sign.
+fn repeated_authors(front: &[&PageLines], title: Option<&str>) -> Vec<Person> {
+    let Some(first) = front.iter().min_by_key(|p| p.index) else {
+        return Vec::new();
+    };
+    let others: Vec<String> = front
+        .iter()
+        .filter(|p| p.index != first.index)
+        .map(|p| collapse(&lower(&joined(p))))
+        .collect();
+    if others.is_empty() {
+        return Vec::new();
+    }
+    let title_low = collapse(&lower(title.unwrap_or("")));
+    let mut found: Vec<Person> = Vec::new();
+    for line in first.lines.iter().take(SCAN_LINES) {
+        let segs = segments(&line.text);
+        // A list of titled names ("Dr. A B, Prof. C D (Hrsg.)") needs no repetition.
+        let listed: Vec<(Person, bool)> = segs.iter().filter_map(|s| segment_person(s)).collect();
+        if listed.len() >= 2 && listed.len() == segs.len() && listed.iter().all(|(_, lead)| *lead) {
+            for (person, _) in listed {
+                if !found.iter().any(|p| same_person(p, &person)) {
+                    found.push(person);
+                }
+            }
+            continue;
+        }
+        for (i, seg) in segs.iter().enumerate() {
+            let Some((person, lead)) = segment_person(seg) else {
+                continue;
+            };
+            let with_role = i + 1 < segs.len();
+            let after_copy = i > 0 && lower(&segs[i - 1].join(" ")).contains("copyright")
+                || line.text.trim_start().starts_with('\u{a9}');
+            if !(lead || with_role || after_copy) || heading_like(&person) {
+                continue;
+            }
+            let full = collapse(&lower(&format!("{} {}", person.given, person.family)));
+            if title_low.contains(&full) && !lead {
+                continue;
+            }
+            if others.iter().any(|t| t.contains(&full))
+                && !found.iter().any(|p| same_person(p, &person))
+            {
+                found.push(person);
+            }
+        }
+        if found.len() >= limits::BIB_AUTHORS_MAX {
+            break;
+        }
+    }
+    found
+}
+
+fn collapse(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Role and delegation words (lower case) of a signature block; a line with one is no author.
+const ROLE_WORDS: [&str; 16] = [
+    "im auftrag",
+    "i. a.",
+    "i.a.",
+    "präsident",
+    "leiter",
+    "bürgermeister",
+    "referent",
+    "sachbearbeit",
+    "amtsleit",
+    "vorsitzende",
+    "geschäftsführ",
+    "direktor",
+    "dezernent",
+    "oberbürgermeister",
+    "sekretariat",
+    "abteilung",
+];
+
+fn is_role_line(text: &str) -> bool {
+    let low = lower(text);
+    ROLE_WORDS.iter().any(|w| low.contains(w))
+}
+
+/// Lines of at most 40 characters stay whole; longer lines lose "Aufl." (a citation in running text).
+fn keep_short_edition_lines(text: &str) -> String {
+    text.lines()
+        .map(|line| {
+            if line.chars().count() <= 40 {
+                line.to_owned()
+            } else {
+                line.replace("Aufl.", "").replace("aufl.", "")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// A letter or decision signs off with the name under the closing phrase on its last page.
+fn signature_author(pages: &[PageLines]) -> Vec<Person> {
+    let Some(last) = pages.iter().max_by_key(|p| p.index) else {
+        return Vec::new();
+    };
+    let closing = last.lines.iter().position(|l| {
+        let low = lower(&l.text);
+        l.text.chars().count() <= 60
+            && [
+                "mit freundlichen grüßen",
+                "hochachtungsvoll",
+                "yours sincerely",
+                "best regards",
+            ]
+            .iter()
+            .any(|c| low.contains(c))
+    });
+    let Some(closing) = closing else {
+        return Vec::new();
+    };
+    for line in last.lines.iter().skip(closing + 1).take(4) {
+        if is_role_line(&line.text) {
+            continue;
+        }
+        if let Some((person, _)) = segments(&line.text)
+            .first()
+            .and_then(|segment| segment_person(segment))
+        {
+            return vec![person];
+        }
+    }
+    Vec::new()
+}
+
 // --- kind helpers ---
 
 fn lines_with<'a>(lines: &'a [Line], words: &[&str]) -> Option<&'a Line> {
@@ -1071,9 +1427,21 @@ pub(super) fn hints_from_pages(pages: &[PageLines]) -> FirstPageHints {
         .iter()
         .find_map(|t| find_isbn(t))
         .or_else(|| find_isbn(&front_text));
-    hints.edition = texts
+    // A last page lists other works ("2. Aufl."): its edition counts only beside an ISBN.
+    let has_isbn = hints.isbn.is_some();
+    hints.edition = order
         .iter()
-        .find_map(|t| find_edition(t))
+        .filter(|p| p.index < 8 || has_isbn)
+        .find_map(|p| {
+            let text = joined(p);
+            // "9. Aufl." without an ISBN inside running text is a citation of another work; a short line is this work's own.
+            let text = if has_isbn {
+                text
+            } else {
+                keep_short_edition_lines(&text)
+            };
+            find_edition(&text)
+        })
         .and_then(|e| tidy(&e, FIELD_MAX));
 
     // Place and publisher, with the year that stands beside them.
@@ -1179,6 +1547,13 @@ pub(super) fn hints_from_pages(pages: &[PageLines]) -> FirstPageHints {
     } else {
         None
     };
+    // Labels ("Projektleitung:", "Herausgeber:"), then repeated names of slide decks.
+    if hints.authors.is_empty() {
+        hints.authors = labelled_authors(&front);
+    }
+    if hints.authors.is_empty() && !official {
+        hints.authors = repeated_authors(&front, hints.title.as_deref());
+    }
     // The authority is the author of an official text, the institution of a report without a named author.
     if hints.authors.is_empty() {
         let name = if official {
@@ -1195,6 +1570,10 @@ pub(super) fn hints_from_pages(pages: &[PageLines]) -> FirstPageHints {
             }];
         }
     }
+    if hints.authors.is_empty() && official {
+        hints.authors = signature_author(pages);
+    }
+    hints.authors.truncate(limits::BIB_AUTHORS_MAX);
     hints
 }
 
@@ -1478,6 +1857,215 @@ mod tests {
             .publisher
             .as_deref()
             .is_none_or(|p| p.chars().count() <= FIELD_MAX));
+    }
+
+    fn families(hints: &FirstPageHints) -> Vec<&str> {
+        hints.authors.iter().map(|p| p.family.as_str()).collect()
+    }
+
+    #[test]
+    fn a_label_alone_on_its_line_owns_the_names_below() {
+        let pages = [page(
+            0,
+            &[
+                (60, "Guide to Models"),
+                (20, "Projektleitung:"),
+                (20, "Karl Mustermann, Univ.-Prof. Dr.-Ing."),
+                (20, "Erika Beispiel, Apl.-Prof. Dr.-Ing.-habil."),
+                (20, "Bearbeitung:"),
+                (20, "Hans Nebenmann, M. Sc."),
+            ],
+        )];
+        assert_eq!(
+            families(&hints_from_pages(&pages)),
+            ["Mustermann", "Beispiel"]
+        );
+    }
+
+    #[test]
+    fn a_titled_name_list_gives_the_editors() {
+        let pages = [page(
+            0,
+            &[
+                (32, "Handbuch Muster"),
+                (
+                    16,
+                    "Dr. Karl M. Mustermann, Dr. Erika Beispiel, Prof. Dr. Hans Probe (Hrsg.)",
+                ),
+            ],
+        )];
+        assert_eq!(
+            families(&hints_from_pages(&pages)),
+            ["Mustermann", "Beispiel", "Probe"]
+        );
+    }
+
+    #[test]
+    fn a_slide_name_counts_when_the_next_slide_repeats_it() {
+        let deck = [
+            page(
+                0,
+                &[
+                    (20, "Zukunft der Muster"),
+                    (14, "Karl Mustermann, Leiter Entwicklung, Beispiel GmbH"),
+                    (14, "12.05.2019"),
+                ],
+            ),
+            page(
+                1,
+                &[(
+                    12,
+                    "Beispiel GmbH Folie 2 Zur Person Karl Mustermann Leiter",
+                )],
+            ),
+        ];
+        assert_eq!(families(&hints_from_pages(&deck)), ["Mustermann"]);
+        // A name that no other slide repeats could be a heading: no author.
+        let single = [deck[0].clone()];
+        assert!(hints_from_pages(&single).authors.is_empty());
+    }
+
+    #[test]
+    fn a_copyright_footer_with_a_title_gives_the_speaker() {
+        let deck = [
+            page(
+                0,
+                &[(20, "Zukunft der Muster"), (12, "Prof. Dr. Erika Beispiel")],
+            ),
+            page(1, &[(10, "\u{a9} Prof. Dr. Erika Beispiel 2018 Folie 2")]),
+        ];
+        assert_eq!(families(&hints_from_pages(&deck)), ["Beispiel"]);
+    }
+
+    #[test]
+    fn an_issuing_body_label_gives_a_corporate_author() {
+        let pages = [page(
+            0,
+            &[
+                (30, "Jahresbericht"),
+                (12, "Herausgeber: Bundesamt für Beispiele"),
+            ],
+        )];
+        assert_eq!(
+            families(&hints_from_pages(&pages)),
+            ["Bundesamt für Beispiele"]
+        );
+    }
+
+    #[test]
+    fn a_letter_decision_is_signed_under_the_closing() {
+        let pages = [
+            page(0, &[(20, "Bekanntmachung zur Mustersache"), (12, "Text")]),
+            page(
+                5,
+                &[
+                    (12, "Mit freundlichen Grüßen"),
+                    (12, "Erika Beispiel"),
+                    (12, "Amtsleiterin"),
+                ],
+            ),
+        ];
+        assert_eq!(families(&hints_from_pages(&pages)), ["Beispiel"]);
+    }
+
+    #[test]
+    fn a_role_line_is_never_the_signing_author() {
+        let pages = [
+            page(0, &[(20, "Bekanntmachung zur Mustersache"), (12, "Text")]),
+            page(
+                5,
+                &[
+                    (12, "Mit freundlichen Grüßen"),
+                    (12, "Im Auftrag"),
+                    (12, "Der Oberbürgermeister"),
+                    (12, "Erika Beispiel"),
+                ],
+            ),
+        ];
+        assert_eq!(families(&hints_from_pages(&pages)), ["Beispiel"]);
+        let only_roles = [
+            page(0, &[(20, "Bekanntmachung zur Mustersache"), (12, "Text")]),
+            page(
+                5,
+                &[(12, "Mit freundlichen Grüßen"), (12, "Referent Planung")],
+            ),
+        ];
+        assert!(hints_from_pages(&only_roles).authors.is_empty());
+    }
+
+    #[test]
+    fn a_front_page_edition_stays_and_a_citation_goes() {
+        let own = [page(0, &[(30, "Handbuch der Muster"), (12, "2. Aufl.")])];
+        assert_eq!(hints_from_pages(&own).edition.as_deref(), Some("2"));
+        let cited = [page(
+            0,
+            &[
+                (30, "Handbuch der Muster"),
+                (
+                    12,
+                    "Literatur: Mustermann, Karl: Organisation der Dinge, 9. Aufl., Stuttgart 2015",
+                ),
+            ],
+        )];
+        assert_eq!(hints_from_pages(&cited).edition, None);
+    }
+
+    #[test]
+    fn lines_of_unknown_size_do_not_become_the_title() {
+        // Every line has the neutral size: no run is larger than the body, so no title.
+        let flat = [page(
+            0,
+            &[
+                (20, "Kurze Zeile"),
+                (
+                    20,
+                    "Eine lange Zeile mit viel Fliesstext, der den Koerper der Seite bildet.",
+                ),
+            ],
+        )];
+        assert_eq!(hints_from_pages(&flat).title, None);
+        // A sized heading over neutral body text is still the title.
+        let sized = [page(
+            0,
+            &[
+                (48, "Das Echte Thema"),
+                (
+                    20,
+                    "Eine lange Zeile mit viel Fliesstext, der den Koerper der Seite bildet.",
+                ),
+            ],
+        )];
+        assert_eq!(
+            hints_from_pages(&sized).title.as_deref(),
+            Some("Das Echte Thema")
+        );
+    }
+
+    #[test]
+    fn hostile_label_lines_are_bounded() {
+        let long = format!("Autor: {}", "Karl Mustermann, ".repeat(60));
+        let glued = format!("Autor:{}", "KarlMustermann".repeat(500));
+        let pages = [page(0, &[(30, "Titel"), (12, &long), (12, &glued)])];
+        let hints = hints_from_pages(&pages);
+        assert!(hints.authors.len() <= limits::BIB_AUTHORS_MAX);
+        assert!(labelled_authors(&[&pages[0]]).is_empty());
+        let glued_only = [page(0, &[(12, &glued)])];
+        assert!(labelled_authors(&[&glued_only[0]]).is_empty());
+    }
+
+    #[test]
+    fn headings_are_no_authors() {
+        let deck = [
+            page(
+                0,
+                &[
+                    (20, "Zukunft der Muster"),
+                    (14, "Business Development, Beispiel GmbH"),
+                ],
+            ),
+            page(1, &[(12, "Business Development")]),
+        ];
+        assert!(hints_from_pages(&deck).authors.is_empty());
     }
 
     #[test]

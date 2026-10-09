@@ -36,6 +36,9 @@ pub(super) struct Line {
 /// Most characters of one line that are kept.
 const LINE_CHARS_MAX: usize = 600;
 
+/// Line size (half points) when a font reports none.
+const UNKNOWN_SIZE: i32 = 20;
+
 fn size_key(points: f32) -> Option<i32> {
     (points.is_finite() && points > 0.0 && points < 2_000.0).then(|| (points * 2.0).round() as i32)
 }
@@ -134,12 +137,12 @@ fn read_lines(page: &PdfPage<'_>, started: Instant) -> Option<Vec<Line>> {
         let Ok(c) = characters.get(character.first) else {
             continue;
         };
-        if let Some(size) = size_key(c.scaled_font_size().value) {
-            first.get_or_insert(character.first);
-            match sizes.iter_mut().find(|(known, _)| *known == size) {
-                Some((_, n)) => *n += 1,
-                None => sizes.push((size, 1)),
-            }
+        // A font that reports no usable size (some exported decks) still makes a line, at a neutral size.
+        let size = size_key(c.scaled_font_size().value).unwrap_or(UNKNOWN_SIZE);
+        first.get_or_insert(character.first);
+        match sizes.iter_mut().find(|(known, _)| *known == size) {
+            Some((_, n)) => *n += 1,
+            None => sizes.push((size, 1)),
         }
         if kept < LINE_CHARS_MAX {
             text.push(character.c);
