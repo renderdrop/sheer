@@ -43,13 +43,14 @@ describe('Draw variants (F19.26)', () => {
     expect(arrowheadStrokes([s(1, 1)], 2)).toEqual([]);
   });
 
-  it('closes a nearly closed loop softly and leaves an open stroke alone', () => {
+  it('closes a nearly closed loop as a shape (F21.5) and leaves an open stroke alone', () => {
     const circle = Array.from({ length: 24 }, (_, i) =>
       s(50 + 40 * Math.cos((i * 2 * Math.PI) / 25), 50 + 40 * Math.sin((i * 2 * Math.PI) / 25)),
     );
     const closed = closeLoop(circle, 2);
     expect(closed.length).toBeGreaterThan(circle.length);
-    expect(closed[closed.length - 1]).toMatchObject({ x: circle[0]?.x, y: circle[0]?.y });
+    expect(closed[closed.length - 1]).toEqual(closed[0]);
+    expect(Math.hypot((closed[0]?.x ?? 0) - 90, (closed[0]?.y ?? 0) - 50)).toBeLessThan(2);
     const open = Array.from({ length: 12 }, (_, i) => s(i * 10, 0));
     expect(closeLoop(open, 2)).toEqual(open);
   });

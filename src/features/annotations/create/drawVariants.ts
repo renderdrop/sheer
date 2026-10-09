@@ -1,8 +1,9 @@
 import type { Sample } from './ink';
+import { fitFreehandShape } from './shapeFit';
 
 /**
  * The variants of Draw (F19.26): free hand stays as drawn (smoothed only, never straightened or turned into a geometric shape),
- * the free arrow gets an arrowhead at its end, the free shape closes a nearly closed loop softly. Pure functions; page space (points).
+ * the free arrow gets an arrowhead at its end, the free shape closes a nearly closed loop as a recognised, hand-drawn shape (F21.5, `shapeFit.ts`). Pure functions; page space (points).
  */
 export const DRAW_VARIANTS = ['free', 'arrow', 'shape'] as const;
 export type DrawVariant = (typeof DRAW_VARIANTS)[number];
@@ -13,10 +14,6 @@ const HEAD_ANGLE = (28 * Math.PI) / 180;
 /** Arrowhead length: a base plus a multiple of the stroke width, in points. */
 const HEAD_BASE_PT = 6;
 const HEAD_PER_WIDTH = 3;
-/** A loop closes when the end is within this share of the path length (or 3 stroke widths) from the start. */
-const CLOSE_SHARE = 0.2;
-const CLOSE_MIN_LENGTH_PT = 12;
-const CLOSE_STEPS = 4;
 const NEUTRAL = 0.5;
 
 function pathLength(stroke: readonly Sample[]): number {
@@ -70,24 +67,12 @@ export function arrowheadStrokes(stroke: readonly Sample[], width: number): Samp
   return [wing(HEAD_ANGLE), wing(-HEAD_ANGLE)];
 }
 
-/** The stroke with its end led softly back to the start when it nearly closed a loop; otherwise unchanged. */
+/**
+ * The freehand shape (F21.5): a nearly closed stroke becomes a fitted circle, ellipse or rectangle with the stroke's own slight
+ * wobble, or else closes with a smooth periodic spline; it stays ink points either way. An open stroke is returned unchanged.
+ */
 export function closeLoop(stroke: readonly Sample[], width: number): Sample[] {
-  const first = stroke[0];
-  const last = stroke[stroke.length - 1];
-  const copy = stroke.map((s) => ({ ...s }));
-  if (first === undefined || last === undefined || stroke.length < 8) return copy;
-  const length = pathLength(stroke);
-  const gap = Math.hypot(first.x - last.x, first.y - last.y);
-  if (length < CLOSE_MIN_LENGTH_PT || gap === 0 || gap > Math.max(length * CLOSE_SHARE, width * 3)) return copy;
-  for (let k = 1; k <= CLOSE_STEPS; k += 1) {
-    const t = k / CLOSE_STEPS;
-    copy.push({
-      x: last.x + (first.x - last.x) * t,
-      y: last.y + (first.y - last.y) * t,
-      pressure: last.pressure + (first.pressure - last.pressure) * t,
-    });
-  }
-  return copy;
+  return fitFreehandShape(stroke, width)?.points ?? stroke.map((s) => ({ ...s }));
 }
 
 /** The strokes a finished (smoothed) stroke becomes in a Draw variant; the stroke itself comes first. */
