@@ -3065,3 +3065,33 @@ Redact is on opens and closes the options (slot flag `optionsWhenOn`, `src/featu
 with F19.20–F19.23. F19.24 (c) refers to an image that was not attached; implemented from the text. F19.26 reverses the F19.13
 behaviour for the Draw tool: shape recognition (straightening) moves to "Shapes" only — a freehand stroke in Draw is never
 replaced by a geometric shape; the freehand arrow and freehand shape are new ink variants (smoothed path + computed arrowhead).
+
+## ADR-144 — Session "v2.0.0 final — owner test rc.3 (F20)"; rule 17 addition
+
+**Status:** accepted (2026-10-09, owner instruction). Tempo level 4 (ADR-141), model policy ADR-142, rules 13–16 unchanged.
+
+**Rule 17 addition (10).** Background wait loops (Monitor/until loops, background polling) are capped at 30 minutes and are
+stopped at session end. Recorded in `CLAUDE.md` and §2 rule 17 of the orchestrator prompt.
+
+**Owner decisions.**
+1. No dark mode for v2.0 (answers the rc.3 report question; the app stays light-only, ADR-100).
+2. The template deviations listed in the rc.3 report are confirmed (home title dropped under 900 px height with "Open",
+   active tool thin edge, inspector fields two columns at 130 px, star with dark edge, "Split" with scissors icon,
+   mode card 106 px).
+
+**Scope.** F20.1–F20.11 (`docs/FEEDBACK.md`), each checked in the acceptance build at 1280×800 and 960×640; then F19.28 (final
+fix), author detection on slides and official texts (hit rate in the report), one designer round over editor and home against
+`docs/brand/editor-rc3.png` / `home-rc3.png`, final security audit, all acceptance scripts, surface gate, smoke, stable release
+`v2.0.0` with a CHANGELOG summary of everything since v1.0.0.
+
+**Defaults recorded so no question is needed.**
+- F20.7 grouping uses the PDF standard: on one page the disjoint ranges become one markup annotation with several QuadPoints
+  sets carrying the comment; on further pages one annotation per page, linked to the first by `/IRT` + `/RT /Group`
+  (ISO 32000 12.5.6.2), so other viewers treat them as one group. Editing or deleting the comment acts on the whole group.
+- F20.4 smoothing: minimum point distance before smoothing, then Catmull-Rom; parameters chosen by the implementer and
+  documented next to the code; comparison of three fixed strokes before/after as images under `review/` (untracked).
+- F20.9 chrome colour `#FAFAF8` becomes one token (`--chrome`); no other surface of the chrome uses white.
+- F20.8 inspector width 240–480 px, default 300, stored like the left sidebar width (app-wide, local).
+- The designer round (one round, only blockers trigger fixes, ADR-030) judges editor and home at 1280×800 and 960×640 in light
+  mode only (no dark mode).
+- Result: stable release `v2.0.0`.

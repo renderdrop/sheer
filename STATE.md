@@ -1,12 +1,11 @@
 # STATE
-phase: session "v2.0.0-rc.3 — F19 part 2" (ADR-143, tempo level 4, model policy ADR-142) closed: v2.0.0-rc.3 pre-released
+phase: session "v2.0.0 final — owner test rc.3 (F20)" (ADR-144, tempo level 4, model policy ADR-142) in progress
 version: 2.0.0-rc.3 (tag v2.0.0-rc.3, pre-release; latest stable v1.9.0)
-current_item: none — next session: owner decides (proposal: v2.0.0 final — F19.28, author detection, macOS check of the rc.3 layout, one designer round)
+current_item: F20 wave 1 — A home F20.1–3 (Sonnet, cargo) · B chrome/tabs/zoom/inspector F20.8–11 (Sonnet) · C ink/colour/thumbs F20.4–6 (Sonnet) · D multi-select comments F20.7 (Opus, cargo)
+  queued: E author detection (Rust, after a cargo slot frees) · F F19.28 (Opus, 3rd attempt) · G acceptance script v20final · designer round · security audit · release v2.0.0
 packages:
-  spec §3.18 (14ef62b) · wave L layout (24cf7c8) · P palettes (e3784c4) · wave S F19.20/.22-.27 (282bc1d) · G/G2/H sources, ISBN, sec fixes, get_history (4755e21)
-  acceptance fixes 70313f8, fa3c247, ef915aa; final: v20rc3 60/60, v20rc2 57/57, v19 64/64, v17-ocr 50/50, v16-range 11/11, v16-smartlinks 77/79 (F19.28), gate 2576/2576, annot 16/16, real smoke PASS
 last_completed: v2.0.0-rc.3 — F19.16–F19.27; report docs/reports/2026-10-09-v2.0.0-rc.3-f19-teil2.md
-loop_count_this_session: 0 (session closed, STOP set)
+loop_count_this_session: 0
 open_blockers: 3 (B-002, B-005, B-008, human-only)
 notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
   ADR-120: every push starts with `bash scripts/ci-status.sh`; red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs`; real input only `smoke-real.mjs` (≤ 5 min, announced).
